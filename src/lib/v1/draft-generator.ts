@@ -3,7 +3,7 @@
  *
  * Architect's elephant: cold-start voice profile is always weak; without
  * streaming, every new user's first 5 drafts hit a 14+ second unhappy path.
- * Fix: stream Sonnet output, run Burrows' Delta on the first 200 words
+ * Fix: stream Claude output, run Burrows' Delta on the first 200 words
  * as they arrive (function-word distribution converges fast on partial
  * text), and if it falls below 0.5 cancel the stream and restart with
  * tightened exemplars. User sees "regenerating..." at ~2 seconds.
@@ -21,7 +21,7 @@ import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
 import type { DraftRenderedPayload, Item, VoiceProfile } from "./types";
 
-const MODEL = process.env.ANTHROPIC_DRAFT_MODEL ?? "claude-sonnet-4-5";
+const MODEL = process.env.ANTHROPIC_DRAFT_MODEL ?? "claude-haiku-4-5-20251001";
 const VOICE_MATCH_FLOOR = 75; // accept threshold (0-100)
 const STREAMING_VOICE_FLOOR = 0.5; // mid-flight Burrows' Delta cutoff
 const MIN_TOKENS_FOR_VOICE_CHECK = 200;
@@ -54,7 +54,7 @@ export interface DraftOutput {
 }
 
 /**
- * Generate a draft for a fired cluster. Streams from Sonnet, runs voice
+ * Generate a draft for a fired cluster. Streams from Claude, runs voice
  * check at 200 tokens, restarts once if below the streaming floor, and
  * persists the result to the drafts table.
  */
@@ -277,7 +277,7 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
     };
   }
 
-  // Sonnet was instructed to emit a JSON envelope. Extract it.
+  // The model was instructed to emit a JSON envelope. Extract it.
   const parsed = parseJsonEnvelope(collected);
   return {
     headline: parsed.headline,
@@ -479,7 +479,7 @@ closer_pattern: single-sentence kicker`;
 }
 
 function approximateTokenCount(text: string): number {
-  // Sonnet tokenizes around 0.7-0.8 tokens per word for English. We use 0.75.
+  // Claude tokenizes around 0.7-0.8 tokens per word for English. We use 0.75.
   return Math.ceil(text.split(/\s+/).filter(Boolean).length * 0.75);
 }
 
