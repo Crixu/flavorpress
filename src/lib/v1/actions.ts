@@ -329,6 +329,70 @@ export async function buildVoiceProfileAction(formData: FormData) {
   revalidatePath("/voice");
 }
 
+/**
+ * Add a term to either the banned or signature list. Form fields:
+ *   outletId, list ("banned" | "signature"), term
+ * Idempotent — adding an existing term is a no-op.
+ */
+export async function addVoiceTermAction(formData: FormData) {
+  await ensureSchema();
+  const outletId = String(formData.get("outletId") ?? "");
+  const list = String(formData.get("list") ?? "");
+  const term = String(formData.get("term") ?? "").trim();
+  if (!outletId) throw new Error("outletId required.");
+  if (list !== "banned" && list !== "signature") {
+    throw new Error("list must be 'banned' or 'signature'.");
+  }
+  if (!term) {
+    revalidatePath(`/voice/${outletId}`);
+    return;
+  }
+  const column = list === "banned" ? "banned_terms" : "signature_terms";
+  const r = await db.execute({
+    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ?`,
+    args: [outletId],
+  });
+  if (r.rows.length === 0) throw new Error("Build the voice profile first.");
+  const existing: string[] = JSON.parse(String(r.rows[0]!.terms ?? "[]"));
+  if (existing.some((t) => t.toLowerCase() === term.toLowerCase())) {
+    revalidatePath(`/voice/${outletId}`);
+    return;
+  }
+  const next = [...existing, term];
+  await db.execute({
+    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ?`,
+    args: [JSON.stringify(next), outletId],
+  });
+  revalidatePath(`/voice/${outletId}`);
+}
+
+/**
+ * Remove a term from either list. Form fields: outletId, list, term.
+ */
+export async function removeVoiceTermAction(formData: FormData) {
+  await ensureSchema();
+  const outletId = String(formData.get("outletId") ?? "");
+  const list = String(formData.get("list") ?? "");
+  const term = String(formData.get("term") ?? "").trim();
+  if (!outletId) throw new Error("outletId required.");
+  if (list !== "banned" && list !== "signature") {
+    throw new Error("list must be 'banned' or 'signature'.");
+  }
+  const column = list === "banned" ? "banned_terms" : "signature_terms";
+  const r = await db.execute({
+    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ?`,
+    args: [outletId],
+  });
+  if (r.rows.length === 0) return;
+  const existing: string[] = JSON.parse(String(r.rows[0]!.terms ?? "[]"));
+  const next = existing.filter((t) => t.toLowerCase() !== term.toLowerCase());
+  await db.execute({
+    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ?`,
+    args: [JSON.stringify(next), outletId],
+  });
+  revalidatePath(`/voice/${outletId}`);
+}
+
 export async function generateDraftAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
