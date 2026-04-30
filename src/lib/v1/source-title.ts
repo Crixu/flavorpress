@@ -13,7 +13,9 @@
  * override the result via the rename action on the source detail page.
  */
 
-import { anthropic, extractText, MODEL } from "../anthropic";
+import Anthropic from "@anthropic-ai/sdk";
+import { extractText, MODEL } from "../anthropic";
+import { getAnthropicApiKey } from "./settings";
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -41,11 +43,12 @@ export async function generateSourceTitle(url: string): Promise<string> {
 
   if (!signals) return fallback;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey.startsWith("sk-ant-...")) return fallback;
+  const apiKey = await getAnthropicApiKey();
+  if (!apiKey) return fallback;
 
   try {
-    const message = await anthropic.messages.create({
+    const client = new Anthropic({ apiKey });
+    const message = await client.messages.create({
       model: MODEL,
       max_tokens: 60,
       system: `You name RSS feeds with a short, recognizable label. Output ONLY the label; no quotes, no preamble, no punctuation around it. Aim for 1-4 words. Match how the publication brands itself, not how a marketer would describe it. Skip filler like "blog", "feed", "news" unless it's part of the actual brand name. Skip the URL host unless that's how readers know the source.`,

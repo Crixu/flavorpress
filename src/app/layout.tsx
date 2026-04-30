@@ -48,6 +48,19 @@ export default function RootLayout({
             </Link>
             <ShellNav />
             <div className="flex items-center gap-2">
+              <Link
+                href="/settings"
+                aria-label="Settings"
+                title="Settings"
+                className="rounded-full px-3 py-1 text-[12px] font-medium transition hover:scale-105"
+                style={{
+                  background: "var(--bg-subtle)",
+                  color: "var(--fg-muted)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                Settings
+              </Link>
               <Suspense fallback={null}>
                 <HelpIndexButton />
               </Suspense>

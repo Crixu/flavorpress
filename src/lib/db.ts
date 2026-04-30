@@ -282,6 +282,16 @@ export async function ensureSchema(): Promise<void> {
         occurred_at INTEGER NOT NULL
       )`,
       `CREATE INDEX IF NOT EXISTS idx_trace_log_trace ON trace_log(trace_id, occurred_at)`,
+
+      // App-level settings the user can edit from /settings instead of .env.
+      // Single-user prototype so we keep this keyed only by `key`; values are
+      // stored as TEXT (matches the v1-alpha plaintext approach used for
+      // outlet credentials; envelope encryption ships in week 2).
+      `CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at INTEGER NOT NULL
+      )`,
     ],
     "write",
   );
