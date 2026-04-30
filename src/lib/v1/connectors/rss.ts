@@ -14,6 +14,7 @@
  *   - Redirect chains capped at 5
  */
 
+import { politeFetch } from "../polite-fetch";
 import type {
   RawItem,
   SourceConnector,
@@ -29,21 +30,9 @@ export const rssConnector: SourceConnector<FetchedXml> = {
   defaultPollIntervalSeconds: 300,
 
   async fetch(ctx: ConnectorContext): Promise<FetchedXml[]> {
-    const res = await fetch(ctx.source.url, {
-      headers: {
-        "User-Agent":
-          "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)",
-        Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
-      },
-      redirect: "follow",
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} from ${ctx.source.url}`);
-    }
-    let text = await res.text();
-    // Strip UTF-8 BOM if present.
-    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-    return [{ raw: text }];
+    const result = await politeFetch(ctx.source);
+    if (result.kind === "not-modified") return [];
+    return [{ raw: result.body }];
   },
 
   parse(raw: FetchedXml, ctx: ConnectorContext): RawItem | null {

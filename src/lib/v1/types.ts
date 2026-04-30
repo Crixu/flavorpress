@@ -48,6 +48,9 @@ export interface Source {
   pollIntervalSeconds: number;
   lastPolledAt: number | null;
   lastError: string | null;
+  lastEtag: string | null;
+  lastModified: string | null;
+  backoffUntil: number | null;
   active: boolean;
   createdAt: number;
 }
