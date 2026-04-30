@@ -421,18 +421,72 @@ export async function buildVoiceProfileAction(formData: FormData) {
   const creds = await getOutletCredentials(outletId);
   if (!creds) throw new Error("Outlet credentials missing.");
 
-  const posts = await listRecentPosts(creds, 50);
+  const wpPosts = await listRecentPosts(creds, 50);
+  if (wpPosts.length === 0) {
+    // Brand-new site, no archive to fingerprint. Don't write a zero
+    // fingerprint; surface the seed-from-samples path on the detail page.
+    throw new Error(
+      "This outlet has no published posts yet. Seed the voice from sample writing on the detail page instead.",
+    );
+  }
 
-  const styleSheet = extractStyleSheet(
-    posts.map((p) => ({
-      title: stripHtml(p.title.rendered),
-      body: stripHtml(p.content.rendered),
-      publishedAt: Date.parse(p.date),
-    })),
-  );
+  const posts = wpPosts.map((p) => ({
+    title: stripHtml(p.title.rendered),
+    body: stripHtml(p.content.rendered),
+    publishedAt: Date.parse(p.date),
+  }));
 
+  await persistVoiceProfile(outletId, posts);
+  revalidatePath("/voice");
+  revalidatePath(`/voice/${outletId}`);
+}
+
+/**
+ * Seed a voice profile from prose the user pastes manually. Used when the
+ * outlet has no published archive yet (brand-new WordPress site) so the
+ * archive analyzer has nothing to fingerprint. Multiple samples can be
+ * separated by a line containing only `---`.
+ */
+export async function seedVoiceFromSamplesAction(formData: FormData) {
+  await ensureSchema();
+  await ensureSingleUser();
+  const outletId = String(formData.get("outletId") ?? "");
+  const samples = String(formData.get("samples") ?? "").trim();
+  if (!outletId) throw new Error("outletId required.");
+  if (!samples) throw new Error("Paste at least one sample of your writing.");
+
+  const outlet = await getOutlet(outletId);
+  if (!outlet) throw new Error("Outlet not found.");
+
+  const wordCount = samples.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 200) {
+    throw new Error(
+      `Need at least 200 words to extract a voice fingerprint; got ${wordCount}.`,
+    );
+  }
+
+  const chunks = samples
+    .split(/\n\s*---+\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const now = Date.now();
+  const posts = (chunks.length > 0 ? chunks : [samples]).map((body) => ({
+    title: "",
+    body,
+    publishedAt: now,
+  }));
+
+  await persistVoiceProfile(outletId, posts);
+  revalidatePath("/voice");
+  revalidatePath(`/voice/${outletId}`);
+}
+
+async function persistVoiceProfile(
+  outletId: string,
+  posts: { title: string; body: string; publishedAt: number }[],
+): Promise<void> {
+  const styleSheet = extractStyleSheet(posts);
   const yaml = renderStyleYaml(styleSheet);
-
   await db.execute({
     sql: `INSERT OR REPLACE INTO voice_profiles
           (outlet_id, user_id, style_sheet_yaml, archive_index_size,
@@ -457,8 +511,6 @@ export async function buildVoiceProfileAction(formData: FormData) {
       Date.now(),
     ],
   });
-
-  revalidatePath("/voice");
 }
 
 /**
