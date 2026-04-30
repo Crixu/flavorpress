@@ -67,7 +67,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   const items = await getClusterItems(input.clusterId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
-  const voiceProfile = await loadVoiceProfile(input.userId);
+  const voiceProfile = await loadVoiceProfile(input.outletId, input.userId);
   const styleSheet = voiceProfile?.styleSheetYaml ?? defaultStyleSheet();
   const exemplars = await loadExemplars(input.userId, items[0]!.lede);
 
@@ -78,6 +78,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     items,
     angleHint,
     bannedTerms: voiceProfile?.bannedTerms ?? [],
+    description: voiceProfile?.description ?? null,
   });
 
   await log.info("draft.generate", "prompt assembled", {
@@ -108,6 +109,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       items,
       angleHint,
       bannedTerms: voiceProfile?.bannedTerms ?? [],
+      description: voiceProfile?.description ?? null,
       tighten: true,
     });
     result = await streamOnce({
@@ -302,8 +304,12 @@ function buildPrompt(opts: {
   items: Item[];
   angleHint: "archive" | "gap";
   bannedTerms: string[];
+  description: string | null;
   tighten?: boolean;
 }): PromptBundle {
+  const descriptionBlock = opts.description
+    ? `BLOG IDENTITY (what this blog is about; frame the draft so it fits here):\n${opts.description}`
+    : "";
   const exemplarBlock =
     opts.exemplars.length > 0
       ? `EXEMPLARS FROM YOUR ARCHIVE (match this voice exactly):\n\n${opts.exemplars
@@ -339,7 +345,7 @@ LEDE: ${item.lede}
 
   const systemPrompt = `You are a draft writer that mimics the user's voice exactly.
 
-VOICE STYLE SHEET:
+${descriptionBlock ? `${descriptionBlock}\n\n` : ""}VOICE STYLE SHEET:
 ${opts.styleSheet}
 
 ${exemplarBlock}
@@ -424,10 +430,15 @@ function parseJsonEnvelope(text: string): {
   return { headline, headlineAlternates, body, quotes, angleArchive, angleGap };
 }
 
-async function loadVoiceProfile(userId: string): Promise<VoiceProfile | null> {
+async function loadVoiceProfile(
+  outletId: string,
+  userId: string,
+): Promise<VoiceProfile | null> {
+  // Voice profiles are keyed by outlet, not user. The user_id check is a
+  // tenancy guard so a stray outlet_id can't leak across users.
   const r = await db.execute({
-    sql: `SELECT * FROM voice_profiles WHERE user_id = ?`,
-    args: [userId],
+    sql: `SELECT * FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, userId],
   });
   if (r.rows.length === 0) return null;
   const row = r.rows[0]!;
@@ -452,6 +463,7 @@ async function loadVoiceProfile(userId: string): Promise<VoiceProfile | null> {
     anchoredPostIds: row.anchored_post_ids
       ? JSON.parse(String(row.anchored_post_ids))
       : [],
+    description: row.description ? String(row.description) : null,
     lastRebuiltAt: Number(row.last_rebuilt_at ?? Date.now()),
   };
 }
