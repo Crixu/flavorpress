@@ -46,26 +46,11 @@ interface FolderGroup {
   rows: SourceRow[];
 }
 
-const KIND_META: Record<
-  string,
-  { icon: string; color: string; label: string }
-> = {
-  rss: { icon: "📰", color: "bg-stone-100 text-stone-700", label: "RSS" },
-  reddit: {
-    icon: "🔥",
-    color: "bg-orange-100 text-orange-800",
-    label: "Reddit",
-  },
-  podcast: {
-    icon: "🎙️",
-    color: "bg-purple-100 text-purple-800",
-    label: "Podcast",
-  },
-  youtube: {
-    icon: "▶",
-    color: "bg-rose-100 text-rose-800",
-    label: "YouTube",
-  },
+const KIND_META: Record<string, { color: string; label: string }> = {
+  rss: { color: "bg-stone-100 text-stone-700", label: "RSS" },
+  reddit: { color: "bg-orange-100 text-orange-800", label: "Reddit" },
+  podcast: { color: "bg-purple-100 text-purple-800", label: "Podcast" },
+  youtube: { color: "bg-rose-100 text-rose-800", label: "YouTube" },
 };
 
 export function SourcesExplorer({
@@ -115,7 +100,7 @@ export function SourcesExplorer({
                 <summary className="flex cursor-pointer items-center gap-2 bg-stone-100/70 px-4 py-2 text-xs hover:bg-stone-100">
                   <span className="text-stone-500">▾</span>
                   <span className="font-semibold text-stone-900">
-                    {group.id ? "📁" : "📂"} {group.name}
+                    {group.name}
                   </span>
                   <span className="text-stone-500">
                     · {group.rows.length} source
@@ -295,7 +280,7 @@ function SnoozePicker({ sourceId }: { sourceId: string }) {
       className="rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:border-stone-300 disabled:opacity-60"
     >
       <option value="" disabled>
-        {pending ? "Snoozing…" : "💤 Snooze"}
+        {pending ? "Snoozing…" : "Snooze"}
       </option>
       <option value="1">1 hour</option>
       <option value="24">1 day</option>
@@ -334,10 +319,10 @@ function InlineFolderPicker({
       aria-label="Move to folder"
       className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:border-stone-300 disabled:opacity-60"
     >
-      <option value="">📂 Ungrouped</option>
+      <option value="">Ungrouped</option>
       {folders.map((f) => (
         <option key={f.id} value={f.id}>
-          📁 {f.name}
+          {f.name}
         </option>
       ))}
     </select>
@@ -391,10 +376,10 @@ function BulkActionBar({
           className="rounded border border-stone-300 px-2 py-1 text-xs"
           aria-label="Target folder"
         >
-          <option value="">📂 Ungrouped</option>
+          <option value="">Ungrouped</option>
           {folders.map((f) => (
             <option key={f.id} value={f.id}>
-              📁 {f.name}
+              {f.name}
             </option>
           ))}
         </select>

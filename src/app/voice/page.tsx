@@ -135,7 +135,6 @@ export default async function VoicePage({ searchParams }: PageProps) {
       {showAddForm ? (
         <section className="fp-card-feature fp-gradient-surface p-6">
           <div className="flex items-start gap-3">
-            <span className="text-2xl">📝</span>
             <div className="flex-1">
               <div className="text-base font-semibold">Connect a WordPress site</div>
               <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
@@ -223,17 +222,14 @@ export default async function VoicePage({ searchParams }: PageProps) {
           <div className="fp-eyebrow mb-3">What you get with an outlet</div>
           <div className="grid gap-4 md:grid-cols-3">
             <FeatureBlock
-              icon="📚"
               title="Voice profile"
               detail="We pull your last 50 posts and extract a stylometric fingerprint. Drafts inherit it."
             />
             <FeatureBlock
-              icon="✍️"
               title="Drafts go back here"
               detail="Generated drafts publish to this site as WordPress drafts you can edit and ship."
             />
             <FeatureBlock
-              icon="🎯"
               title="Per-outlet ranking"
               detail="Add a side blog and FlavorPress treats it as a different voice; clusters surface for both."
             />
@@ -274,13 +270,13 @@ function OutletCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
           <div
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-base"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-semibold"
             style={{
               background: outlet.connected ? "var(--indigo-tint)" : "var(--bg-subtle)",
               color: outlet.connected ? "var(--indigo)" : "var(--fg-muted)",
             }}
           >
-            {outlet.connected ? "📝" : "○"}
+            {outletInitial(outlet.displayName, outlet.baseUrl)}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -491,19 +487,29 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function outletInitial(
+  displayName: string | null | undefined,
+  baseUrl: string,
+): string {
+  const source = displayName?.trim() || baseUrl;
+  try {
+    const host = new URL(baseUrl).host.replace(/^www\./, "");
+    return (displayName?.trim().charAt(0) || host.charAt(0) || "W").toUpperCase();
+  } catch {
+    return (source.charAt(0) || "W").toUpperCase();
+  }
+}
+
 function FeatureBlock({
-  icon,
   title,
   detail,
 }: {
-  icon: string;
   title: string;
   detail: string;
 }) {
   return (
     <div>
-      <div className="text-2xl">{icon}</div>
-      <div className="mt-2 text-sm font-semibold">{title}</div>
+      <div className="text-sm font-semibold">{title}</div>
       <div className="mt-0.5 text-[12px]" style={{ color: "var(--fg-muted)" }}>
         {detail}
       </div>

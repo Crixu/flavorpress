@@ -226,8 +226,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
 
       {/* Add sources */}
       <section className="rounded-2xl border border-stone-200 bg-white p-6">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-2xl">📥</span>
+        <div className="mb-1">
           <div>
             <div className="text-sm font-semibold">Add sources</div>
             <div className="text-[11px] text-stone-500">
@@ -285,7 +284,6 @@ https://hnrss.org/frontpage`}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <StarterPack
-              icon="🍎"
               name="Apple-blogger pack"
               description="MacRumors, 9to5Mac, AppleInsider, Six Colors, Daring Fireball, Apple newsroom."
               urls={[
@@ -298,7 +296,6 @@ https://hnrss.org/frontpage`}
               ]}
             />
             <StarterPack
-              icon="🛠️"
               name="Indie tech pack"
               description="Stratechery-adjacent and indie tech writers."
               urls={[
@@ -309,7 +306,6 @@ https://hnrss.org/frontpage`}
               ]}
             />
             <StarterPack
-              icon="☕"
               name="Specialty coffee pack"
               description="Sprudge, Daily Coffee News, r/specialtycoffee."
               urls={[
@@ -319,7 +315,6 @@ https://hnrss.org/frontpage`}
               ]}
             />
             <StarterPack
-              icon="🤖"
               name="AI ecosystem pack"
               description="Anthropic, OpenAI, Latent Space, Pragmatic Engineer."
               urls={[
@@ -399,24 +394,19 @@ https://hnrss.org/frontpage`}
 }
 
 function StarterPack({
-  icon,
   name,
   description,
   urls,
 }: {
-  icon: string;
   name: string;
   description: string;
   urls: string[];
 }) {
   return (
     <div className="rounded-2xl border border-stone-200 bg-white p-4 transition hover:shadow-md">
-      <div className="flex items-start gap-3">
-        <div className="text-2xl">{icon}</div>
-        <div className="flex-1">
-          <div className="text-sm font-semibold">{name}</div>
-          <div className="mt-0.5 text-[11px] text-stone-500">{description}</div>
-        </div>
+      <div>
+        <div className="text-sm font-semibold">{name}</div>
+        <div className="mt-0.5 text-[11px] text-stone-500">{description}</div>
       </div>
       <div className="mt-3 max-h-32 overflow-auto rounded bg-stone-50 p-2 font-mono text-[10px] text-stone-600">
         {urls.map((u) => (
@@ -524,10 +514,10 @@ function FolderSelect({
       className="rounded border border-stone-300 px-2 py-1 text-xs"
       aria-label="Add to folder"
     >
-      <option value="">📂 Ungrouped</option>
+      <option value="">Ungrouped</option>
       {folders.map((f) => (
         <option key={f.id} value={f.id}>
-          📁 {f.name}
+          {f.name}
         </option>
       ))}
     </select>
