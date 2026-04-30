@@ -56,6 +56,15 @@ export default async function TodayPage() {
               ORDER BY i.published_at DESC LIMIT 5`,
         args: [c.id],
       });
+      // Existing draft for this cluster (latest). If present, the card
+      // surfaces "Open draft" instead of regenerating from scratch.
+      const draftR = await db.execute({
+        sql: `SELECT id, voice_match_score, wp_post_id, wp_edit_link
+              FROM drafts WHERE cluster_id = ? AND user_id = ?
+              ORDER BY created_at DESC LIMIT 1`,
+        args: [c.id, SINGLE_USER_ID],
+      });
+      const existingDraft = draftR.rows[0] ?? null;
       return {
         cluster: c,
         items: r.rows.map((row) => ({
@@ -63,6 +72,15 @@ export default async function TodayPage() {
           sourceUrl: String(row.source_url),
           displayName: String(row.display_name ?? ""),
         })),
+        draft: existingDraft
+          ? {
+              id: String(existingDraft.id),
+              voiceMatch: Number(existingDraft.voice_match_score ?? 0),
+              wpEditLink: existingDraft.wp_edit_link
+                ? String(existingDraft.wp_edit_link)
+                : null,
+            }
+          : null,
       };
     }),
   );
@@ -79,8 +97,8 @@ export default async function TodayPage() {
             : `${clusters.length} clusters worth your attention`}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-          Three is the cap. Each cluster has fired across 3+ sources from 2+
-          domains in the last 72 hours. Rank, then write.
+          Three is the cap. Each cluster has crossed combined source-trust 1.0
+          across 2+ domains in the last 72 hours. Rank, then write.
         </p>
       </header>
 
@@ -105,6 +123,11 @@ export default async function TodayPage() {
 interface ClusterPreview {
   cluster: Awaited<ReturnType<typeof topFiredClusters>>[number];
   items: { title: string; sourceUrl: string; displayName: string }[];
+  draft: {
+    id: string;
+    voiceMatch: number;
+    wpEditLink: string | null;
+  } | null;
 }
 
 function ClusterCard({
@@ -182,16 +205,55 @@ function ClusterCard({
         </div>
       ) : null}
 
-      <div className="mt-5 flex items-center gap-3">
-        <form action={generateDraftAction}>
-          <input type="hidden" name="clusterId" value={c.id} />
-          <button type="submit" className="fp-btn fp-btn-primary fp-press">
-            Draft this →
-          </button>
-        </form>
-        <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
-          voice-matched 600-word draft
-        </span>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        {preview.draft ? (
+          <>
+            <Link
+              href={`/editor/${preview.draft.id}`}
+              className="fp-btn fp-btn-primary fp-press"
+            >
+              Open draft →
+            </Link>
+            <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+              voice-match{" "}
+              <span className="font-medium tabular">
+                {preview.draft.voiceMatch}
+              </span>
+              {preview.draft.wpEditLink ? (
+                <>
+                  {" · "}
+                  <a
+                    href={preview.draft.wpEditLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:underline"
+                  >
+                    in WordPress ↗
+                  </a>
+                </>
+              ) : null}
+            </span>
+            <form action={generateDraftAction}>
+              <input type="hidden" name="clusterId" value={c.id} />
+              <input type="hidden" name="force" value="1" />
+              <button type="submit" className="fp-btn fp-btn-ghost">
+                Regenerate
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <form action={generateDraftAction}>
+              <input type="hidden" name="clusterId" value={c.id} />
+              <button type="submit" className="fp-btn fp-btn-primary fp-press">
+                Draft this →
+              </button>
+            </form>
+            <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
+              voice-matched 600-word draft
+            </span>
+          </>
+        )}
       </div>
     </article>
   );

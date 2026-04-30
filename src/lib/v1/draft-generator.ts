@@ -30,6 +30,10 @@ const CAPABILITY_VERSION = "1.0.0";
 export interface DraftInput {
   clusterId: string;
   userId: string;
+  /** Outlet to bind the draft to. Required so the publish path knows which
+   *  WordPress site to push to. Pass the default outlet's id when the user
+   *  hasn't picked one explicitly. */
+  outletId: string;
   /** Optional angle hint to bias generation toward archive-habit or cluster-gap. */
   angleHint?: "archive" | "gap";
   /** Override capability version pin for in-flight workflows. */
@@ -133,14 +137,15 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   const draftId = crypto.randomUUID();
   await db.execute({
     sql: `INSERT INTO drafts
-          (id, cluster_id, user_id, capability_version_pin, headline, headline_alternates,
-           body, quotes, voice_match_score, angle_archive, angle_gap, trace_id,
-           created_at, state)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pre-rendered')`,
+          (id, cluster_id, user_id, outlet_id, capability_version_pin,
+           headline, headline_alternates, body, quotes, voice_match_score,
+           angle_archive, angle_gap, trace_id, created_at, state)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pre-rendered')`,
     args: [
       draftId,
       input.clusterId,
       input.userId,
+      input.outletId,
       input.capabilityVersion ?? CAPABILITY_VERSION,
       result.headline,
       JSON.stringify(result.headlineAlternates),

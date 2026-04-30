@@ -16,6 +16,7 @@ import {
   listRecentPosts,
   preflightWordPress,
   probeWordPress,
+  publishToWordPress,
 } from "../wordpress";
 import {
   stageOutlet,
@@ -26,6 +27,7 @@ import {
   getOutlet,
   getOutletCredentials,
   setSourceOutlets,
+  getDefaultOutlet,
 } from "./outlets";
 
 function getOrigin(): string {
@@ -420,11 +422,118 @@ export async function generateDraftAction(formData: FormData) {
   await ensureRegisteredCapabilities();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
+
+  // Pick outlet: explicit > default > error.
+  const explicitOutlet = String(formData.get("outletId") ?? "");
+  const outletId =
+    explicitOutlet ||
+    (await getDefaultOutlet(SINGLE_USER_ID))?.id ||
+    "";
+  if (!outletId) {
+    throw new Error(
+      "No outlet connected. Connect a WordPress site on /voice first.",
+    );
+  }
+
+  // Reuse: if a draft already exists for this cluster + outlet, jump to it.
+  // Generation costs an Anthropic call; we don't pay it twice for the same
+  // cluster unless the user explicitly asks to regenerate (force=1).
+  const force = String(formData.get("force") ?? "") === "1";
+  if (!force) {
+    const existing = await db.execute({
+      sql: `SELECT id FROM drafts
+            WHERE cluster_id = ? AND outlet_id = ? AND user_id = ?
+            ORDER BY created_at DESC LIMIT 1`,
+      args: [clusterId, outletId, SINGLE_USER_ID],
+    });
+    if (existing.rows.length > 0) {
+      redirect(`/editor/${String(existing.rows[0]!.id)}`);
+    }
+  }
+
   const draft = await generateDraft({
     clusterId,
     userId: SINGLE_USER_ID,
+    outletId,
   });
   redirect(`/editor/${draft.draftId}`);
+}
+
+/**
+ * Push the rendered draft to the connected outlet as a WordPress post.
+ * Default status is "draft" — the user lands on the WP edit screen, reads
+ * the post in WordPress's own UI, and decides to publish there. We do NOT
+ * publish=publish unless the form explicitly says so. This matches the
+ * "preview in WP, edit in WP, ship in WP" mental model from the PRD.
+ *
+ * Form fields:
+ *   draftId (required)
+ *   status — "draft" (default) | "publish" | "future"
+ *   scheduleAt — epoch ms when status=future
+ *
+ * Persists wp_post_id and wp_edit_link on the drafts row so the editor
+ * can show "Open in WordPress" instead of "Publish" on subsequent visits.
+ */
+export async function publishDraftToWPAction(formData: FormData) {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const status = (() => {
+    const s = String(formData.get("status") ?? "draft");
+    return s === "publish" || s === "future" ? s : "draft";
+  })() as "draft" | "publish" | "future";
+  const scheduleAtRaw = formData.get("scheduleAt");
+  const scheduleAt = scheduleAtRaw ? Number(scheduleAtRaw) : undefined;
+
+  const r = await db.execute({
+    sql: `SELECT id, outlet_id, headline, body, state, wp_post_id
+          FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("Draft not found.");
+  const row = r.rows[0]!;
+
+  if (row.wp_post_id) {
+    // Already pushed once; return to the editor — the user can open in WP.
+    revalidatePath(`/editor/${draftId}`);
+    return;
+  }
+
+  const outletId = String(row.outlet_id ?? "");
+  if (!outletId) throw new Error("Draft is not bound to an outlet.");
+  const creds = await getOutletCredentials(outletId);
+  if (!creds) {
+    throw new Error(
+      "Outlet has no stored credentials. Reconnect the outlet on /voice and try again.",
+    );
+  }
+
+  const result = await publishToWordPress({
+    creds,
+    title: String(row.headline ?? ""),
+    contentHtml: String(row.body ?? ""),
+    status,
+    scheduleAt,
+  });
+
+  await db.execute({
+    sql: `UPDATE drafts
+          SET wp_post_id = ?, wp_edit_link = ?,
+              state = ?, edited_at = ?
+          WHERE id = ? AND user_id = ?`,
+    args: [
+      result.wpPostId,
+      result.editLink,
+      status === "publish" ? "published" : "in-wordpress",
+      Date.now(),
+      draftId,
+      SINGLE_USER_ID,
+    ],
+  });
+
+  revalidatePath(`/editor/${draftId}`);
+  redirect(result.editLink);
 }
 
 function stripHtml(s: string): string {
