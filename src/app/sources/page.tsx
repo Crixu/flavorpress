@@ -5,6 +5,8 @@
  * destination, they're what you read.
  *
  * Card-first with optional table toggle. Bulk paste is the primary add path.
+ * Sources can be grouped into folders; a folder is also a polling scope so
+ * the user can refresh just the feeds they care about today before drafting.
  */
 
 import Link from "next/link";
@@ -13,7 +15,12 @@ import {
   addSourceAction,
   pollSourceAction,
   pollAllSourcesAction,
+  pollFolderAction,
   deleteSourceAction,
+  createFolderAction,
+  renameFolderAction,
+  deleteFolderAction,
+  assignSourceToFolderAction,
 } from "@/lib/v1/actions";
 import { HelpTrigger } from "@/components/Help";
 
@@ -38,6 +45,13 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     args: [Date.now() - 24 * 60 * 60 * 1000, SINGLE_USER_ID],
   });
 
+  const foldersR = await db.execute({
+    sql: `SELECT id, name, sort_order, created_at FROM source_folders
+          WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
+    args: [SINGLE_USER_ID],
+  });
+  const folders = foldersR.rows as unknown as FolderRow[];
+
   const stats = await db.execute({
     sql: `SELECT
             (SELECT COUNT(*) FROM items WHERE user_id = ?) AS items_total,
@@ -54,6 +68,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   });
 
   const isEmpty = sourcesR.rows.length === 0;
+  const rows = sourcesR.rows as unknown as SourceRow[];
+  const grouped = groupByFolder(rows, folders);
 
   return (
     <div className="space-y-6">
@@ -116,18 +132,105 @@ https://reddit.com/r/specialtycoffee/.rss
 https://hnrss.org/frontpage`}
             className="w-full rounded border border-stone-300 px-3 py-2 font-mono text-xs"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="submit"
               className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
             >
               Add
             </button>
+            <FolderSelect folders={folders} />
             <span className="text-[11px] text-stone-500">
               kind auto-detected from URL pattern
             </span>
           </div>
         </form>
+      </section>
+
+      {/* Folders manager */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Folders</div>
+            <div className="text-[11px] text-stone-500">
+              Group sources by beat. Poll a folder to refresh just those feeds
+              before drafting.
+            </div>
+          </div>
+          <form action={createFolderAction} className="flex items-center gap-2">
+            <input
+              name="name"
+              required
+              maxLength={60}
+              placeholder="New folder name"
+              className="rounded border border-stone-300 px-2 py-1 text-xs"
+            />
+            <button
+              type="submit"
+              className="rounded border border-stone-200 px-2.5 py-1 text-xs hover:bg-stone-50"
+            >
+              + Folder
+            </button>
+          </form>
+        </div>
+        {folders.length > 0 ? (
+          <ul className="mt-4 divide-y divide-stone-100">
+            {folders.map((f) => {
+              const count = rows.filter((r) => r.folder_id === f.id).length;
+              return (
+                <li key={f.id} className="flex flex-wrap items-center gap-2 py-2 text-xs">
+                  <span className="text-base">📁</span>
+                  <form
+                    action={renameFolderAction}
+                    className="flex items-center gap-1"
+                  >
+                    <input type="hidden" name="folderId" value={f.id} />
+                    <input
+                      name="name"
+                      defaultValue={f.name}
+                      maxLength={60}
+                      className="rounded border border-stone-200 px-2 py-1 text-xs"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                    >
+                      Save
+                    </button>
+                  </form>
+                  <span className="text-stone-500">{count} source{count === 1 ? "" : "s"}</span>
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <form action={pollFolderAction}>
+                      <input type="hidden" name="folderId" value={f.id} />
+                      <button
+                        type="submit"
+                        className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                        disabled={count === 0}
+                        title={count === 0 ? "Empty folder" : "Poll all sources in this folder"}
+                      >
+                        ↻ Poll folder
+                      </button>
+                    </form>
+                    <form action={deleteFolderAction}>
+                      <input type="hidden" name="folderId" value={f.id} />
+                      <button
+                        type="submit"
+                        className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                        title="Delete folder; sources move to Ungrouped"
+                      >
+                        Remove
+                      </button>
+                    </form>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-3 text-[11px] text-stone-500">
+            No folders yet. Create one above; sources start ungrouped.
+          </p>
+        )}
       </section>
 
       {/* Empty state with starter packs */}
@@ -189,9 +292,9 @@ https://hnrss.org/frontpage`}
           </p>
         </section>
       ) : view === "cards" ? (
-        <SourceCards rows={sourcesR.rows as unknown as SourceRow[]} />
+        <GroupedCards groups={grouped} folders={folders} />
       ) : (
-        <SourceTable rows={sourcesR.rows as unknown as SourceRow[]} />
+        <SourceTable rows={rows} folders={folders} />
       )}
 
       {/* Diagnostics */}
@@ -261,6 +364,7 @@ interface SourceRow {
   kind: string;
   url: string;
   display_name: string | null;
+  folder_id: string | null;
   trust_score: number;
   poll_interval_seconds: number;
   last_polled_at: number | null;
@@ -269,6 +373,37 @@ interface SourceRow {
   created_at: number;
   item_count: number;
   items_24h: number;
+}
+
+interface FolderRow {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: number;
+}
+
+interface FolderGroup {
+  id: string | null;
+  name: string;
+  rows: SourceRow[];
+}
+
+function groupByFolder(rows: SourceRow[], folders: FolderRow[]): FolderGroup[] {
+  const byId = new Map<string, FolderGroup>();
+  for (const f of folders) {
+    byId.set(f.id, { id: f.id, name: f.name, rows: [] });
+  }
+  const ungrouped: FolderGroup = { id: null, name: "Ungrouped", rows: [] };
+  for (const row of rows) {
+    const fid = row.folder_id;
+    const g = fid ? byId.get(fid) : null;
+    (g ?? ungrouped).rows.push(row);
+  }
+  const ordered: FolderGroup[] = folders
+    .map((f) => byId.get(f.id))
+    .filter((g): g is FolderGroup => Boolean(g));
+  if (ungrouped.rows.length > 0) ordered.push(ungrouped);
+  return ordered;
 }
 
 const KIND_META: Record<
@@ -281,7 +416,81 @@ const KIND_META: Record<
   youtube: { icon: "▶", color: "bg-rose-100 text-rose-800", label: "YouTube" },
 };
 
-function SourceCards({ rows }: { rows: SourceRow[] }) {
+function FolderSelect({
+  folders,
+  currentFolderId,
+  name = "folderId",
+}: {
+  folders: FolderRow[];
+  currentFolderId?: string | null;
+  name?: string;
+}) {
+  return (
+    <select
+      name={name}
+      defaultValue={currentFolderId ?? ""}
+      className="rounded border border-stone-300 px-2 py-1 text-xs"
+    >
+      <option value="">Ungrouped</option>
+      {folders.map((f) => (
+        <option key={f.id} value={f.id}>
+          {f.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function GroupedCards({
+  groups,
+  folders,
+}: {
+  groups: FolderGroup[];
+  folders: FolderRow[];
+}) {
+  if (groups.length === 0) return null;
+  return (
+    <div className="space-y-6">
+      {groups.map((group) => (
+        <section key={group.id ?? "ungrouped"} className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-base">{group.id ? "📁" : "📂"}</span>
+            <h2 className="text-sm font-semibold tracking-tight">
+              {group.name}
+            </h2>
+            <span className="text-[11px] text-stone-500">
+              {group.rows.length} source{group.rows.length === 1 ? "" : "s"}
+            </span>
+            <form action={pollFolderAction} className="ml-auto">
+              <input type="hidden" name="folderId" value={group.id ?? ""} />
+              <button
+                type="submit"
+                className="rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:bg-stone-50"
+                title="Poll every source in this folder"
+              >
+                ↻ Poll folder
+              </button>
+            </form>
+          </div>
+          <SourceCards rows={group.rows} folders={folders} />
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function SourceCards({
+  rows,
+  folders,
+}: {
+  rows: SourceRow[];
+  folders: FolderRow[];
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-[11px] text-stone-500">No sources here yet.</p>
+    );
+  }
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {rows.map((row) => {
@@ -329,6 +538,23 @@ function SourceCards({ rows }: { rows: SourceRow[] }) {
               <CardStat label="24h" value={String(Number(row.items_24h))} />
               <CardStatTrust value={`${trustPct}%`} />
             </div>
+
+            <form
+              action={assignSourceToFolderAction}
+              className="mt-3 flex items-center gap-1"
+            >
+              <input type="hidden" name="sourceId" value={row.id} />
+              <FolderSelect
+                folders={folders}
+                currentFolderId={row.folder_id}
+              />
+              <button
+                type="submit"
+                className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+              >
+                Move
+              </button>
+            </form>
 
             <div className="mt-3 flex items-center justify-between">
               <span className="text-[10px]" style={{ color: "var(--fg-muted)" }}>
@@ -387,12 +613,19 @@ function CardStatTrust({ value }: { value: string }) {
   );
 }
 
-function SourceTable({ rows }: { rows: SourceRow[] }) {
+function SourceTable({
+  rows,
+  folders,
+}: {
+  rows: SourceRow[];
+  folders: FolderRow[];
+}) {
   return (
     <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
       <div className="grid grid-cols-12 gap-3 border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500">
-        <div className="col-span-5">Source</div>
-        <div className="col-span-2">Type</div>
+        <div className="col-span-4">Source</div>
+        <div className="col-span-2">Folder</div>
+        <div className="col-span-1">Type</div>
         <div className="col-span-1 text-right">Items</div>
         <div className="col-span-2 text-right">Last fetch</div>
         <div className="col-span-2 text-right">Actions</div>
@@ -405,7 +638,7 @@ function SourceTable({ rows }: { rows: SourceRow[] }) {
               key={row.id}
               className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-stone-50"
             >
-              <div className="col-span-5">
+              <div className="col-span-4">
                 <div className="font-medium text-stone-900">
                   {row.display_name || hostFromUrl(row.url)}
                 </div>
@@ -415,6 +648,18 @@ function SourceTable({ rows }: { rows: SourceRow[] }) {
                 ) : null}
               </div>
               <div className="col-span-2">
+                <form action={assignSourceToFolderAction} className="flex items-center gap-1">
+                  <input type="hidden" name="sourceId" value={row.id} />
+                  <FolderSelect folders={folders} currentFolderId={row.folder_id} />
+                  <button
+                    type="submit"
+                    className="rounded border border-stone-200 px-1.5 py-1 text-[10px] hover:bg-stone-50"
+                  >
+                    Move
+                  </button>
+                </form>
+              </div>
+              <div className="col-span-1">
                 <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${meta.color}`}>
                   {meta.label}
                 </span>
