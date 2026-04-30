@@ -24,6 +24,7 @@ import {
   addVoiceTermAction,
   removeVoiceTermAction,
   buildVoiceProfileAction,
+  seedVoiceFromSamplesAction,
 } from "@/lib/v1/actions";
 
 export const dynamic = "force-dynamic";
@@ -101,25 +102,28 @@ export default async function VoiceDetailPage({ params }: PageProps) {
       </header>
 
       {!profile ? (
-        <section className="fp-card-feature p-6">
-          <div className="text-base font-semibold">No voice profile yet.</div>
-          <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-            Build the profile from your last 50 published posts. Takes about
-            30 seconds.
-          </p>
-          <form action={buildVoiceProfileAction} className="mt-4">
-            <input type="hidden" name="outletId" value={outletId} />
-            <SubmitButton
-              className="fp-btn fp-btn-primary"
-              pendingLabel="Building voice"
-            >
-              Build voice profile
-            </SubmitButton>
-            <PendingMessage>
-              Pulling recent posts and extracting this outlet's voice.
-            </PendingMessage>
-          </form>
-        </section>
+        <>
+          <section className="fp-card-feature p-6">
+            <div className="text-base font-semibold">No voice profile yet.</div>
+            <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+              Build the profile from your last 50 published posts. Takes about
+              30 seconds.
+            </p>
+            <form action={buildVoiceProfileAction} className="mt-4">
+              <input type="hidden" name="outletId" value={outletId} />
+              <SubmitButton
+                className="fp-btn fp-btn-primary"
+                pendingLabel="Building voice"
+              >
+                Build voice profile
+              </SubmitButton>
+              <PendingMessage>
+                Pulling recent posts and extracting this outlet's voice.
+              </PendingMessage>
+            </form>
+          </section>
+          <SeedFromSamples outletId={outletId} />
+        </>
       ) : (
         <>
           {/* Stats grid */}
@@ -284,6 +288,52 @@ function Stat({
         {hint ? <HelpTrigger id={hint}>{label}</HelpTrigger> : label}
       </div>
     </div>
+  );
+}
+
+function SeedFromSamples({ outletId }: { outletId: string }) {
+  return (
+    <section className="fp-card p-6">
+      <div className="text-base font-semibold">
+        Brand-new site? Seed from sample writing.
+      </div>
+      <p
+        className="mt-1 text-sm leading-relaxed"
+        style={{ color: "var(--fg-muted)" }}
+      >
+        Paste at least 200 words of your prose from anywhere; an old post, a
+        draft, an essay. We extract the same fingerprint we would build from
+        your archive. Separate multiple samples with a line containing only{" "}
+        <code className="rounded bg-[color:var(--bg-subtle)] px-1">---</code>.
+      </p>
+      <form action={seedVoiceFromSamplesAction} className="mt-4 space-y-3">
+        <input type="hidden" name="outletId" value={outletId} />
+        <textarea
+          name="samples"
+          required
+          rows={10}
+          placeholder={
+            "Paste your prose here. Aim for 500+ words for a stable fingerprint."
+          }
+          className="fp-input w-full"
+          style={{
+            fontFamily:
+              "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: "12px",
+            lineHeight: "1.5",
+          }}
+        />
+        <SubmitButton
+          className="fp-btn fp-btn-primary"
+          pendingLabel="Seeding voice"
+        >
+          Seed voice from samples
+        </SubmitButton>
+        <PendingMessage>
+          Extracting a voice fingerprint from your pasted samples.
+        </PendingMessage>
+      </form>
+    </section>
   );
 }
 
