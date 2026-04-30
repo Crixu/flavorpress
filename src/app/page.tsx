@@ -76,7 +76,7 @@ export default async function TodayPage() {
   const allPreviews: TodayClusterPreview[] = await Promise.all(
     clusters.map(async (c) => {
       const r = await db.execute({
-        sql: `SELECT i.title, s.url AS source_url, s.display_name,
+        sql: `SELECT i.title, s.id AS source_id, s.url AS source_url, s.display_name,
                      s.folder_id, sf.name AS folder_name
               FROM items i
               JOIN sources s ON s.id = i.source_id
@@ -109,6 +109,7 @@ export default async function TodayPage() {
       }
       const items = r.rows.map((row) => ({
         title: String(row.title),
+        sourceId: String(row.source_id),
         sourceUrl: String(row.source_url),
         displayName: String(row.display_name ?? ""),
         folderId: row.folder_id ? String(row.folder_id) : null,
@@ -134,6 +135,7 @@ export default async function TodayPage() {
         folder,
         items: items.map((item) => ({
           title: item.title,
+          sourceId: item.sourceId,
           sourceUrl: item.sourceUrl,
           displayName: item.displayName,
         })),
