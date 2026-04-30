@@ -18,6 +18,7 @@ import {
   renameFolderAction,
 } from "@/lib/v1/actions";
 import { SubmitButton } from "../../_components/SubmitButton";
+import { useBackgroundPolling } from "../../_components/useBackgroundPolling";
 
 interface FolderRow {
   id: string;
@@ -198,21 +199,14 @@ function FolderManagePanel({
         {count} source{count === 1 ? "" : "s"}
       </span>
       <span className="ml-auto flex items-center gap-1.5">
-        <form action={pollFolderAction}>
-          <input type="hidden" name="folderId" value={folder.id} />
-          <SubmitButton
-            className="rounded border border-stone-200 bg-white px-2.5 py-1 text-[11px] hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={count === 0}
-            title={
-              count === 0
-                ? "Empty folder"
-                : "Poll all sources in this folder"
-            }
-            pendingLabel="Polling"
-          >
-            ↻ Poll folder
-          </SubmitButton>
-        </form>
+        <PollFolderButton
+          folderId={folder.id}
+          disabled={count === 0}
+          title={
+            count === 0 ? "Empty folder" : "Poll all sources in this folder"
+          }
+          label="↻ Poll folder"
+        />
         <RemoveFolderControl folder={folder} count={count} />
       </span>
     </div>
@@ -278,6 +272,74 @@ function RemoveFolderControl({
   );
 }
 
+/**
+ * Kicks off a folder-scoped poll. Server-side work runs inside `after()`,
+ * so the click returns instantly; the inline pill stays for a few seconds
+ * while `router.refresh()` pulls in items as they ingest.
+ */
+function PollFolderButton({
+  folderId,
+  disabled,
+  title,
+  label,
+}: {
+  folderId: string;
+  disabled?: boolean;
+  title?: string;
+  label: string;
+}) {
+  const polling = useBackgroundPolling();
+  const [pending, startTransition] = useTransition();
+  const [count, setCount] = useState<number | null>(null);
+
+  function trigger() {
+    polling.start();
+    const fd = new FormData();
+    fd.set("folderId", folderId);
+    startTransition(async () => {
+      const result = await pollFolderAction(fd);
+      setCount(result.sourceCount);
+    });
+  }
+
+  const busy = pending || polling.active;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {polling.active ? (
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]"
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            color: "var(--fg-muted)",
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="fp-spinner" aria-hidden />
+          <span>
+            {count === null
+              ? "Polling"
+              : count === 0
+                ? "Nothing to poll"
+                : `${count} ${count === 1 ? "source" : "sources"}`}
+          </span>
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={trigger}
+        disabled={disabled || pending}
+        title={title}
+        className="rounded border border-stone-200 bg-white px-2.5 py-1 text-[11px] hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+        aria-busy={busy}
+      >
+        {label}
+      </button>
+    </span>
+  );
+}
+
 function UngroupedManagePanel({ count }: { count: number }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs">
@@ -286,21 +348,16 @@ function UngroupedManagePanel({ count }: { count: number }) {
         {count} source{count === 1 ? "" : "s"}
       </span>
       <span className="ml-auto">
-        <form action={pollFolderAction}>
-          <input type="hidden" name="folderId" value="" />
-          <SubmitButton
-            className="rounded border border-stone-200 bg-white px-2.5 py-1 text-[11px] hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={count === 0}
-            title={
-              count === 0
-                ? "No ungrouped sources"
-                : "Poll every ungrouped source"
-            }
-            pendingLabel="Polling"
-          >
-            ↻ Poll Ungrouped
-          </SubmitButton>
-        </form>
+        <PollFolderButton
+          folderId=""
+          disabled={count === 0}
+          title={
+            count === 0
+              ? "No ungrouped sources"
+              : "Poll every ungrouped source"
+          }
+          label="↻ Poll Ungrouped"
+        />
       </span>
     </div>
   );
