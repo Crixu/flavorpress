@@ -32,7 +32,7 @@ import type {
 } from "./types";
 import { rowToItem, type ItemRow } from "./source-connector";
 
-const CLUSTER_WINDOW_MS = 72 * 60 * 60 * 1000;
+export const CLUSTER_WINDOW_MS = 72 * 60 * 60 * 1000;
 
 // Trust-weighted fire threshold. A cluster fires when the SUM of distinct
 // source trust scores in the cluster reaches this value AND there are at
@@ -67,12 +67,16 @@ export async function handleItemIngested(
   }
   const item = rowToItem(itemRow.rows[0] as unknown as ItemRow);
 
-  // Window: items for this user within last 72h, not the same item.
-  const sinceMs = item.fetchedAt - CLUSTER_WINDOW_MS;
+  // Window: items for this user within ±72h of this item's publish date.
+  // Anchored on published_at (not fetched_at) so a backfill that ingests
+  // months-old items doesn't merge them into clusters with today's news
+  // just because they share an ingest timestamp.
+  const minMs = item.publishedAt - CLUSTER_WINDOW_MS;
+  const maxMs = item.publishedAt + CLUSTER_WINDOW_MS;
   const windowR = await db.execute({
     sql: `SELECT * FROM items
-          WHERE user_id = ? AND fetched_at >= ? AND id != ?`,
-    args: [item.userId, sinceMs, item.id],
+          WHERE user_id = ? AND published_at >= ? AND published_at <= ? AND id != ?`,
+    args: [item.userId, minMs, maxMs, item.id],
   });
   const windowItems = windowR.rows.map((r) =>
     rowToItem(r as unknown as ItemRow),
