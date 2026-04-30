@@ -21,6 +21,7 @@ import {
   preflightOutletAction,
 } from "@/lib/v1/actions";
 import { decodePreflight } from "@/lib/wordpress";
+import { canUseAuthorizeFlow } from "@/lib/v1/origin";
 import {
   DisableFormWhilePending,
   PendingMessage,
@@ -38,6 +39,7 @@ interface PageProps {
     add?: string;
     manual?: string;
     check?: string;
+    baseUrl?: string;
   }>;
 }
 
@@ -64,7 +66,10 @@ export default async function VoicePage({ searchParams }: PageProps) {
   }
 
   const showAddForm = sp.add === "1" || outlets.length === 0;
-  const useManual = sp.manual === "1";
+  const authorizeAvailable = await canUseAuthorizeFlow();
+  // When the authorize flow can't work (http origin → HTTPS WP rejects the
+  // callback), manual paste is the only option; force it regardless of ?manual.
+  const useManual = !authorizeAvailable || sp.manual === "1";
 
   return (
     <div className="space-y-8">
@@ -102,6 +107,7 @@ export default async function VoicePage({ searchParams }: PageProps) {
           baseUrl={checkOutlet.baseUrl}
           outletId={checkOutlet.id}
           result={preflight}
+          authorizeAvailable={authorizeAvailable}
         />
       ) : null}
 
@@ -125,6 +131,7 @@ export default async function VoicePage({ searchParams }: PageProps) {
                 key={outlet.id}
                 outlet={outlet}
                 profile={profilesByOutlet.get(outlet.id)}
+                authorizeAvailable={authorizeAvailable}
               />
             ))}
           </div>
@@ -138,8 +145,9 @@ export default async function VoicePage({ searchParams }: PageProps) {
             <div className="flex-1">
               <div className="text-base font-semibold">Connect a WordPress site</div>
               <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-                One click via your site's authorize page. WordPress generates
-                the Application Password and sends you back here.
+                {authorizeAvailable
+                  ? "One click via your site's authorize page. WordPress generates the Application Password and sends you back here."
+                  : "Create an Application Password in your WordPress admin and paste it here. The one-click authorize flow needs FlavorPress to be reachable over HTTPS, so it isn't available in this build."}
               </p>
             </div>
           </div>
@@ -211,7 +219,10 @@ export default async function VoicePage({ searchParams }: PageProps) {
               </details>
             </div>
           ) : (
-            <ManualConnect />
+            <ManualConnect
+              authorizeAvailable={authorizeAvailable}
+              prefillBaseUrl={sp.baseUrl ?? checkOutlet?.baseUrl}
+            />
           )}
         </section>
       ) : null}
@@ -243,9 +254,11 @@ export default async function VoicePage({ searchParams }: PageProps) {
 function OutletCard({
   outlet,
   profile,
+  authorizeAvailable,
 }: {
   outlet: Awaited<ReturnType<typeof listOutlets>>[number];
   profile?: ReturnType<Map<string, unknown>["get"]>;
+  authorizeAvailable: boolean;
 }) {
   const archiveSize = profile ? Number((profile as Record<string, unknown>).archive_index_size ?? 0) : 0;
   const sentenceMean = profile ? Number((profile as Record<string, unknown>).sentence_length_mean ?? 0) : 0;
@@ -399,15 +412,24 @@ function OutletCard({
           </>
         ) : (
           <>
-            <form action={startWPAuthorizeAction}>
-              <input type="hidden" name="baseUrl" value={outlet.baseUrl} />
-              <SubmitButton
+            {authorizeAvailable ? (
+              <form action={startWPAuthorizeAction}>
+                <input type="hidden" name="baseUrl" value={outlet.baseUrl} />
+                <SubmitButton
+                  className="fp-btn fp-btn-primary"
+                  pendingLabel="Opening WordPress"
+                >
+                  Reconnect →
+                </SubmitButton>
+              </form>
+            ) : (
+              <Link
+                href={`/voice?add=1&manual=1&baseUrl=${encodeURIComponent(outlet.baseUrl)}`}
                 className="fp-btn fp-btn-primary"
-                pendingLabel="Opening WordPress"
               >
-                Reconnect →
-              </SubmitButton>
-            </form>
+                Reconnect manually
+              </Link>
+            )}
             <form action={disconnectOutletAction}>
               <input type="hidden" name="outletId" value={outlet.id} />
               <input type="hidden" name="purge" value="1" />
@@ -425,7 +447,13 @@ function OutletCard({
   );
 }
 
-function ManualConnect() {
+function ManualConnect({
+  authorizeAvailable,
+  prefillBaseUrl,
+}: {
+  authorizeAvailable: boolean;
+  prefillBaseUrl?: string;
+}) {
   return (
     <div className="mt-5 space-y-3">
       <p className="text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
@@ -439,6 +467,7 @@ function ManualConnect() {
             type="url"
             name="baseUrl"
             required
+            defaultValue={prefillBaseUrl ?? ""}
             placeholder="https://yourblog.com"
             className="fp-input"
           />
@@ -462,9 +491,11 @@ function ManualConnect() {
           >
             Connect manually
           </SubmitButton>
-          <Link href="/voice?add=1" className="fp-btn fp-btn-ghost">
-            ← Back to one-click
-          </Link>
+          {authorizeAvailable ? (
+            <Link href="/voice?add=1" className="fp-btn fp-btn-ghost">
+              ← Back to one-click
+            </Link>
+          ) : null}
         </div>
         <PendingMessage>
           Testing the WordPress credentials before saving this outlet.
@@ -522,10 +553,12 @@ function PreflightCard({
   baseUrl,
   outletId,
   result,
+  authorizeAvailable,
 }: {
   baseUrl: string;
   outletId: string;
   result: ReturnType<typeof decodePreflight>;
+  authorizeAvailable: boolean;
 }) {
   if (!result) return null;
   const overallOk = result.ok && result.errors.length === 0;
@@ -613,7 +646,7 @@ function PreflightCard({
       ) : null}
 
       <div className="mt-5 flex flex-wrap gap-2">
-        {overallOk ? (
+        {overallOk && authorizeAvailable ? (
           <form action={startWPAuthorizeAction}>
             <input type="hidden" name="baseUrl" value={baseUrl} />
             <input type="hidden" name="skipPreflight" value="1" />
@@ -625,8 +658,13 @@ function PreflightCard({
             </SubmitButton>
           </form>
         ) : null}
-        <Link href="/voice?add=1&manual=1" className="fp-btn fp-btn-ghost">
-          Use manual paste flow
+        <Link
+          href="/voice?add=1&manual=1"
+          className={`fp-btn ${
+            authorizeAvailable ? "fp-btn-ghost" : "fp-btn-primary"
+          }`}
+        >
+          {authorizeAvailable ? "Use manual paste flow" : "Connect manually"}
         </Link>
         <form action={disconnectOutletAction}>
           <input type="hidden" name="outletId" value={outletId} />

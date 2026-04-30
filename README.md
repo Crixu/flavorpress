@@ -20,7 +20,24 @@ This repo is the open-source core. Self-host it, bring your own LLM key, run it 
 - **Publish** to your WordPress site via Application Password, as a draft, scheduled, or live.
 - **Extend** with capabilities. Every internal feature (cluster engine, voice generator, fact-check, originality, source connectors) is a manifest in the capability registry. Future agents (research, scheduling, analytics) plug in via the same contract. The MCP server at `/api/mcp` exposes them to Claude Desktop and other AI agents.
 
-## Quick start (5 minutes)
+## Quick start
+
+Two paths depending on whether you want to hack on the code or just run the app.
+
+### Option A: macOS app (Apple Silicon)
+
+Self-contained `.app` that bundles its own Node and the Next.js server. No `npm` required to run it.
+
+```sh
+git clone https://github.com/wpcomvip/flavorpress.git
+cd flavorpress
+npm install
+npm run mac:run
+```
+
+Drag `macos/build/FlavorPress.app` into `/Applications`. Right-click → Open the first time (Gatekeeper warns on ad-hoc signed bundles). Then open **FlavorPress → Open Settings** (⌘,) and paste your Anthropic API key. State lives in `~/Library/Application Support/FlavorPress/`; logs in `~/Library/Logs/FlavorPress/server.log`. See [`macos/README.md`](macos/README.md) for details.
+
+### Option B: run from source (5 minutes)
 
 ```sh
 git clone https://github.com/wpcomvip/flavorpress.git
