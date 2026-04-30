@@ -80,6 +80,9 @@ export function FolderChipBar({
         {folders.map((f) => {
           const active = currentFolder === f.id;
           const count = folderCounts[f.id] ?? 0;
+          // On the Ungrouped view, empty folder chips are noise: the user is
+          // looking at sources without a folder, not at the folder roster.
+          if (currentFolder === "ungrouped" && count === 0) return null;
           return (
             <Link
               key={f.id}
