@@ -4,9 +4,9 @@
  * WordPress connection lives on /voice; sources are not the publish
  * destination, they're what you read.
  *
- * Card-first with optional table toggle. Bulk paste is the primary add path.
- * Sources can be grouped into folders; a folder is also a polling scope so
- * the user can refresh just the feeds they care about today before drafting.
+ * Explorer-first with card and table toggles. Bulk paste is the primary add
+ * path. Sources can be grouped into folders; a folder is also a polling scope
+ * so the user can refresh just the feeds they care about today before drafting.
  */
 
 import Link from "next/link";
@@ -21,8 +21,10 @@ import {
   renameFolderAction,
   deleteFolderAction,
   assignSourceToFolderAction,
+  bulkAssignSourcesToFolderAction,
 } from "@/lib/v1/actions";
 import { HelpTrigger } from "@/components/Help";
+import { PendingStages, SubmitButton } from "../_components/SubmitButton";
 import {
   listOutlets,
   resolveOutletSourceIds,
@@ -35,12 +37,15 @@ interface PageProps {
   searchParams: Promise<{ view?: string; outlet?: string }>;
 }
 
+type SourceView = "explorer" | "cards" | "table";
+
 export default async function SourcesPage({ searchParams }: PageProps) {
   await ensureSchema();
   await ensureSingleUser();
 
   const sp = await searchParams;
-  const view = sp.view === "table" ? "table" : "cards";
+  const view: SourceView =
+    sp.view === "cards" || sp.view === "table" ? sp.view : "explorer";
   const outletFilter = sp.outlet && sp.outlet !== "all" ? sp.outlet : null;
 
   const outlets = await listOutlets(SINGLE_USER_ID);
@@ -124,22 +129,28 @@ export default async function SourcesPage({ searchParams }: PageProps) {
         {!isEmpty ? (
           <div className="flex items-center gap-2">
             <form action={pollAllSourcesAction}>
-              <button
-                type="submit"
+              <SubmitButton
                 className="rounded border border-stone-200 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+                pendingLabel="Polling"
               >
                 ↻ Poll all
-              </button>
+              </SubmitButton>
             </form>
             <div className="inline-flex rounded-lg border border-stone-200 bg-white p-0.5 text-xs">
               <Link
-                href="/sources?view=cards"
+                href={sourcesHref("explorer", outletFilter)}
+                className={`rounded px-2 py-1 ${view === "explorer" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+              >
+                Explorer
+              </Link>
+              <Link
+                href={sourcesHref("cards", outletFilter)}
                 className={`rounded px-2 py-1 ${view === "cards" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
               >
                 Cards
               </Link>
               <Link
-                href="/sources?view=table"
+                href={sourcesHref("table", outletFilter)}
                 className={`rounded px-2 py-1 ${view === "table" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
               >
                 Table
@@ -159,7 +170,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             Filter by outlet
           </span>
           <Link
-            href={view === "table" ? "/sources?view=table" : "/sources"}
+            href={sourcesHref(view)}
             className={`fp-chip ${
               !outletFilter ? "fp-chip-indigo" : ""
             } transition`}
@@ -167,9 +178,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             All sources · {allRows.length}
           </Link>
           {outlets.map((o) => {
-            const url = view === "table"
-              ? `/sources?view=table&outlet=${o.id}`
-              : `/sources?outlet=${o.id}`;
+            const url = sourcesHref(view, o.id);
             const active = outletFilter === o.id;
             const display = o.displayName ?? hostFromUrl(o.baseUrl);
             return (
@@ -208,17 +217,26 @@ https://hnrss.org/frontpage`}
             className="w-full rounded border border-stone-300 px-3 py-2 font-mono text-xs"
           />
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
+            <SubmitButton
               className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
+              pendingLabel="Adding"
             >
               Add
-            </button>
+            </SubmitButton>
             <FolderSelect folders={folders} />
             <span className="text-[11px] text-stone-500">
               kind auto-detected from URL pattern
             </span>
           </div>
+          <PendingStages
+            title="Adding sources"
+            stages={[
+              "Reading pasted feed URLs",
+              "Detecting source type",
+              "Saving active feeds",
+              "Refreshing clusters",
+            ]}
+          />
         </form>
       </section>
 
@@ -240,12 +258,12 @@ https://hnrss.org/frontpage`}
               placeholder="New folder name"
               className="rounded border border-stone-300 px-2 py-1 text-xs"
             />
-            <button
-              type="submit"
+            <SubmitButton
               className="rounded border border-stone-200 px-2.5 py-1 text-xs hover:bg-stone-50"
+              pendingLabel="Creating"
             >
               + Folder
-            </button>
+            </SubmitButton>
           </form>
         </div>
         {folders.length > 0 ? (
@@ -266,35 +284,35 @@ https://hnrss.org/frontpage`}
                       maxLength={60}
                       className="rounded border border-stone-200 px-2 py-1 text-xs"
                     />
-                    <button
-                      type="submit"
+                    <SubmitButton
                       className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                      pendingLabel="Saving"
                     >
                       Save
-                    </button>
+                    </SubmitButton>
                   </form>
                   <span className="text-stone-500">{count} source{count === 1 ? "" : "s"}</span>
                   <span className="ml-auto flex items-center gap-1.5">
                     <form action={pollFolderAction}>
                       <input type="hidden" name="folderId" value={f.id} />
-                      <button
-                        type="submit"
+                      <SubmitButton
                         className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
                         disabled={count === 0}
                         title={count === 0 ? "Empty folder" : "Poll all sources in this folder"}
+                        pendingLabel="Polling"
                       >
                         ↻ Poll folder
-                      </button>
+                      </SubmitButton>
                     </form>
                     <form action={deleteFolderAction}>
                       <input type="hidden" name="folderId" value={f.id} />
-                      <button
-                        type="submit"
+                      <SubmitButton
                         className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
                         title="Delete folder; sources move to Ungrouped"
+                        pendingLabel="Removing"
                       >
                         Remove
-                      </button>
+                      </SubmitButton>
                     </form>
                   </span>
                 </li>
@@ -383,6 +401,11 @@ https://hnrss.org/frontpage`}
             Show all sources →
           </Link>
         </div>
+      ) : view === "explorer" ? (
+        <SourceExplorer
+          groups={grouped}
+          folders={folders}
+        />
       ) : view === "cards" ? (
         <GroupedCards
           groups={grouped}
@@ -517,14 +540,17 @@ function FolderSelect({
   folders,
   currentFolderId,
   name = "folderId",
+  form,
 }: {
   folders: FolderRow[];
   currentFolderId?: string | null;
   name?: string;
+  form?: string;
 }) {
   return (
     <select
       name={name}
+      form={form}
       defaultValue={currentFolderId ?? ""}
       className="rounded border border-stone-300 px-2 py-1 text-xs"
     >
@@ -535,6 +561,170 @@ function FolderSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+function SourceExplorer({
+  groups,
+  folders,
+}: {
+  groups: FolderGroup[];
+  folders: FolderRow[];
+}) {
+  if (groups.length === 0) return null;
+  const bulkFormId = "source-bulk-move";
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <form
+        id={bulkFormId}
+        action={bulkAssignSourcesToFolderAction}
+        className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-stone-50 px-4 py-3"
+      >
+        <div>
+          <div className="text-sm font-semibold">Source explorer</div>
+          <div className="text-[11px] text-stone-500">
+            Select sources, choose a folder, move them together.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <FolderSelect folders={folders} />
+          <SubmitButton
+            className="rounded border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+            pendingLabel="Moving"
+          >
+            Move selected
+          </SubmitButton>
+        </div>
+      </form>
+
+      <div className="overflow-x-auto">
+        <div className="min-w-[860px]">
+          <div className="grid grid-cols-12 gap-3 border-b border-stone-200 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500">
+            <div className="col-span-1">Pick</div>
+            <div className="col-span-4">Source</div>
+            <div className="col-span-1">Type</div>
+            <div className="col-span-1 text-right">Items</div>
+            <div className="col-span-1 text-right">Trust</div>
+            <div className="col-span-2 text-right">Last fetch</div>
+            <div className="col-span-2 text-right">Actions</div>
+          </div>
+
+          {groups.map((group) => (
+            <details
+              key={group.id ?? "ungrouped"}
+              open
+              className="border-b border-stone-100 last:border-b-0"
+            >
+              <summary className="grid cursor-pointer grid-cols-12 items-center gap-3 bg-stone-100/70 px-4 py-2 text-xs hover:bg-stone-100">
+                <div className="col-span-6 flex items-center gap-2 font-semibold text-stone-900">
+                  <span className="text-stone-500">▾</span>
+                  <span>{group.name}</span>
+                </div>
+                <div className="col-span-2 text-right text-stone-500">
+                  {group.rows.length} source{group.rows.length === 1 ? "" : "s"}
+                </div>
+                <div className="col-span-4 text-right text-stone-500">
+                  {group.id ? "Folder" : "No folder"}
+                </div>
+              </summary>
+
+              {group.rows.length === 0 ? (
+                <div className="px-4 py-4 text-xs text-stone-500">
+                  No sources here yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-stone-100">
+                  {group.rows.map((row) => {
+                    const meta = KIND_META[row.kind] ?? KIND_META.rss!;
+                    const trustPct = Math.round(
+                      Number(row.trust_score ?? 0.5) * 100,
+                    );
+                    return (
+                      <div
+                        key={row.id}
+                        className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-stone-50"
+                      >
+                        <div className="col-span-1">
+                          <input
+                            form={bulkFormId}
+                            type="checkbox"
+                            name="sourceId"
+                            value={row.id}
+                            aria-label={`Select ${row.display_name || hostFromUrl(row.url)}`}
+                            className="h-4 w-4 rounded border-stone-300"
+                          />
+                        </div>
+                        <div className="col-span-4 min-w-0">
+                          <Link
+                            href={`/sources/${row.id}`}
+                            prefetch={false}
+                            className="font-medium text-stone-900 hover:underline"
+                          >
+                            {row.display_name || hostFromUrl(row.url)}
+                          </Link>
+                          <div className="truncate text-[11px] text-stone-500">
+                            {row.url}
+                          </div>
+                          {row.last_error ? (
+                            <div className="mt-0.5 truncate text-[11px] text-rose-600">
+                              {row.last_error}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="col-span-1">
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${meta.color}`}>
+                            {meta.label}
+                          </span>
+                        </div>
+                        <div className="col-span-1 text-right tabular-nums text-stone-700">
+                          {Number(row.item_count)}
+                        </div>
+                        <div className="col-span-1 text-right tabular-nums text-stone-700">
+                          {trustPct}%
+                        </div>
+                        <div className="col-span-2 text-right text-stone-500">
+                          {row.last_polled_at
+                            ? relativeTime(Number(row.last_polled_at))
+                            : "never"}
+                        </div>
+                        <div className="col-span-2 flex justify-end gap-1.5">
+                          <Link
+                            href={`/sources/${row.id}`}
+                            prefetch={false}
+                            className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                          >
+                            Open
+                          </Link>
+                          <form action={pollSourceAction}>
+                            <input type="hidden" name="sourceId" value={row.id} />
+                            <SubmitButton
+                              className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                              pendingLabel="Polling"
+                            >
+                              Poll
+                            </SubmitButton>
+                          </form>
+                          <form action={deleteSourceAction}>
+                            <input type="hidden" name="sourceId" value={row.id} />
+                            <SubmitButton
+                              className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                              pendingLabel="Removing"
+                            >
+                              Remove
+                            </SubmitButton>
+                          </form>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -564,14 +754,14 @@ function GroupedCards({
             </span>
             <form action={pollFolderAction} className="ml-auto">
               <input type="hidden" name="folderId" value={group.id ?? ""} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:bg-stone-50"
                 disabled={group.rows.length === 0}
                 title="Poll every source in this folder"
+                pendingLabel="Polling"
               >
                 ↻ Poll folder
-              </button>
+              </SubmitButton>
             </form>
           </div>
           <SourceCards
@@ -660,12 +850,12 @@ function SourceCards({
                 folders={folders}
                 currentFolderId={row.folder_id}
               />
-              <button
-                type="submit"
+              <SubmitButton
                 className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                pendingLabel="Moving"
               >
                 Move
-              </button>
+              </SubmitButton>
             </form>
 
             {/* Outlet chips: explicit assignment, or "All outlets" default */}
@@ -710,25 +900,25 @@ function SourceCards({
                 </Link>
                 <form action={pollSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="fp-btn fp-btn-ghost"
-                    style={{ padding: "4px 8px", fontSize: 11 }}
+                    style={{ padding: "4px 8px", fontSize: 11, minWidth: 30 }}
                     title="Poll now"
+                    pendingLabel=""
                   >
                     ↻
-                  </button>
+                  </SubmitButton>
                 </form>
                 <form action={deleteSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="fp-btn fp-btn-danger"
-                    style={{ padding: "4px 8px", fontSize: 11 }}
+                    style={{ padding: "4px 8px", fontSize: 11, minWidth: 30 }}
                     title="Remove"
+                    pendingLabel=""
                   >
                     ×
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </div>
@@ -788,12 +978,12 @@ function SourceTable({
                 <form action={assignSourceToFolderAction} className="flex items-center gap-1">
                   <input type="hidden" name="sourceId" value={row.id} />
                   <FolderSelect folders={folders} currentFolderId={row.folder_id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-stone-200 px-1.5 py-1 text-[10px] hover:bg-stone-50"
+                    pendingLabel="Moving"
                   >
                     Move
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
               <div className="col-span-1">
@@ -810,21 +1000,21 @@ function SourceTable({
               <div className="col-span-2 flex justify-end gap-1.5">
                 <form action={pollSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                    pendingLabel="Polling"
                   >
                     Poll
-                  </button>
+                  </SubmitButton>
                 </form>
                 <form action={deleteSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                    pendingLabel="Removing"
                   >
                     Remove
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </div>
@@ -859,6 +1049,14 @@ function hostFromUrl(s: string): string {
   } catch {
     return s;
   }
+}
+
+function sourcesHref(view: SourceView, outletId?: string | null): string {
+  const params = new URLSearchParams();
+  if (view !== "explorer") params.set("view", view);
+  if (outletId) params.set("outlet", outletId);
+  const query = params.toString();
+  return query ? `/sources?${query}` : "/sources";
 }
 
 function relativeTime(ms: number): string {

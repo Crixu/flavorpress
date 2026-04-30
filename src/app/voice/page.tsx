@@ -21,6 +21,12 @@ import {
   preflightOutletAction,
 } from "@/lib/v1/actions";
 import { decodePreflight } from "@/lib/wordpress";
+import {
+  DisableFormWhilePending,
+  PendingMessage,
+  PendingStages,
+  SubmitButton,
+} from "../_components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -141,29 +147,41 @@ export default async function VoicePage({ searchParams }: PageProps) {
 
           {!useManual ? (
             <div className="mt-5 space-y-4">
-              <form className="flex flex-wrap gap-2">
-                <input
-                  type="url"
-                  name="baseUrl"
-                  required
-                  defaultValue={checkOutlet?.baseUrl ?? ""}
-                  placeholder="https://yourblog.com"
-                  className="fp-input flex-1 min-w-[280px]"
+              <form className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="url"
+                    name="baseUrl"
+                    required
+                    defaultValue={checkOutlet?.baseUrl ?? ""}
+                    placeholder="https://yourblog.com"
+                    className="fp-input flex-1 min-w-[280px]"
+                  />
+                  <button
+                    type="submit"
+                    formAction={preflightOutletAction}
+                    className="fp-btn fp-btn-ghost"
+                  >
+                    Check site
+                  </button>
+                  <button
+                    type="submit"
+                    formAction={startWPAuthorizeAction}
+                    className="fp-btn fp-btn-primary"
+                  >
+                    Authorize on WordPress →
+                  </button>
+                </div>
+                <PendingStages
+                  title="Checking WordPress"
+                  stages={[
+                    "Testing site reachability",
+                    "Checking WordPress REST",
+                    "Checking Application Passwords",
+                    "Preparing authorize handoff",
+                  ]}
                 />
-                <button
-                  type="submit"
-                  formAction={preflightOutletAction}
-                  className="fp-btn fp-btn-ghost"
-                >
-                  Check site
-                </button>
-                <button
-                  type="submit"
-                  formAction={startWPAuthorizeAction}
-                  className="fp-btn fp-btn-primary"
-                >
-                  Authorize on WordPress →
-                </button>
+                <DisableFormWhilePending />
               </form>
               <p className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
                 <strong>Check site</strong> runs a preflight against your site
@@ -351,39 +369,57 @@ function OutletCard({
           <>
             <form action={buildVoiceProfileAction}>
               <input type="hidden" name="outletId" value={outlet.id} />
-              <button type="submit" className="fp-btn fp-btn-primary">
+              <SubmitButton
+                className="fp-btn fp-btn-primary"
+                pendingLabel={profile ? "Re-training voice" : "Building voice"}
+              >
                 {profile ? "Re-train voice" : "Build voice profile"}
-              </button>
+              </SubmitButton>
+              <PendingMessage>
+                Pulling recent posts and extracting the outlet voice profile.
+              </PendingMessage>
             </form>
             {!outlet.isDefault ? (
               <form action={setDefaultOutletAction}>
                 <input type="hidden" name="outletId" value={outlet.id} />
-                <button type="submit" className="fp-btn fp-btn-ghost">
+                <SubmitButton
+                  className="fp-btn fp-btn-ghost"
+                  pendingLabel="Setting default"
+                >
                   Set as default
-                </button>
+                </SubmitButton>
               </form>
             ) : null}
             <form action={disconnectOutletAction}>
               <input type="hidden" name="outletId" value={outlet.id} />
-              <button type="submit" className="fp-btn fp-btn-ghost">
+              <SubmitButton
+                className="fp-btn fp-btn-ghost"
+                pendingLabel="Disconnecting"
+              >
                 Disconnect
-              </button>
+              </SubmitButton>
             </form>
           </>
         ) : (
           <>
             <form action={startWPAuthorizeAction}>
               <input type="hidden" name="baseUrl" value={outlet.baseUrl} />
-              <button type="submit" className="fp-btn fp-btn-primary">
+              <SubmitButton
+                className="fp-btn fp-btn-primary"
+                pendingLabel="Opening WordPress"
+              >
                 Reconnect →
-              </button>
+              </SubmitButton>
             </form>
             <form action={disconnectOutletAction}>
               <input type="hidden" name="outletId" value={outlet.id} />
               <input type="hidden" name="purge" value="1" />
-              <button type="submit" className="fp-btn fp-btn-danger">
+              <SubmitButton
+                className="fp-btn fp-btn-danger"
+                pendingLabel="Removing"
+              >
                 Remove
-              </button>
+              </SubmitButton>
             </form>
           </>
         )}
@@ -423,13 +459,19 @@ function ManualConnect() {
           className="fp-input font-mono text-xs"
         />
         <div className="flex gap-2">
-          <button type="submit" className="fp-btn fp-btn-primary">
+          <SubmitButton
+            className="fp-btn fp-btn-primary"
+            pendingLabel="Connecting"
+          >
             Connect manually
-          </button>
+          </SubmitButton>
           <Link href="/voice?add=1" className="fp-btn fp-btn-ghost">
             ← Back to one-click
           </Link>
         </div>
+        <PendingMessage>
+          Testing the WordPress credentials before saving this outlet.
+        </PendingMessage>
       </form>
     </div>
   );
@@ -568,9 +610,12 @@ function PreflightCard({
           <form action={startWPAuthorizeAction}>
             <input type="hidden" name="baseUrl" value={baseUrl} />
             <input type="hidden" name="skipPreflight" value="1" />
-            <button type="submit" className="fp-btn fp-btn-primary">
+            <SubmitButton
+              className="fp-btn fp-btn-primary"
+              pendingLabel="Opening WordPress"
+            >
               Authorize on WordPress →
-            </button>
+            </SubmitButton>
           </form>
         ) : null}
         <Link href="/voice?add=1&manual=1" className="fp-btn fp-btn-ghost">
@@ -579,9 +624,12 @@ function PreflightCard({
         <form action={disconnectOutletAction}>
           <input type="hidden" name="outletId" value={outletId} />
           <input type="hidden" name="purge" value="1" />
-          <button type="submit" className="fp-btn fp-btn-ghost">
+          <SubmitButton
+            className="fp-btn fp-btn-ghost"
+            pendingLabel="Discarding"
+          >
             Discard
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </section>

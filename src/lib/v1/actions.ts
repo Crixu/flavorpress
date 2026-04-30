@@ -286,6 +286,28 @@ export async function assignSourceToFolderAction(formData: FormData) {
   revalidatePath("/sources");
 }
 
+export async function bulkAssignSourcesToFolderAction(formData: FormData) {
+  await ensureSchema();
+  const sourceIds = Array.from(
+    new Set(
+      formData
+        .getAll("sourceId")
+        .map((value) => String(value).trim())
+        .filter(Boolean),
+    ),
+  );
+  if (sourceIds.length === 0) throw new Error("Select at least one source.");
+
+  const folderId = await resolveFolderIdField(formData);
+  const placeholders = sourceIds.map(() => "?").join(",");
+  await db.execute({
+    sql: `UPDATE sources SET folder_id = ?
+          WHERE user_id = ? AND id IN (${placeholders})`,
+    args: [folderId, SINGLE_USER_ID, ...sourceIds],
+  });
+  revalidatePath("/sources");
+}
+
 export async function pollFolderAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
