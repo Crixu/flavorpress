@@ -40,6 +40,7 @@ export default function RootLayout({
             </Link>
             <div className="flex items-center gap-1">
               <NavLink href="/">Today</NavLink>
+              <NavLink href="/drafts">Drafts</NavLink>
               <NavLink href="/sources">Sources</NavLink>
               <NavLink href="/voice">Voice & Publishing</NavLink>
               <Suspense fallback={null}>
