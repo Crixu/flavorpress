@@ -36,10 +36,7 @@ import {
   getDefaultOutlet,
 } from "./outlets";
 import { generateSourceTitle, hostFromUrl } from "./source-title";
-
-function getOrigin(): string {
-  return process.env.FLAVORPRESS_ORIGIN ?? "http://localhost:3000";
-}
+import { getOrigin } from "./origin";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -54,7 +51,7 @@ export async function preflightOutletAction(formData: FormData) {
   if (!baseUrl) throw new Error("Site URL required.");
 
   const outletId = await stageOutlet(SINGLE_USER_ID, baseUrl);
-  const result = await preflightWordPress(baseUrl, getOrigin());
+  const result = await preflightWordPress(baseUrl, await getOrigin());
   await recordOutletError(outletId, encodePreflight(result));
   revalidatePath("/voice");
   redirect(`/voice?check=${outletId}`);
@@ -107,8 +104,9 @@ export async function startWPAuthorizeAction(formData: FormData) {
   // Preflight: verify reachability + Application Passwords + callback scheme
   // before sending the user out of the app. If anything fails, redirect back
   // to /voice with the structured findings rendered as a check card.
+  const origin = await getOrigin();
   if (!skipPreflight) {
-    const result = await preflightWordPress(baseUrl, getOrigin());
+    const result = await preflightWordPress(baseUrl, origin);
     if (!result.ok) {
       await recordOutletError(outletId, encodePreflight(result));
       revalidatePath("/voice");
@@ -118,8 +116,8 @@ export async function startWPAuthorizeAction(formData: FormData) {
     await recordOutletError(outletId, "");
   }
 
-  const successUrl = `${getOrigin()}/api/wp/callback?outlet_id=${outletId}`;
-  const rejectUrl = `${getOrigin()}/voice?wp_rejected=${outletId}`;
+  const successUrl = `${origin}/api/wp/callback?outlet_id=${outletId}`;
+  const rejectUrl = `${origin}/voice?wp_rejected=${outletId}`;
   const params = new URLSearchParams({
     app_name: "FlavorPress",
     success_url: successUrl,

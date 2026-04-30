@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "mac:build": "macos/build.sh",
+    "mac:run": "macos/build.sh && open macos/build/FlavorPress.app"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

@@ -10,3 +10,5 @@ next-env.d.ts
 .vercel
 .recover-sources.txt
 *.log
+macos/build
+macos/.cache

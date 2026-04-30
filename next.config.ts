@@ -7,6 +7,10 @@ const config: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "2mb" },
   },
+  // Self-contained server bundle for the macOS .app embedder.
+  // .next/standalone/ ships its own minimal node_modules and a server.js
+  // entry point that the Swift launcher spawns directly.
+  output: "standalone",
 };
 
 export default config;
