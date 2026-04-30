@@ -688,7 +688,9 @@ export async function generateDraftAction(formData: FormData) {
  * Persists wp_post_id and wp_edit_link on the drafts row so the editor
  * can show "Open in WordPress" instead of "Publish" on subsequent visits.
  */
-export async function publishDraftToWPAction(formData: FormData) {
+export async function publishDraftToWPAction(
+  formData: FormData,
+): Promise<{ editLink: string }> {
   await ensureSchema();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
@@ -701,7 +703,7 @@ export async function publishDraftToWPAction(formData: FormData) {
   const scheduleAt = scheduleAtRaw ? Number(scheduleAtRaw) : undefined;
 
   const r = await db.execute({
-    sql: `SELECT id, outlet_id, headline, body, state, wp_post_id
+    sql: `SELECT id, outlet_id, headline, body, state, wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
@@ -709,9 +711,10 @@ export async function publishDraftToWPAction(formData: FormData) {
   const row = r.rows[0]!;
 
   if (row.wp_post_id) {
-    // Already pushed once; return to the editor — the user can open in WP.
+    // Already pushed once; just hand back the existing edit link so the
+    // client can open WordPress in a new tab.
     revalidatePath(`/editor/${draftId}`);
-    return;
+    return { editLink: String(row.wp_edit_link ?? "") };
   }
 
   const outletId = String(row.outlet_id ?? "");
@@ -747,7 +750,7 @@ export async function publishDraftToWPAction(formData: FormData) {
   });
 
   revalidatePath(`/editor/${draftId}`);
-  redirect(result.editLink);
+  return { editLink: result.editLink };
 }
 
 function stripHtml(s: string): string {

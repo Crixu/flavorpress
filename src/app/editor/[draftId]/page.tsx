@@ -10,8 +10,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
-import { publishDraftToWPAction } from "@/lib/v1/actions";
-import { SubmitButton } from "@/app/_components/SubmitButton";
+import { PublishToWpForm } from "./PublishToWpForm";
 
 export const dynamic = "force-dynamic";
 
@@ -82,16 +81,13 @@ export default async function EditorPage({ params }: PageProps) {
               Open in WordPress →
             </a>
           ) : (
-            <form action={publishDraftToWPAction}>
-              <input type="hidden" name="draftId" value={String(d.id)} />
-              <input type="hidden" name="status" value="draft" />
-              <SubmitButton
-                className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700"
-                pendingLabel="Saving draft"
-              >
-                Push to WordPress as draft →
-              </SubmitButton>
-            </form>
+            <PublishToWpForm
+              draftId={String(d.id)}
+              className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700"
+              pendingLabel="Saving draft"
+            >
+              Push to WordPress as draft →
+            </PublishToWpForm>
           )}
         </div>
       </div>
@@ -294,16 +290,13 @@ export default async function EditorPage({ params }: PageProps) {
                 Open in WordPress →
               </a>
             ) : (
-              <form action={publishDraftToWPAction}>
-                <input type="hidden" name="draftId" value={String(d.id)} />
-                <input type="hidden" name="status" value="draft" />
-                <SubmitButton
-                  className="w-full rounded bg-indigo-600 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
-                  pendingLabel="Saving draft"
-                >
-                  Push to WordPress draft
-                </SubmitButton>
-              </form>
+              <PublishToWpForm
+                draftId={String(d.id)}
+                className="w-full rounded bg-indigo-600 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
+                pendingLabel="Saving draft"
+              >
+                Push to WordPress draft
+              </PublishToWpForm>
             )}
             <button className="w-full py-1.5 text-xs text-stone-500 hover:text-stone-800">
               Schedule for later
