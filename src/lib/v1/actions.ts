@@ -551,8 +551,8 @@ async function persistVoiceProfile(
  *   sourceId
  *   outletIds (multiple values allowed via repeated `outletIds` field)
  *
- * Empty assignment = "All outlets (default)" — meaning the source will be
- * read by any outlet whose own assignment list is empty.
+ * Empty assignment = "All outlets (default)"; the source will be read by
+ * every outlet.
  */
 export async function assignSourceOutletsAction(formData: FormData) {
   await ensureSchema();
