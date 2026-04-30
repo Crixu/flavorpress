@@ -8,6 +8,7 @@ const ITEMS = [
   { href: "/drafts", label: "Drafts" },
   { href: "/sources", label: "Sources" },
   { href: "/voice", label: "Voice & Publishing" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export function ShellNav() {

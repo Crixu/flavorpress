@@ -20,7 +20,9 @@ import {
   probeWordPress,
   publishToWordPress,
 } from "../wordpress";
-import { anthropic, extractText, MODEL } from "../anthropic";
+import Anthropic from "@anthropic-ai/sdk";
+import { extractText, MODEL } from "../anthropic";
+import { getAnthropicApiKey } from "./settings";
 import {
   stageOutlet,
   commitOutletCredentials,
@@ -691,12 +693,13 @@ async function summarizeBlogIdentity(input: {
   homepageProse: string;
 }): Promise<string> {
   const fallback = [input.name, input.tagline].filter(Boolean).join("; ");
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey.startsWith("sk-ant-...")) {
+  const apiKey = await getAnthropicApiKey();
+  if (!apiKey) {
     return fallback || "A personal blog.";
   }
 
-  const message = await anthropic.messages.create({
+  const client = new Anthropic({ apiKey });
+  const message = await client.messages.create({
     model: MODEL,
     max_tokens: 300,
     system: `You write a 2-3 sentence description of a blog from its homepage signals. Output only the description; no preamble, no labels, no quotes. Speak about the blog in third person ("This blog covers..."). Avoid em-dashes; use semicolons or new sentences. Avoid marketing voice and AI cliches ("dive into", "delve", "leverage", "tapestry"). Be concrete about subject and angle; skip superlatives.`,

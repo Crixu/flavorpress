@@ -19,9 +19,8 @@ import { newTraceId, traceLogger } from "./trace";
 import { fingerprintText, voiceMatchScore } from "./style-sheet";
 import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
+import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
 import type { DraftRenderedPayload, Item, VoiceProfile } from "./types";
-
-const MODEL = process.env.ANTHROPIC_DRAFT_MODEL ?? "claude-haiku-4-5-20251001";
 const VOICE_MATCH_FLOOR = 75; // accept threshold (0-100)
 const STREAMING_VOICE_FLOOR = 0.5; // mid-flight Burrows' Delta cutoff
 const MIN_TOKENS_FOR_VOICE_CHECK = 200;
@@ -217,18 +216,19 @@ interface StreamResult {
 }
 
 async function streamOnce(args: StreamArgs): Promise<StreamResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey.startsWith("sk-ant-...")) {
+  const apiKey = await getAnthropicApiKey();
+  if (!apiKey) {
     // No key configured. Fall back to a deterministic stub so the loop
     // closes for local dev without spending tokens. The pitch demo can
-    // hit this path when ANTHROPIC_API_KEY is not set.
+    // hit this path when no key is set in /settings or .env.
     await args.log.warn("draft.generate.stream", "no API key; using stub");
     return stubResult(args.userMessage);
   }
 
+  const model = await getAnthropicDraftModel();
   const client = new Anthropic({ apiKey });
   const stream = client.messages.stream({
-    model: MODEL,
+    model,
     max_tokens: 1500,
     system: args.systemPrompt,
     messages: [{ role: "user", content: args.userMessage }],
