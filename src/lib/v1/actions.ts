@@ -923,6 +923,8 @@ export async function generateDraftAction(formData: FormData) {
     );
   }
 
+  const wordCount = parseWordCount(formData.get("wordCount"));
+
   // Reuse: if a draft already exists for this cluster + outlet, jump to it.
   // Generation costs an Anthropic call; we don't pay it twice for the same
   // cluster unless the user explicitly asks to regenerate (force=1).
@@ -943,8 +945,21 @@ export async function generateDraftAction(formData: FormData) {
     clusterId,
     userId: SINGLE_USER_ID,
     outletId,
+    wordCount,
   });
   redirect(`/editor/${draft.draftId}`);
+}
+
+function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
+  if (raw === null || raw === "") return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error("Word count must be a positive number.");
+  }
+  if (n < 100 || n > 1500) {
+    throw new Error("Word count must be between 100 and 1500.");
+  }
+  return Math.round(n);
 }
 
 /**

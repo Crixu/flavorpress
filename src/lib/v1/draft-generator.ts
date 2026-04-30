@@ -36,8 +36,19 @@ export interface DraftInput {
   outletId: string;
   /** Optional angle hint to bias generation toward archive-habit or cluster-gap. */
   angleHint?: "archive" | "gap";
+  /** Target body length in words. Defaults to 600. Clamped to [100, 1500]. */
+  wordCount?: number;
   /** Override capability version pin for in-flight workflows. */
   capabilityVersion?: string;
+}
+
+const DEFAULT_WORD_COUNT = 600;
+const MIN_WORD_COUNT = 100;
+const MAX_WORD_COUNT = 1500;
+
+function normalizeWordCount(value: number | undefined): number {
+  if (!value || !Number.isFinite(value)) return DEFAULT_WORD_COUNT;
+  return Math.min(MAX_WORD_COUNT, Math.max(MIN_WORD_COUNT, Math.round(value)));
 }
 
 export interface DraftOutput {
@@ -72,11 +83,13 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   const exemplars = await loadExemplars(input.userId, items[0]!.lede);
 
   const angleHint = input.angleHint ?? "archive";
+  const wordCount = normalizeWordCount(input.wordCount);
   const promptBundle = buildPrompt({
     styleSheet,
     exemplars,
     items,
     angleHint,
+    wordCount,
     bannedTerms: voiceProfile?.bannedTerms ?? [],
     description: voiceProfile?.description ?? null,
   });
@@ -91,13 +104,38 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     systemPrompt: promptBundle.systemPrompt,
     userMessage: promptBundle.userMessage,
     voiceFingerprint: voiceProfile?.functionWordDistribution ?? null,
+    wordCount,
     log,
   });
 
-  let regenerated = false;
+  // Decide whether to regenerate with the tightened prompt:
+  //   1. Mid-flight cancel (long enough draft drifted off voice during stream).
+  //   2. Short draft finished before the mid-flight gate could fire; the gate
+  //      runs post-stream so the same retry path applies regardless of length.
+  let regenReason: "mid-flight" | "post-stream" | null = null;
+  let postStreamScore: number | null = null;
   if (result.canceledForVoice) {
-    await log.warn("draft.generate", "voice mid-flight failed; regenerating", {
+    regenReason = "mid-flight";
+  } else if (
+    !result.isStub &&
+    !result.streamingVoiceCheckFired &&
+    voiceProfile?.functionWordDistribution
+  ) {
+    postStreamScore = voiceMatchScore(
+      fingerprintText(result.body),
+      voiceProfile.functionWordDistribution,
+    );
+    if (postStreamScore < STREAMING_VOICE_FLOOR * 100) {
+      regenReason = "post-stream";
+    }
+  }
+
+  let regenerated = false;
+  if (regenReason) {
+    await log.warn("draft.generate", "voice failed; regenerating", {
+      reason: regenReason,
       partialDelta: result.partialDelta,
+      postStreamScore,
     });
     regenerated = true;
     // Tighten exemplars: pick the 3 closest stylistic neighbors instead of
@@ -108,6 +146,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       exemplars,
       items,
       angleHint,
+      wordCount,
       bannedTerms: voiceProfile?.bannedTerms ?? [],
       description: voiceProfile?.description ?? null,
       tighten: true,
@@ -116,6 +155,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       systemPrompt: tighterPrompt.systemPrompt,
       userMessage: tighterPrompt.userMessage,
       voiceFingerprint: voiceProfile?.functionWordDistribution ?? null,
+      wordCount,
       log,
       // Don't double-cancel; commit to whatever the second attempt produces.
       noVoiceCancel: true,
@@ -201,6 +241,7 @@ interface StreamArgs {
   systemPrompt: string;
   userMessage: string;
   voiceFingerprint: Float32Array | null;
+  wordCount: number;
   log: ReturnType<typeof traceLogger>;
   noVoiceCancel?: boolean;
 }
@@ -214,6 +255,14 @@ interface StreamResult {
   angleGap: string | null;
   canceledForVoice: boolean;
   partialDelta: number | null;
+  /** Whether the mid-flight Burrows' Delta gate ran during this stream.
+   *  False for short drafts that finished before MIN_TOKENS_FOR_VOICE_CHECK
+   *  was reached; the caller falls back to a post-stream check in that case. */
+  streamingVoiceCheckFired: boolean;
+  /** True when streamOnce returned the no-API-key placeholder. The caller
+   *  should skip voice gating because stub text has no relation to the
+   *  user's voice profile. */
+  isStub: boolean;
 }
 
 async function streamOnce(args: StreamArgs): Promise<StreamResult> {
@@ -223,13 +272,16 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
     // closes for local dev without spending tokens. The pitch demo can
     // hit this path when ANTHROPIC_API_KEY is not set.
     await args.log.warn("draft.generate.stream", "no API key; using stub");
-    return stubResult(args.userMessage);
+    return stubResult(args.wordCount);
   }
 
   const client = new Anthropic({ apiKey });
+  // Body tokens ~ words / 0.75; add headroom for headlines, alternates, quotes,
+  // and the JSON envelope itself. Floor at 1500 to keep small drafts honest.
+  const maxTokens = Math.max(1500, Math.round(args.wordCount / 0.75) + 600);
   const stream = client.messages.stream({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: maxTokens,
     system: args.systemPrompt,
     messages: [{ role: "user", content: args.userMessage }],
   });
@@ -237,6 +289,7 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
   let collected = "";
   let canceled = false;
   let partialDelta: number | null = null;
+  let streamingVoiceCheckFired = false;
 
   for await (const event of stream) {
     if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
@@ -249,8 +302,10 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
         !canceled &&
         !args.noVoiceCancel &&
         args.voiceFingerprint &&
+        !streamingVoiceCheckFired &&
         approximateTokenCount(collected) >= MIN_TOKENS_FOR_VOICE_CHECK
       ) {
+        streamingVoiceCheckFired = true;
         const partial = fingerprintText(collected);
         const score = voiceMatchScore(partial, args.voiceFingerprint);
         partialDelta = (100 - score) / 100;
@@ -276,6 +331,8 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
       angleGap: null,
       canceledForVoice: true,
       partialDelta,
+      streamingVoiceCheckFired,
+      isStub: false,
     };
   }
 
@@ -290,6 +347,8 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
     angleGap: parsed.angleGap,
     canceledForVoice: false,
     partialDelta: null,
+    streamingVoiceCheckFired,
+    isStub: false,
   };
 }
 
@@ -303,10 +362,12 @@ function buildPrompt(opts: {
   exemplars: string[];
   items: Item[];
   angleHint: "archive" | "gap";
+  wordCount: number;
   bannedTerms: string[];
   description: string | null;
   tighten?: boolean;
 }): PromptBundle {
+  const wordTolerance = Math.max(30, Math.round(opts.wordCount * 0.1));
   const descriptionBlock = opts.description
     ? `BLOG IDENTITY (what this blog is about; frame the draft so it fits here):\n${opts.description}`
     : "";
@@ -355,7 +416,7 @@ ${bannedBlock}
 ${angleGuidance}
 
 CONSTRAINTS:
-- 600 words target, plus or minus 50.
+- ${opts.wordCount} words target, plus or minus ${wordTolerance}.
 - Em-dashes are forbidden. Use semicolons or new sentences.
 - Quote rules: max 25 words per quote, max 3 quotes per draft, max 1 quote per source. Cite each quote inline with source URL.
 - Links are mandatory. Every source you draw on must appear in the body as an inline <a href="SOURCE_URL">anchor text</a> tag where the anchor text is the outlet name or a relevant phrase. Never write a bare URL. Every quote's attribution must itself be a link to the source URL. Every paragraph that paraphrases a source must contain at least one link to that source.
@@ -366,7 +427,7 @@ OUTPUT JSON ENVELOPE (exact shape):
 {
   "headline": "string",
   "headline_alternates": ["string", "string", "string"],
-  "body": "string (600±50 words, HTML <p> and <blockquote> tags allowed; inline <a href=\\\"...\\\"> links to source URLs are required)",
+  "body": "string (${opts.wordCount}±${wordTolerance} words, HTML <p> and <blockquote> tags allowed; inline <a href=\\\"...\\\"> links to source URLs are required)",
   "quotes": [{"source_index": 1, "text": "verbatim quote up to 25 words", "citation": "source URL"}],
   "angle_archive": "one-line description of the archive habit hook",
   "angle_gap": "one-line description of the cluster-derived gap"
@@ -496,22 +557,23 @@ function approximateTokenCount(text: string): number {
   return Math.ceil(text.split(/\s+/).filter(Boolean).length * 0.75);
 }
 
-function stubResult(userMessage: string): StreamResult {
+function stubResult(wordCount: number): StreamResult {
   // Deterministic local-dev stub. Used when ANTHROPIC_API_KEY is not set.
-  // The "draft" is a placeholder; voice-match scoring will return ~50.
-  void userMessage;
+  // The "draft" is a placeholder; voice-match scoring is skipped via isStub.
   return {
     headline: "Draft skeleton (no API key configured)",
     headlineAlternates: [
       "Local-dev draft placeholder",
       "ANTHROPIC_API_KEY not set",
-      "Wire your key to see real output",
+      `Wire your key to see a ${wordCount}-word draft`,
     ],
-    body: "<p>This draft is a stub. Set ANTHROPIC_API_KEY in .env to enable streaming generation. The cluster engine, ranker, and voice profile are working; the LLM call is the only piece that needs a credential.</p><p>Once the key is set, the pipeline returns a 600-word voice-matched draft with citations and a Burrows' Delta voice score.</p>",
+    body: `<p>This draft is a stub. You asked for ${wordCount} words; set ANTHROPIC_API_KEY in .env to enable streaming generation. The cluster engine, ranker, and voice profile are working; the LLM call is the only piece that needs a credential.</p><p>Once the key is set, the pipeline returns a ${wordCount}-word voice-matched draft with citations and a Burrows' Delta voice score.</p>`,
     quotes: [],
     angleArchive: null,
     angleGap: null,
     canceledForVoice: false,
     partialDelta: null,
+    streamingVoiceCheckFired: false,
+    isStub: true,
   };
 }
