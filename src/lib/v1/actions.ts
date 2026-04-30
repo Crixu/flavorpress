@@ -33,6 +33,7 @@ import {
   setSourceOutlets,
   getDefaultOutlet,
 } from "./outlets";
+import { generateSourceTitle, hostFromUrl } from "./source-title";
 
 function getOrigin(): string {
   return process.env.FLAVORPRESS_ORIGIN ?? "http://localhost:3000";
@@ -158,16 +159,15 @@ export async function addSourceAction(formData: FormData) {
     new Set(raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)),
   );
 
+  // Inserted rows that should get an LLM-generated display name in the
+  // background once the request returns. We hand back the host as the
+  // initial label so the row is immediately recognizable.
+  const titleJobs: { id: string; url: string }[] = [];
+
   for (const url of urls) {
     const kind = detectKind(url);
     const id = crypto.randomUUID();
-    const display = (() => {
-      try {
-        return new URL(url).host.replace(/^www\./, "");
-      } catch {
-        return url;
-      }
-    })();
+    const display = hostFromUrl(url);
     // Podcasts and YouTube need transcription; tracked but inactive in v1
     // so we don't lose them — when v1.1 ships Whisper, we just flip active.
     const isPending = kind === "podcast" || kind === "youtube";
@@ -192,13 +192,74 @@ export async function addSourceAction(formData: FormData) {
           Date.now(),
         ],
       });
+      titleJobs.push({ id, url });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes("UNIQUE")) console.warn(`addSource: ${url}: ${msg}`);
     }
   }
 
+  if (titleJobs.length > 0) {
+    after(() => runBackgroundAutoTitling(titleJobs));
+  }
   revalidatePath("/sources");
+  revalidatePath("/");
+}
+
+/**
+ * Resolve a friendly label for each freshly-added source via the LLM. Skips
+ * any row where the user has already renamed it (display_name no longer
+ * matches the host placeholder we wrote on insert).
+ */
+async function runBackgroundAutoTitling(
+  jobs: { id: string; url: string }[],
+): Promise<void> {
+  await Promise.all(
+    jobs.map(async ({ id, url }) => {
+      try {
+        const placeholder = hostFromUrl(url);
+        const title = (await generateSourceTitle(url)).trim();
+        if (!title || title === placeholder) return;
+        // Race guard: only overwrite if the user hasn't already renamed it.
+        await db.execute({
+          sql: `UPDATE sources
+                SET display_name = ?
+                WHERE id = ? AND user_id = ? AND display_name = ?`,
+          args: [title, id, SINGLE_USER_ID, placeholder],
+        });
+      } catch (err) {
+        console.warn(`autoTitle ${url}: ${err}`);
+      }
+    }),
+  );
+  revalidatePath("/sources");
+  revalidatePath("/");
+}
+
+/**
+ * Rename a source. Empty names fall back to the URL host so the list view
+ * never shows a blank label.
+ */
+export async function renameSourceAction(formData: FormData) {
+  await ensureSchema();
+  const sourceId = String(formData.get("sourceId") ?? "");
+  const raw = String(formData.get("displayName") ?? "").trim();
+  if (!sourceId) throw new Error("sourceId required.");
+
+  const r = await db.execute({
+    sql: `SELECT url FROM sources WHERE id = ? AND user_id = ?`,
+    args: [sourceId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("Source not found.");
+  const url = String(r.rows[0]!.url);
+  const next = raw.length > 0 ? raw.slice(0, 120) : hostFromUrl(url);
+
+  await db.execute({
+    sql: `UPDATE sources SET display_name = ? WHERE id = ? AND user_id = ?`,
+    args: [next, sourceId, SINGLE_USER_ID],
+  });
+  revalidatePath("/sources");
+  revalidatePath(`/sources/${sourceId}`);
   revalidatePath("/");
 }
 
