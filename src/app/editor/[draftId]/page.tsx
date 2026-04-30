@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
+import { deleteDraftAction } from "@/lib/v1/actions";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { PublishToWpForm } from "./PublishToWpForm";
 
@@ -433,6 +434,19 @@ export default async function EditorPage({ params }: PageProps) {
               >
                 Schedule for later
               </button>
+              {!d.wp_post_id ? (
+                <form action={deleteDraftAction}>
+                  <input type="hidden" name="draftId" value={String(d.id)} />
+                  <input type="hidden" name="redirectTo" value="/drafts" />
+                  <button
+                    type="submit"
+                    className="w-full py-2 text-[12px] transition hover:underline"
+                    style={{ color: "var(--fg-subtle)" }}
+                  >
+                    Delete draft
+                  </button>
+                </form>
+              ) : null}
             </div>
           </aside>
         </div>
