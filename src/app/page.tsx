@@ -9,8 +9,8 @@ import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { topFiredClusters } from "@/lib/v1/ranker";
-import { generateDraftAction } from "@/lib/v1/actions";
 import { listOutlets } from "@/lib/v1/outlets";
+import { ClusterActions } from "./_components/ClusterActions";
 
 export const dynamic = "force-dynamic";
 
@@ -205,55 +205,8 @@ function ClusterCard({
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        {preview.draft ? (
-          <>
-            <Link
-              href={`/editor/${preview.draft.id}`}
-              className="fp-btn fp-btn-primary fp-press"
-            >
-              Open draft →
-            </Link>
-            <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-              voice-match{" "}
-              <span className="font-medium tabular">
-                {preview.draft.voiceMatch}
-              </span>
-              {preview.draft.wpEditLink ? (
-                <>
-                  {" · "}
-                  <a
-                    href={preview.draft.wpEditLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:underline"
-                  >
-                    in WordPress ↗
-                  </a>
-                </>
-              ) : null}
-            </span>
-            <form action={generateDraftAction}>
-              <input type="hidden" name="clusterId" value={c.id} />
-              <input type="hidden" name="force" value="1" />
-              <button type="submit" className="fp-btn fp-btn-ghost">
-                Regenerate
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <form action={generateDraftAction}>
-              <input type="hidden" name="clusterId" value={c.id} />
-              <button type="submit" className="fp-btn fp-btn-primary fp-press">
-                Draft this →
-              </button>
-            </form>
-            <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
-              voice-matched 600-word draft
-            </span>
-          </>
-        )}
+      <div className="mt-5">
+        <ClusterActions clusterId={c.id} draft={preview.draft} />
       </div>
     </article>
   );
