@@ -64,12 +64,23 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_outlets_user ON outlets(user_id)`,
 
+      `CREATE TABLE IF NOT EXISTS source_folders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        UNIQUE(user_id, name)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_source_folders_user ON source_folders(user_id, sort_order)`,
+
       `CREATE TABLE IF NOT EXISTS sources (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         kind TEXT NOT NULL,
         url TEXT NOT NULL,
         display_name TEXT,
+        folder_id TEXT,
         trust_score REAL DEFAULT 0.5,
         poll_interval_seconds INTEGER NOT NULL DEFAULT 300,
         last_polled_at INTEGER,
@@ -79,6 +90,7 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_sources_user ON sources(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_sources_poll ON sources(active, last_polled_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_sources_folder ON sources(folder_id)`,
 
       // Outlet ↔ source assignment. Empty assignment for an outlet means
       // "all user sources" (zero-config default). Only present rows
@@ -314,6 +326,21 @@ async function migrateLegacyTables(): Promise<void> {
         await db.execute(
           "ALTER TABLE drafts ADD COLUMN outlet_id TEXT NOT NULL DEFAULT ''",
         );
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // sources: check for folder_id column.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(sources)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("folder_id")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] sources: adding folder_id column");
+        await db.execute("ALTER TABLE sources ADD COLUMN folder_id TEXT");
       }
     }
   } catch {

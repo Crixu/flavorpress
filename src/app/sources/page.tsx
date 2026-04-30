@@ -4,7 +4,9 @@
  * WordPress connection lives on /voice; sources are not the publish
  * destination, they're what you read.
  *
- * Card-first with optional table toggle. Bulk paste is the primary add path.
+ * Explorer-first with card and table toggles. Bulk paste is the primary add
+ * path. Sources can be grouped into folders; a folder is also a polling scope
+ * so the user can refresh just the feeds they care about today before drafting.
  */
 
 import Link from "next/link";
@@ -13,7 +15,13 @@ import {
   addSourceAction,
   pollSourceAction,
   pollAllSourcesAction,
+  pollFolderAction,
   deleteSourceAction,
+  createFolderAction,
+  renameFolderAction,
+  deleteFolderAction,
+  assignSourceToFolderAction,
+  bulkAssignSourcesToFolderAction,
 } from "@/lib/v1/actions";
 import { HelpTrigger } from "@/components/Help";
 import { PendingStages, SubmitButton } from "../_components/SubmitButton";
@@ -29,12 +37,15 @@ interface PageProps {
   searchParams: Promise<{ view?: string; outlet?: string }>;
 }
 
+type SourceView = "explorer" | "cards" | "table";
+
 export default async function SourcesPage({ searchParams }: PageProps) {
   await ensureSchema();
   await ensureSingleUser();
 
   const sp = await searchParams;
-  const view = sp.view === "table" ? "table" : "cards";
+  const view: SourceView =
+    sp.view === "cards" || sp.view === "table" ? sp.view : "explorer";
   const outletFilter = sp.outlet && sp.outlet !== "all" ? sp.outlet : null;
 
   const outlets = await listOutlets(SINGLE_USER_ID);
@@ -59,6 +70,13 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const visibleRows = inScopeIds
     ? allRows.filter((r) => inScopeIds.has(String(r.id)))
     : allRows;
+
+  const foldersR = await db.execute({
+    sql: `SELECT id, name, sort_order, created_at FROM source_folders
+          WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
+    args: [SINGLE_USER_ID],
+  });
+  const folders = foldersR.rows as unknown as FolderRow[];
 
   const assignments = await getOutletAssignmentsForSources(
     visibleRows.map((r) => String(r.id)),
@@ -87,6 +105,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
 
   const isEmpty = allRows.length === 0;
   const filteredEmpty = !isEmpty && visibleRows.length === 0;
+  const grouped = groupByFolder(visibleRows, folders);
 
   return (
     <div className="space-y-6">
@@ -119,13 +138,19 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             </form>
             <div className="inline-flex rounded-lg border border-stone-200 bg-white p-0.5 text-xs">
               <Link
-                href="/sources?view=cards"
+                href={sourcesHref("explorer", outletFilter)}
+                className={`rounded px-2 py-1 ${view === "explorer" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+              >
+                Explorer
+              </Link>
+              <Link
+                href={sourcesHref("cards", outletFilter)}
                 className={`rounded px-2 py-1 ${view === "cards" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
               >
                 Cards
               </Link>
               <Link
-                href="/sources?view=table"
+                href={sourcesHref("table", outletFilter)}
                 className={`rounded px-2 py-1 ${view === "table" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
               >
                 Table
@@ -145,7 +170,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             Filter by outlet
           </span>
           <Link
-            href={view === "table" ? "/sources?view=table" : "/sources"}
+            href={sourcesHref(view)}
             className={`fp-chip ${
               !outletFilter ? "fp-chip-indigo" : ""
             } transition`}
@@ -153,9 +178,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             All sources · {allRows.length}
           </Link>
           {outlets.map((o) => {
-            const url = view === "table"
-              ? `/sources?view=table&outlet=${o.id}`
-              : `/sources?outlet=${o.id}`;
+            const url = sourcesHref(view, o.id);
             const active = outletFilter === o.id;
             const display = o.displayName ?? hostFromUrl(o.baseUrl);
             return (
@@ -193,13 +216,14 @@ https://reddit.com/r/specialtycoffee/.rss
 https://hnrss.org/frontpage`}
             className="w-full rounded border border-stone-300 px-3 py-2 font-mono text-xs"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <SubmitButton
               className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
               pendingLabel="Adding"
             >
               Add
             </SubmitButton>
+            <FolderSelect folders={folders} />
             <span className="text-[11px] text-stone-500">
               kind auto-detected from URL pattern
             </span>
@@ -214,6 +238,92 @@ https://hnrss.org/frontpage`}
             ]}
           />
         </form>
+      </section>
+
+      {/* Folders manager */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Folders</div>
+            <div className="text-[11px] text-stone-500">
+              Group sources by beat. Poll a folder to refresh just those feeds
+              before drafting.
+            </div>
+          </div>
+          <form action={createFolderAction} className="flex items-center gap-2">
+            <input
+              name="name"
+              required
+              maxLength={60}
+              placeholder="New folder name"
+              className="rounded border border-stone-300 px-2 py-1 text-xs"
+            />
+            <SubmitButton
+              className="rounded border border-stone-200 px-2.5 py-1 text-xs hover:bg-stone-50"
+              pendingLabel="Creating"
+            >
+              + Folder
+            </SubmitButton>
+          </form>
+        </div>
+        {folders.length > 0 ? (
+          <ul className="mt-4 divide-y divide-stone-100">
+            {folders.map((f) => {
+              const count = allRows.filter((r) => r.folder_id === f.id).length;
+              return (
+                <li key={f.id} className="flex flex-wrap items-center gap-2 py-2 text-xs">
+                  <span className="text-base">📁</span>
+                  <form
+                    action={renameFolderAction}
+                    className="flex items-center gap-1"
+                  >
+                    <input type="hidden" name="folderId" value={f.id} />
+                    <input
+                      name="name"
+                      defaultValue={f.name}
+                      maxLength={60}
+                      className="rounded border border-stone-200 px-2 py-1 text-xs"
+                    />
+                    <SubmitButton
+                      className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                      pendingLabel="Saving"
+                    >
+                      Save
+                    </SubmitButton>
+                  </form>
+                  <span className="text-stone-500">{count} source{count === 1 ? "" : "s"}</span>
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <form action={pollFolderAction}>
+                      <input type="hidden" name="folderId" value={f.id} />
+                      <SubmitButton
+                        className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                        disabled={count === 0}
+                        title={count === 0 ? "Empty folder" : "Poll all sources in this folder"}
+                        pendingLabel="Polling"
+                      >
+                        ↻ Poll folder
+                      </SubmitButton>
+                    </form>
+                    <form action={deleteFolderAction}>
+                      <input type="hidden" name="folderId" value={f.id} />
+                      <SubmitButton
+                        className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                        title="Delete folder; sources move to Ungrouped"
+                        pendingLabel="Removing"
+                      >
+                        Remove
+                      </SubmitButton>
+                    </form>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-3 text-[11px] text-stone-500">
+            No folders yet. Create one above; sources start ungrouped.
+          </p>
+        )}
       </section>
 
       {/* Empty state with starter packs */}
@@ -291,14 +401,20 @@ https://hnrss.org/frontpage`}
             Show all sources →
           </Link>
         </div>
+      ) : view === "explorer" ? (
+        <SourceExplorer
+          groups={grouped}
+          folders={folders}
+        />
       ) : view === "cards" ? (
-        <SourceCards
-          rows={visibleRows}
+        <GroupedCards
+          groups={grouped}
+          folders={folders}
           assignments={assignments}
           outletDisplayMap={outletDisplayMap}
         />
       ) : (
-        <SourceTable rows={visibleRows} />
+        <SourceTable rows={visibleRows} folders={folders} />
       )}
 
       {/* Diagnostics */}
@@ -368,6 +484,7 @@ interface SourceRow {
   kind: string;
   url: string;
   display_name: string | null;
+  folder_id: string | null;
   trust_score: number;
   poll_interval_seconds: number;
   last_polled_at: number | null;
@@ -376,6 +493,37 @@ interface SourceRow {
   created_at: number;
   item_count: number;
   items_24h: number;
+}
+
+interface FolderRow {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: number;
+}
+
+interface FolderGroup {
+  id: string | null;
+  name: string;
+  rows: SourceRow[];
+}
+
+function groupByFolder(rows: SourceRow[], folders: FolderRow[]): FolderGroup[] {
+  const byId = new Map<string, FolderGroup>();
+  for (const f of folders) {
+    byId.set(f.id, { id: f.id, name: f.name, rows: [] });
+  }
+  const ungrouped: FolderGroup = { id: null, name: "Ungrouped", rows: [] };
+  for (const row of rows) {
+    const fid = row.folder_id;
+    const g = fid ? byId.get(fid) : null;
+    (g ?? ungrouped).rows.push(row);
+  }
+  const ordered: FolderGroup[] = folders
+    .map((f) => byId.get(f.id))
+    .filter((g): g is FolderGroup => Boolean(g));
+  if (ungrouped.rows.length > 0) ordered.push(ungrouped);
+  return ordered;
 }
 
 const KIND_META: Record<
@@ -388,15 +536,262 @@ const KIND_META: Record<
   youtube: { icon: "▶", color: "bg-rose-100 text-rose-800", label: "YouTube" },
 };
 
+function FolderSelect({
+  folders,
+  currentFolderId,
+  name = "folderId",
+  form,
+}: {
+  folders: FolderRow[];
+  currentFolderId?: string | null;
+  name?: string;
+  form?: string;
+}) {
+  return (
+    <select
+      name={name}
+      form={form}
+      defaultValue={currentFolderId ?? ""}
+      className="rounded border border-stone-300 px-2 py-1 text-xs"
+    >
+      <option value="">Ungrouped</option>
+      {folders.map((f) => (
+        <option key={f.id} value={f.id}>
+          {f.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function SourceExplorer({
+  groups,
+  folders,
+}: {
+  groups: FolderGroup[];
+  folders: FolderRow[];
+}) {
+  if (groups.length === 0) return null;
+  const bulkFormId = "source-bulk-move";
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <form
+        id={bulkFormId}
+        action={bulkAssignSourcesToFolderAction}
+        className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-stone-50 px-4 py-3"
+      >
+        <div>
+          <div className="text-sm font-semibold">Source explorer</div>
+          <div className="text-[11px] text-stone-500">
+            Select sources, choose a folder, move them together.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <FolderSelect folders={folders} />
+          <SubmitButton
+            className="rounded border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+            pendingLabel="Moving"
+          >
+            Move selected
+          </SubmitButton>
+        </div>
+      </form>
+
+      <div className="overflow-x-auto">
+        <div className="min-w-[860px]">
+          <div className="grid grid-cols-12 gap-3 border-b border-stone-200 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500">
+            <div className="col-span-1">Pick</div>
+            <div className="col-span-4">Source</div>
+            <div className="col-span-1">Type</div>
+            <div className="col-span-1 text-right">Items</div>
+            <div className="col-span-1 text-right">Trust</div>
+            <div className="col-span-2 text-right">Last fetch</div>
+            <div className="col-span-2 text-right">Actions</div>
+          </div>
+
+          {groups.map((group) => (
+            <details
+              key={group.id ?? "ungrouped"}
+              open
+              className="border-b border-stone-100 last:border-b-0"
+            >
+              <summary className="grid cursor-pointer grid-cols-12 items-center gap-3 bg-stone-100/70 px-4 py-2 text-xs hover:bg-stone-100">
+                <div className="col-span-6 flex items-center gap-2 font-semibold text-stone-900">
+                  <span className="text-stone-500">▾</span>
+                  <span>{group.name}</span>
+                </div>
+                <div className="col-span-2 text-right text-stone-500">
+                  {group.rows.length} source{group.rows.length === 1 ? "" : "s"}
+                </div>
+                <div className="col-span-4 text-right text-stone-500">
+                  {group.id ? "Folder" : "No folder"}
+                </div>
+              </summary>
+
+              {group.rows.length === 0 ? (
+                <div className="px-4 py-4 text-xs text-stone-500">
+                  No sources here yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-stone-100">
+                  {group.rows.map((row) => {
+                    const meta = KIND_META[row.kind] ?? KIND_META.rss!;
+                    const trustPct = Math.round(
+                      Number(row.trust_score ?? 0.5) * 100,
+                    );
+                    return (
+                      <div
+                        key={row.id}
+                        className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-stone-50"
+                      >
+                        <div className="col-span-1">
+                          <input
+                            form={bulkFormId}
+                            type="checkbox"
+                            name="sourceId"
+                            value={row.id}
+                            aria-label={`Select ${row.display_name || hostFromUrl(row.url)}`}
+                            className="h-4 w-4 rounded border-stone-300"
+                          />
+                        </div>
+                        <div className="col-span-4 min-w-0">
+                          <Link
+                            href={`/sources/${row.id}`}
+                            prefetch={false}
+                            className="font-medium text-stone-900 hover:underline"
+                          >
+                            {row.display_name || hostFromUrl(row.url)}
+                          </Link>
+                          <div className="truncate text-[11px] text-stone-500">
+                            {row.url}
+                          </div>
+                          {row.last_error ? (
+                            <div className="mt-0.5 truncate text-[11px] text-rose-600">
+                              {row.last_error}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="col-span-1">
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${meta.color}`}>
+                            {meta.label}
+                          </span>
+                        </div>
+                        <div className="col-span-1 text-right tabular-nums text-stone-700">
+                          {Number(row.item_count)}
+                        </div>
+                        <div className="col-span-1 text-right tabular-nums text-stone-700">
+                          {trustPct}%
+                        </div>
+                        <div className="col-span-2 text-right text-stone-500">
+                          {row.last_polled_at
+                            ? relativeTime(Number(row.last_polled_at))
+                            : "never"}
+                        </div>
+                        <div className="col-span-2 flex justify-end gap-1.5">
+                          <Link
+                            href={`/sources/${row.id}`}
+                            prefetch={false}
+                            className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                          >
+                            Open
+                          </Link>
+                          <form action={pollSourceAction}>
+                            <input type="hidden" name="sourceId" value={row.id} />
+                            <SubmitButton
+                              className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                              pendingLabel="Polling"
+                            >
+                              Poll
+                            </SubmitButton>
+                          </form>
+                          <form action={deleteSourceAction}>
+                            <input type="hidden" name="sourceId" value={row.id} />
+                            <SubmitButton
+                              className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                              pendingLabel="Removing"
+                            >
+                              Remove
+                            </SubmitButton>
+                          </form>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GroupedCards({
+  groups,
+  folders,
+  assignments,
+  outletDisplayMap,
+}: {
+  groups: FolderGroup[];
+  folders: FolderRow[];
+  assignments: Map<string, string[]>;
+  outletDisplayMap: Map<string, string>;
+}) {
+  if (groups.length === 0) return null;
+  return (
+    <div className="space-y-6">
+      {groups.map((group) => (
+        <section key={group.id ?? "ungrouped"} className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-base">{group.id ? "📁" : "📂"}</span>
+            <h2 className="text-sm font-semibold tracking-tight">
+              {group.name}
+            </h2>
+            <span className="text-[11px] text-stone-500">
+              {group.rows.length} source{group.rows.length === 1 ? "" : "s"}
+            </span>
+            <form action={pollFolderAction} className="ml-auto">
+              <input type="hidden" name="folderId" value={group.id ?? ""} />
+              <SubmitButton
+                className="rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:bg-stone-50"
+                disabled={group.rows.length === 0}
+                title="Poll every source in this folder"
+                pendingLabel="Polling"
+              >
+                ↻ Poll folder
+              </SubmitButton>
+            </form>
+          </div>
+          <SourceCards
+            rows={group.rows}
+            folders={folders}
+            assignments={assignments}
+            outletDisplayMap={outletDisplayMap}
+          />
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function SourceCards({
   rows,
+  folders,
   assignments,
   outletDisplayMap,
 }: {
   rows: SourceRow[];
+  folders: FolderRow[];
   assignments: Map<string, string[]>;
   outletDisplayMap: Map<string, string>;
 }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-[11px] text-stone-500">No sources here yet.</p>
+    );
+  }
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {rows.map((row) => {
@@ -445,6 +840,23 @@ function SourceCards({
               <CardStat label="24h" value={String(Number(row.items_24h))} />
               <CardStatTrust value={`${trustPct}%`} />
             </div>
+
+            <form
+              action={assignSourceToFolderAction}
+              className="mt-3 flex items-center gap-1"
+            >
+              <input type="hidden" name="sourceId" value={row.id} />
+              <FolderSelect
+                folders={folders}
+                currentFolderId={row.folder_id}
+              />
+              <SubmitButton
+                className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                pendingLabel="Moving"
+              >
+                Move
+              </SubmitButton>
+            </form>
 
             {/* Outlet chips: explicit assignment, or "All outlets" default */}
             <div className="mt-3 flex flex-wrap items-center gap-1">
@@ -528,12 +940,19 @@ function CardStatTrust({ value }: { value: string }) {
   );
 }
 
-function SourceTable({ rows }: { rows: SourceRow[] }) {
+function SourceTable({
+  rows,
+  folders,
+}: {
+  rows: SourceRow[];
+  folders: FolderRow[];
+}) {
   return (
     <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
       <div className="grid grid-cols-12 gap-3 border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500">
-        <div className="col-span-5">Source</div>
-        <div className="col-span-2">Type</div>
+        <div className="col-span-4">Source</div>
+        <div className="col-span-2">Folder</div>
+        <div className="col-span-1">Type</div>
         <div className="col-span-1 text-right">Items</div>
         <div className="col-span-2 text-right">Last fetch</div>
         <div className="col-span-2 text-right">Actions</div>
@@ -546,7 +965,7 @@ function SourceTable({ rows }: { rows: SourceRow[] }) {
               key={row.id}
               className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-stone-50"
             >
-              <div className="col-span-5">
+              <div className="col-span-4">
                 <div className="font-medium text-stone-900">
                   {row.display_name || hostFromUrl(row.url)}
                 </div>
@@ -556,6 +975,18 @@ function SourceTable({ rows }: { rows: SourceRow[] }) {
                 ) : null}
               </div>
               <div className="col-span-2">
+                <form action={assignSourceToFolderAction} className="flex items-center gap-1">
+                  <input type="hidden" name="sourceId" value={row.id} />
+                  <FolderSelect folders={folders} currentFolderId={row.folder_id} />
+                  <SubmitButton
+                    className="rounded border border-stone-200 px-1.5 py-1 text-[10px] hover:bg-stone-50"
+                    pendingLabel="Moving"
+                  >
+                    Move
+                  </SubmitButton>
+                </form>
+              </div>
+              <div className="col-span-1">
                 <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${meta.color}`}>
                   {meta.label}
                 </span>
@@ -618,6 +1049,14 @@ function hostFromUrl(s: string): string {
   } catch {
     return s;
   }
+}
+
+function sourcesHref(view: SourceView, outletId?: string | null): string {
+  const params = new URLSearchParams();
+  if (view !== "explorer") params.set("view", view);
+  if (outletId) params.set("outlet", outletId);
+  const query = params.toString();
+  return query ? `/sources?${query}` : "/sources";
 }
 
 function relativeTime(ms: number): string {

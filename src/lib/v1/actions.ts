@@ -147,6 +147,7 @@ export async function addSourceAction(formData: FormData) {
   await ensureSingleUser();
   const raw = String(formData.get("urls") ?? formData.get("url") ?? "").trim();
   if (!raw) throw new Error("URL required.");
+  const folderId = await resolveFolderIdField(formData);
 
   // Bulk paste support: split on newlines, commas, or spaces.
   const urls = Array.from(
@@ -169,15 +170,16 @@ export async function addSourceAction(formData: FormData) {
     try {
       await db.execute({
         sql: `INSERT INTO sources
-              (id, user_id, kind, url, display_name, trust_score,
+              (id, user_id, kind, url, display_name, folder_id, trust_score,
                poll_interval_seconds, active, last_error, created_at)
-              VALUES (?, ?, ?, ?, ?, 0.5, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?, ?, 0.5, ?, ?, ?, ?)`,
         args: [
           id,
           SINGLE_USER_ID,
           kind,
           url,
           display,
+          folderId,
           isPending ? 3600 : 300,
           isPending ? 0 : 1,
           isPending
@@ -192,6 +194,155 @@ export async function addSourceAction(formData: FormData) {
     }
   }
 
+  revalidatePath("/sources");
+  revalidatePath("/");
+}
+
+/**
+ * Resolve the optional folder field on a form. Accepts either an existing
+ * folder id, the sentinel "__new__" plus a `folderName` field for inline
+ * folder creation, or empty for ungrouped.
+ */
+async function resolveFolderIdField(formData: FormData): Promise<string | null> {
+  const raw = String(formData.get("folderId") ?? "").trim();
+  if (!raw) return null;
+  if (raw === "__new__") {
+    const name = String(formData.get("folderName") ?? "").trim();
+    if (!name) return null;
+    return await ensureFolderByName(name);
+  }
+  // Verify the folder belongs to this user.
+  const r = await db.execute({
+    sql: `SELECT id FROM source_folders WHERE id = ? AND user_id = ?`,
+    args: [raw, SINGLE_USER_ID],
+  });
+  return r.rows.length > 0 ? raw : null;
+}
+
+async function ensureFolderByName(name: string): Promise<string> {
+  const existing = await db.execute({
+    sql: `SELECT id FROM source_folders WHERE user_id = ? AND name = ?`,
+    args: [SINGLE_USER_ID, name],
+  });
+  if (existing.rows.length > 0) return String(existing.rows[0]!.id);
+  const id = crypto.randomUUID();
+  await db.execute({
+    sql: `INSERT INTO source_folders (id, user_id, name, sort_order, created_at)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [id, SINGLE_USER_ID, name, Date.now(), Date.now()],
+  });
+  return id;
+}
+
+export async function createFolderAction(formData: FormData) {
+  await ensureSchema();
+  await ensureSingleUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) throw new Error("Folder name required.");
+  await ensureFolderByName(name);
+  revalidatePath("/sources");
+}
+
+export async function renameFolderAction(formData: FormData) {
+  await ensureSchema();
+  const folderId = String(formData.get("folderId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!folderId || !name) throw new Error("Folder id and name required.");
+  await db.execute({
+    sql: `UPDATE source_folders SET name = ? WHERE id = ? AND user_id = ?`,
+    args: [name, folderId, SINGLE_USER_ID],
+  });
+  revalidatePath("/sources");
+}
+
+/**
+ * Delete a folder. Sources inside fall back to ungrouped (folder_id NULL);
+ * the sources themselves are not removed.
+ */
+export async function deleteFolderAction(formData: FormData) {
+  await ensureSchema();
+  const folderId = String(formData.get("folderId") ?? "");
+  if (!folderId) throw new Error("Folder id required.");
+  await db.execute({
+    sql: `UPDATE sources SET folder_id = NULL WHERE folder_id = ? AND user_id = ?`,
+    args: [folderId, SINGLE_USER_ID],
+  });
+  await db.execute({
+    sql: `DELETE FROM source_folders WHERE id = ? AND user_id = ?`,
+    args: [folderId, SINGLE_USER_ID],
+  });
+  revalidatePath("/sources");
+}
+
+export async function assignSourceToFolderAction(formData: FormData) {
+  await ensureSchema();
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) throw new Error("Source id required.");
+  const folderId = await resolveFolderIdField(formData);
+  await db.execute({
+    sql: `UPDATE sources SET folder_id = ? WHERE id = ? AND user_id = ?`,
+    args: [folderId, sourceId, SINGLE_USER_ID],
+  });
+  revalidatePath("/sources");
+}
+
+export async function bulkAssignSourcesToFolderAction(formData: FormData) {
+  await ensureSchema();
+  const sourceIds = Array.from(
+    new Set(
+      formData
+        .getAll("sourceId")
+        .map((value) => String(value).trim())
+        .filter(Boolean),
+    ),
+  );
+  if (sourceIds.length === 0) throw new Error("Select at least one source.");
+
+  const folderId = await resolveFolderIdField(formData);
+  const placeholders = sourceIds.map(() => "?").join(",");
+  await db.execute({
+    sql: `UPDATE sources SET folder_id = ?
+          WHERE user_id = ? AND id IN (${placeholders})`,
+    args: [folderId, SINGLE_USER_ID, ...sourceIds],
+  });
+  revalidatePath("/sources");
+}
+
+export async function pollFolderAction(formData: FormData) {
+  await ensureSchema();
+  await ensureRegisteredCapabilities();
+  const folderId = String(formData.get("folderId") ?? "");
+  // Empty string means "ungrouped" — poll all sources with folder_id NULL.
+  const sources = await db.execute(
+    folderId
+      ? {
+          sql: `SELECT id FROM sources WHERE user_id = ? AND active = 1 AND folder_id = ?`,
+          args: [SINGLE_USER_ID, folderId],
+        }
+      : {
+          sql: `SELECT id FROM sources WHERE user_id = ? AND active = 1 AND folder_id IS NULL`,
+          args: [SINGLE_USER_ID],
+        },
+  );
+  const registry = getRegistry();
+  await Promise.all(
+    sources.rows.map(async (row) => {
+      try {
+        await registry.invoke(
+          "source-connector.rss",
+          undefined,
+          { sourceId: String(row.id) },
+          {
+            userId: SINGLE_USER_ID,
+            requestId: crypto.randomUUID(),
+            traceId: crypto.randomUUID(),
+          },
+        );
+      } catch (err) {
+        console.warn(`pollFolder source ${row.id}: ${err}`);
+      }
+    }),
+  );
   revalidatePath("/sources");
   revalidatePath("/");
 }
