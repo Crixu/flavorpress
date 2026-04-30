@@ -51,7 +51,7 @@ export default async function TodayPage() {
     );
   }
 
-  const previews: TodayClusterPreview[] = await Promise.all(
+  const allPreviews: TodayClusterPreview[] = await Promise.all(
     clusters.map(async (c) => {
       const r = await db.execute({
         sql: `SELECT i.title, s.url AS source_url, s.display_name,
@@ -114,14 +114,19 @@ export default async function TodayPage() {
     }),
   );
 
+  // Today is a writing surface; an "Ungrouped" reading lane has no shape to
+  // brief from, so we hide those clusters here. They still appear under
+  // Ungrouped in the Sources view.
+  const previews = allPreviews.filter((p) => p.folder.id !== null);
+
   return (
     <div className="space-y-8">
       <header className="space-y-1.5">
         <div className="fp-eyebrow">{formatDate(Date.now())}</div>
         <h1 className="fp-h1 fp-h1-serif">
-          {clusters.length === 0
+          {previews.length === 0
             ? "No clusters yet"
-            : clusters.length === 1
+            : previews.length === 1
             ? "One cluster worth your attention"
             : `${previews.length} clusters across ${countFolders(previews)} streams`}
         </h1>
@@ -131,7 +136,7 @@ export default async function TodayPage() {
         </p>
       </header>
 
-      {clusters.length === 0 ? (
+      {previews.length === 0 ? (
         <EmptyClusters />
       ) : (
         <TodayFolderStreams previews={previews} />
