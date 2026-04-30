@@ -299,15 +299,14 @@ function hostFromUrl(s: string): string {
 // ===== outlet ↔ source assignment =====
 //
 // An outlet with NO rows in outlet_sources reads from all the user's
-// sources (zero-config default — adding a new outlet inherits the full
-// roster). Once you add a row, assignment narrows: only the listed
-// sources feed that outlet's drafts. Toggle a chip on the source detail
-// page or via the action below.
+// sources (zero-config default). Once you add a row, assignment narrows to
+// the listed sources plus sources with no explicit outlet assignment. That
+// keeps unassigned sources visible as "all outlets default" instead of
+// letting them disappear behind an outlet filter.
 
 /**
  * IDs of sources assigned to an outlet. Returns null if no assignment
- * rows exist (= "all sources" default — caller falls back to all user
- * sources).
+ * rows exist, which means "all sources" default.
  */
 export async function getAssignedSourceIds(
   outletId: string,
@@ -323,8 +322,8 @@ export async function getAssignedSourceIds(
 
 /**
  * Outlet IDs this source is explicitly assigned to. A source not in any
- * outlet_sources row is implicitly "in scope for all outlets that have no
- * explicit assignment" — surface that in the UI as "All outlets (default)".
+ * outlet_sources row is implicitly "in scope for all outlets"; surface that
+ * in the UI as "All outlets (default)".
  */
 export async function getOutletIdsForSource(
   sourceId: string,
@@ -339,8 +338,7 @@ export async function getOutletIdsForSource(
 
 /**
  * Replace a source's outlet assignment with the given list. If `outletIds`
- * is empty, the source falls back to "All outlets (default)" — meaning it
- * will be read by any outlet whose own assignment list is empty.
+ * is empty, the source falls back to "All outlets (default)".
  */
 export async function setSourceOutlets(
   sourceId: string,
@@ -365,9 +363,9 @@ export async function setSourceOutlets(
 
 /**
  * Resolve the actual source IDs an outlet reads from right now. If the
- * outlet has explicit assignments, returns those. If empty, returns ALL
- * the user's source IDs (zero-config default). Use this at draft time
- * and for any per-outlet ranker query.
+ * outlet has explicit assignments, returns those plus unassigned default
+ * sources. If empty, returns ALL the user's source IDs (zero-config default).
+ * Use this at draft time and for any per-outlet ranker query.
  */
 export async function resolveOutletSourceIds(
   userId: string,
@@ -375,7 +373,22 @@ export async function resolveOutletSourceIds(
 ): Promise<string[]> {
   await ensureSchema();
   const explicit = await getAssignedSourceIds(outletId);
-  if (explicit !== null) return explicit;
+  if (explicit !== null) {
+    const unassigned = await db.execute({
+      sql: `SELECT s.id FROM sources s
+            WHERE s.user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM outlet_sources os WHERE os.source_id = s.id
+              )`,
+      args: [userId],
+    });
+    return Array.from(
+      new Set([
+        ...explicit,
+        ...unassigned.rows.map((row) => String(row.id)),
+      ]),
+    );
+  }
   const all = await db.execute({
     sql: `SELECT id FROM sources WHERE user_id = ?`,
     args: [userId],
