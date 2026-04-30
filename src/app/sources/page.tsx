@@ -111,7 +111,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-stone-500">
+          <div className="text-[11px] uppercase tracking-wider text-[color:var(--fg-subtle)]">
             What you read
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -130,28 +130,28 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           <div className="flex items-center gap-2">
             <form action={pollAllSourcesAction}>
               <SubmitButton
-                className="rounded border border-stone-200 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+                className="rounded border border-[color:var(--border)] bg-white px-3 py-1.5 text-xs hover:bg-[color:var(--bg-subtle)]"
                 pendingLabel="Polling"
               >
                 ↻ Poll all
               </SubmitButton>
             </form>
-            <div className="inline-flex rounded-lg border border-stone-200 bg-white p-0.5 text-xs">
+            <div className="inline-flex rounded-lg border border-[color:var(--border)] bg-white p-0.5 text-xs">
               <Link
                 href={sourcesHref("explorer", outletFilter)}
-                className={`rounded px-2 py-1 ${view === "explorer" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                className={`rounded px-2 py-1 ${view === "explorer" ? "bg-[color:var(--fg)] text-white" : "text-[color:var(--fg-muted)] hover:bg-[color:var(--bg-subtle)]"}`}
               >
                 Explorer
               </Link>
               <Link
                 href={sourcesHref("cards", outletFilter)}
-                className={`rounded px-2 py-1 ${view === "cards" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                className={`rounded px-2 py-1 ${view === "cards" ? "bg-[color:var(--fg)] text-white" : "text-[color:var(--fg-muted)] hover:bg-[color:var(--bg-subtle)]"}`}
               >
                 Cards
               </Link>
               <Link
                 href={sourcesHref("table", outletFilter)}
-                className={`rounded px-2 py-1 ${view === "table" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-50"}`}
+                className={`rounded px-2 py-1 ${view === "table" ? "bg-[color:var(--fg)] text-white" : "text-[color:var(--fg-muted)] hover:bg-[color:var(--bg-subtle)]"}`}
               >
                 Table
               </Link>
@@ -195,12 +195,12 @@ export default async function SourcesPage({ searchParams }: PageProps) {
       ) : null}
 
       {/* Add sources */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-[color:var(--border)] bg-white p-6">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-2xl">📥</span>
           <div>
             <div className="text-sm font-semibold">Add sources</div>
-            <div className="text-[11px] text-stone-500">
+            <div className="text-[11px] text-[color:var(--fg-subtle)]">
               RSS / Atom feed URLs, Reddit subreddits, podcast feeds, YouTube
               channel feeds. Paste many; one per line.
             </div>
@@ -214,17 +214,17 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             placeholder={`https://daringfireball.net/feeds/main
 https://reddit.com/r/specialtycoffee/.rss
 https://hnrss.org/frontpage`}
-            className="w-full rounded border border-stone-300 px-3 py-2 font-mono text-xs"
+            className="w-full rounded border border-[color:var(--border-strong)] px-3 py-2 font-mono text-xs"
           />
           <div className="flex flex-wrap items-center gap-2">
             <SubmitButton
-              className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
+              className="rounded bg-[color:var(--indigo)] px-4 py-1.5 text-sm text-white hover:bg-[color:var(--indigo-hover)]"
               pendingLabel="Adding"
             >
               Add
             </SubmitButton>
             <FolderSelect folders={folders} />
-            <span className="text-[11px] text-stone-500">
+            <span className="text-[11px] text-[color:var(--fg-subtle)]">
               kind auto-detected from URL pattern
             </span>
           </div>
@@ -241,11 +241,11 @@ https://hnrss.org/frontpage`}
       </section>
 
       {/* Folders manager */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-5">
+      <section className="rounded-2xl border border-[color:var(--border)] bg-white p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">Folders</div>
-            <div className="text-[11px] text-stone-500">
+            <div className="text-[11px] text-[color:var(--fg-subtle)]">
               Group sources by beat. Poll a folder to refresh just those feeds
               before drafting.
             </div>
@@ -256,10 +256,10 @@ https://hnrss.org/frontpage`}
               required
               maxLength={60}
               placeholder="New folder name"
-              className="rounded border border-stone-300 px-2 py-1 text-xs"
+              className="rounded border border-[color:var(--border-strong)] px-2 py-1 text-xs"
             />
             <SubmitButton
-              className="rounded border border-stone-200 px-2.5 py-1 text-xs hover:bg-stone-50"
+              className="rounded border border-[color:var(--border)] px-2.5 py-1 text-xs hover:bg-[color:var(--bg-subtle)]"
               pendingLabel="Creating"
             >
               + Folder
@@ -267,7 +267,7 @@ https://hnrss.org/frontpage`}
           </form>
         </div>
         {folders.length > 0 ? (
-          <ul className="mt-4 divide-y divide-stone-100">
+          <ul className="mt-4 divide-y divide-[color:var(--border)]">
             {folders.map((f) => {
               const count = allRows.filter((r) => r.folder_id === f.id).length;
               return (
@@ -282,21 +282,21 @@ https://hnrss.org/frontpage`}
                       name="name"
                       defaultValue={f.name}
                       maxLength={60}
-                      className="rounded border border-stone-200 px-2 py-1 text-xs"
+                      className="rounded border border-[color:var(--border)] px-2 py-1 text-xs"
                     />
                     <SubmitButton
-                      className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                      className="rounded border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--bg-subtle)]"
                       pendingLabel="Saving"
                     >
                       Save
                     </SubmitButton>
                   </form>
-                  <span className="text-stone-500">{count} source{count === 1 ? "" : "s"}</span>
+                  <span className="text-[color:var(--fg-subtle)]">{count} source{count === 1 ? "" : "s"}</span>
                   <span className="ml-auto flex items-center gap-1.5">
                     <form action={pollFolderAction}>
                       <input type="hidden" name="folderId" value={f.id} />
                       <SubmitButton
-                        className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                        className="rounded border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--bg-subtle)]"
                         disabled={count === 0}
                         title={count === 0 ? "Empty folder" : "Poll all sources in this folder"}
                         pendingLabel="Polling"
@@ -307,7 +307,7 @@ https://hnrss.org/frontpage`}
                     <form action={deleteFolderAction}>
                       <input type="hidden" name="folderId" value={f.id} />
                       <SubmitButton
-                        className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                        className="rounded border border-[color:var(--amber-tint)] px-2 py-1 text-[11px] text-[color:var(--amber)] hover:bg-[color:var(--amber-tint)]"
                         title="Delete folder; sources move to Ungrouped"
                         pendingLabel="Removing"
                       >
@@ -320,7 +320,7 @@ https://hnrss.org/frontpage`}
             })}
           </ul>
         ) : (
-          <p className="mt-3 text-[11px] text-stone-500">
+          <p className="mt-3 text-[11px] text-[color:var(--fg-subtle)]">
             No folders yet. Create one above; sources start ungrouped.
           </p>
         )}
@@ -329,7 +329,7 @@ https://hnrss.org/frontpage`}
       {/* Empty state with starter packs */}
       {isEmpty ? (
         <section className="space-y-4">
-          <div className="text-[11px] uppercase tracking-wider text-stone-500">
+          <div className="text-[11px] uppercase tracking-wider text-[color:var(--fg-subtle)]">
             Need a starting roster? Pick a pack to copy and paste above
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -379,7 +379,7 @@ https://hnrss.org/frontpage`}
               ]}
             />
           </div>
-          <p className="text-xs text-stone-500">
+          <p className="text-xs text-[color:var(--fg-subtle)]">
             Aim for 5+ feeds covering the same beat. Clusters fire when the{" "}
             combined trust of distinct sources crosses 1.0 within 72 hours
             from at least 2 distinct domains. New sources start at 0.5
@@ -419,8 +419,8 @@ https://hnrss.org/frontpage`}
 
       {/* Diagnostics */}
       {!isEmpty ? (
-        <details className="rounded-xl border border-stone-200 bg-white p-4">
-          <summary className="cursor-pointer text-xs uppercase tracking-wider text-stone-500 hover:text-stone-700">
+        <details className="rounded-xl border border-[color:var(--border)] bg-white p-4">
+          <summary className="cursor-pointer text-xs uppercase tracking-wider text-[color:var(--fg-subtle)] hover:text-[color:var(--fg)]">
             Diagnostics · cluster engine status
           </summary>
           <div className="mt-4 grid grid-cols-4 gap-4 text-xs">
@@ -453,21 +453,21 @@ function StarterPack({
   urls: string[];
 }) {
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white p-4 transition hover:shadow-md">
+    <div className="rounded-2xl border border-[color:var(--border)] bg-white p-4 transition hover:shadow-md">
       <div className="flex items-start gap-3">
         <div className="text-2xl">{icon}</div>
         <div className="flex-1">
           <div className="text-sm font-semibold">{name}</div>
-          <div className="mt-0.5 text-[11px] text-stone-500">{description}</div>
+          <div className="mt-0.5 text-[11px] text-[color:var(--fg-subtle)]">{description}</div>
         </div>
       </div>
-      <div className="mt-3 max-h-32 overflow-auto rounded bg-stone-50 p-2 font-mono text-[10px] text-stone-600">
+      <div className="mt-3 max-h-32 overflow-auto rounded bg-[color:var(--bg-subtle)] p-2 font-mono text-[10px] text-[color:var(--fg-muted)]">
         {urls.map((u) => (
           <div key={u}>{u}</div>
         ))}
       </div>
-      <details className="mt-2 text-[11px] text-stone-500">
-        <summary className="cursor-pointer hover:text-stone-900">
+      <details className="mt-2 text-[11px] text-[color:var(--fg-subtle)]">
+        <summary className="cursor-pointer hover:text-[color:var(--fg)]">
           How to use
         </summary>
         <div className="mt-1 leading-relaxed">
@@ -530,10 +530,10 @@ const KIND_META: Record<
   string,
   { icon: string; color: string; label: string }
 > = {
-  rss: { icon: "📰", color: "bg-stone-100 text-stone-700", label: "RSS" },
-  reddit: { icon: "🔥", color: "bg-orange-100 text-orange-800", label: "Reddit" },
-  podcast: { icon: "🎙️", color: "bg-purple-100 text-purple-800", label: "Podcast" },
-  youtube: { icon: "▶", color: "bg-rose-100 text-rose-800", label: "YouTube" },
+  rss: { icon: "📰", color: "bg-[color:var(--bg-subtle)] text-[color:var(--fg)]", label: "RSS" },
+  reddit: { icon: "🔥", color: "bg-[color:var(--rose-tint)] text-[#9C4A22]", label: "Reddit" },
+  podcast: { icon: "🎙️", color: "bg-[color:var(--plum-tint)] text-[#5D3A6E]", label: "Podcast" },
+  youtube: { icon: "▶", color: "bg-[color:var(--amber-tint)] text-[color:var(--amber)]", label: "YouTube" },
 };
 
 function FolderSelect({
@@ -552,7 +552,7 @@ function FolderSelect({
       name={name}
       form={form}
       defaultValue={currentFolderId ?? ""}
-      className="rounded border border-stone-300 px-2 py-1 text-xs"
+      className="rounded border border-[color:var(--border-strong)] px-2 py-1 text-xs"
     >
       <option value="">Ungrouped</option>
       {folders.map((f) => (
@@ -575,22 +575,22 @@ function SourceExplorer({
   const bulkFormId = "source-bulk-move";
 
   return (
-    <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+    <section className="overflow-hidden rounded-xl border border-[color:var(--border)] bg-white">
       <form
         id={bulkFormId}
         action={bulkAssignSourcesToFolderAction}
-        className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-stone-50 px-4 py-3"
+        className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] bg-[color:var(--bg-subtle)] px-4 py-3"
       >
         <div>
           <div className="text-sm font-semibold">Source explorer</div>
-          <div className="text-[11px] text-stone-500">
+          <div className="text-[11px] text-[color:var(--fg-subtle)]">
             Select sources, choose a folder, move them together.
           </div>
         </div>
         <div className="flex items-center gap-2">
           <FolderSelect folders={folders} />
           <SubmitButton
-            className="rounded border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+            className="rounded border border-[color:var(--border-strong)] bg-white px-3 py-1.5 text-xs hover:bg-[color:var(--bg-subtle)]"
             pendingLabel="Moving"
           >
             Move selected
@@ -600,7 +600,7 @@ function SourceExplorer({
 
       <div className="overflow-x-auto">
         <div className="min-w-[860px]">
-          <div className="grid grid-cols-12 gap-3 border-b border-stone-200 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500">
+          <div className="grid grid-cols-12 gap-3 border-b border-[color:var(--border)] px-4 py-2 text-[10px] uppercase tracking-wider text-[color:var(--fg-subtle)]">
             <div className="col-span-1">Pick</div>
             <div className="col-span-4">Source</div>
             <div className="col-span-1">Type</div>
@@ -614,27 +614,27 @@ function SourceExplorer({
             <details
               key={group.id ?? "ungrouped"}
               open
-              className="border-b border-stone-100 last:border-b-0"
+              className="border-b border-[color:var(--border)] last:border-b-0"
             >
-              <summary className="grid cursor-pointer grid-cols-12 items-center gap-3 bg-stone-100/70 px-4 py-2 text-xs hover:bg-stone-100">
-                <div className="col-span-6 flex items-center gap-2 font-semibold text-stone-900">
-                  <span className="text-stone-500">▾</span>
+              <summary className="grid cursor-pointer grid-cols-12 items-center gap-3 bg-[color:var(--bg-subtle)] px-4 py-2 text-xs hover:bg-[color:var(--bg-subtle)]">
+                <div className="col-span-6 flex items-center gap-2 font-semibold text-[color:var(--fg)]">
+                  <span className="text-[color:var(--fg-subtle)]">▾</span>
                   <span>{group.name}</span>
                 </div>
-                <div className="col-span-2 text-right text-stone-500">
+                <div className="col-span-2 text-right text-[color:var(--fg-subtle)]">
                   {group.rows.length} source{group.rows.length === 1 ? "" : "s"}
                 </div>
-                <div className="col-span-4 text-right text-stone-500">
+                <div className="col-span-4 text-right text-[color:var(--fg-subtle)]">
                   {group.id ? "Folder" : "No folder"}
                 </div>
               </summary>
 
               {group.rows.length === 0 ? (
-                <div className="px-4 py-4 text-xs text-stone-500">
+                <div className="px-4 py-4 text-xs text-[color:var(--fg-subtle)]">
                   No sources here yet.
                 </div>
               ) : (
-                <div className="divide-y divide-stone-100">
+                <div className="divide-y divide-[color:var(--border)]">
                   {group.rows.map((row) => {
                     const meta = KIND_META[row.kind] ?? KIND_META.rss!;
                     const trustPct = Math.round(
@@ -643,7 +643,7 @@ function SourceExplorer({
                     return (
                       <div
                         key={row.id}
-                        className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-stone-50"
+                        className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-[color:var(--bg-subtle)]"
                       >
                         <div className="col-span-1">
                           <input
@@ -652,22 +652,22 @@ function SourceExplorer({
                             name="sourceId"
                             value={row.id}
                             aria-label={`Select ${row.display_name || hostFromUrl(row.url)}`}
-                            className="h-4 w-4 rounded border-stone-300"
+                            className="h-4 w-4 rounded border-[color:var(--border-strong)]"
                           />
                         </div>
                         <div className="col-span-4 min-w-0">
                           <Link
                             href={`/sources/${row.id}`}
                             prefetch={false}
-                            className="font-medium text-stone-900 hover:underline"
+                            className="font-medium text-[color:var(--fg)] hover:underline"
                           >
                             {row.display_name || hostFromUrl(row.url)}
                           </Link>
-                          <div className="truncate text-[11px] text-stone-500">
+                          <div className="truncate text-[11px] text-[color:var(--fg-subtle)]">
                             {row.url}
                           </div>
                           {row.last_error ? (
-                            <div className="mt-0.5 truncate text-[11px] text-rose-600">
+                            <div className="mt-0.5 truncate text-[11px] text-[color:var(--amber)]">
                               {row.last_error}
                             </div>
                           ) : null}
@@ -677,13 +677,13 @@ function SourceExplorer({
                             {meta.label}
                           </span>
                         </div>
-                        <div className="col-span-1 text-right tabular-nums text-stone-700">
+                        <div className="col-span-1 text-right tabular-nums text-[color:var(--fg)]">
                           {Number(row.item_count)}
                         </div>
-                        <div className="col-span-1 text-right tabular-nums text-stone-700">
+                        <div className="col-span-1 text-right tabular-nums text-[color:var(--fg)]">
                           {trustPct}%
                         </div>
-                        <div className="col-span-2 text-right text-stone-500">
+                        <div className="col-span-2 text-right text-[color:var(--fg-subtle)]">
                           {row.last_polled_at
                             ? relativeTime(Number(row.last_polled_at))
                             : "never"}
@@ -692,14 +692,14 @@ function SourceExplorer({
                           <Link
                             href={`/sources/${row.id}`}
                             prefetch={false}
-                            className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                            className="rounded border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--bg-subtle)]"
                           >
                             Open
                           </Link>
                           <form action={pollSourceAction}>
                             <input type="hidden" name="sourceId" value={row.id} />
                             <SubmitButton
-                              className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                              className="rounded border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--bg-subtle)]"
                               pendingLabel="Polling"
                             >
                               Poll
@@ -708,7 +708,7 @@ function SourceExplorer({
                           <form action={deleteSourceAction}>
                             <input type="hidden" name="sourceId" value={row.id} />
                             <SubmitButton
-                              className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                              className="rounded border border-[color:var(--amber-tint)] px-2 py-1 text-[11px] text-[color:var(--amber)] hover:bg-[color:var(--amber-tint)]"
                               pendingLabel="Removing"
                             >
                               Remove
@@ -749,13 +749,13 @@ function GroupedCards({
             <h2 className="text-sm font-semibold tracking-tight">
               {group.name}
             </h2>
-            <span className="text-[11px] text-stone-500">
+            <span className="text-[11px] text-[color:var(--fg-subtle)]">
               {group.rows.length} source{group.rows.length === 1 ? "" : "s"}
             </span>
             <form action={pollFolderAction} className="ml-auto">
               <input type="hidden" name="folderId" value={group.id ?? ""} />
               <SubmitButton
-                className="rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:bg-stone-50"
+                className="rounded border border-[color:var(--border)] bg-white px-2 py-1 text-[11px] hover:bg-[color:var(--bg-subtle)]"
                 disabled={group.rows.length === 0}
                 title="Poll every source in this folder"
                 pendingLabel="Polling"
@@ -789,7 +789,7 @@ function SourceCards({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="text-[11px] text-stone-500">No sources here yet.</p>
+      <p className="text-[11px] text-[color:var(--fg-subtle)]">No sources here yet.</p>
     );
   }
   return (
@@ -851,7 +851,7 @@ function SourceCards({
                 currentFolderId={row.folder_id}
               />
               <SubmitButton
-                className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                className="rounded border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--bg-subtle)]"
                 pendingLabel="Moving"
               >
                 Move
@@ -948,8 +948,8 @@ function SourceTable({
   folders: FolderRow[];
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
-      <div className="grid grid-cols-12 gap-3 border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500">
+    <div className="overflow-hidden rounded-xl border border-[color:var(--border)] bg-white">
+      <div className="grid grid-cols-12 gap-3 border-b border-[color:var(--border)] bg-[color:var(--bg-subtle)] px-4 py-2 text-[10px] uppercase tracking-wider text-[color:var(--fg-subtle)]">
         <div className="col-span-4">Source</div>
         <div className="col-span-2">Folder</div>
         <div className="col-span-1">Type</div>
@@ -957,21 +957,21 @@ function SourceTable({
         <div className="col-span-2 text-right">Last fetch</div>
         <div className="col-span-2 text-right">Actions</div>
       </div>
-      <div className="divide-y divide-stone-100">
+      <div className="divide-y divide-[color:var(--border)]">
         {rows.map((row) => {
           const meta = KIND_META[row.kind] ?? KIND_META.rss!;
           return (
             <div
               key={row.id}
-              className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-stone-50"
+              className="grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs hover:bg-[color:var(--bg-subtle)]"
             >
               <div className="col-span-4">
-                <div className="font-medium text-stone-900">
+                <div className="font-medium text-[color:var(--fg)]">
                   {row.display_name || hostFromUrl(row.url)}
                 </div>
-                <div className="truncate text-[11px] text-stone-500">{row.url}</div>
+                <div className="truncate text-[11px] text-[color:var(--fg-subtle)]">{row.url}</div>
                 {row.last_error ? (
-                  <div className="mt-0.5 text-[11px] text-rose-600">⚠ {row.last_error}</div>
+                  <div className="mt-0.5 text-[11px] text-[color:var(--amber)]">⚠ {row.last_error}</div>
                 ) : null}
               </div>
               <div className="col-span-2">
@@ -979,7 +979,7 @@ function SourceTable({
                   <input type="hidden" name="sourceId" value={row.id} />
                   <FolderSelect folders={folders} currentFolderId={row.folder_id} />
                   <SubmitButton
-                    className="rounded border border-stone-200 px-1.5 py-1 text-[10px] hover:bg-stone-50"
+                    className="rounded border border-[color:var(--border)] px-1.5 py-1 text-[10px] hover:bg-[color:var(--bg-subtle)]"
                     pendingLabel="Moving"
                   >
                     Move
@@ -991,17 +991,17 @@ function SourceTable({
                   {meta.label}
                 </span>
               </div>
-              <div className="col-span-1 text-right tabular-nums text-stone-700">
+              <div className="col-span-1 text-right tabular-nums text-[color:var(--fg)]">
                 {Number(row.item_count)}
               </div>
-              <div className="col-span-2 text-right text-stone-500">
+              <div className="col-span-2 text-right text-[color:var(--fg-subtle)]">
                 {row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "—"}
               </div>
               <div className="col-span-2 flex justify-end gap-1.5">
                 <form action={pollSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
                   <SubmitButton
-                    className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                    className="rounded border border-[color:var(--border)] px-2 py-1 text-[11px] hover:bg-[color:var(--bg-subtle)]"
                     pendingLabel="Polling"
                   >
                     Poll
@@ -1010,7 +1010,7 @@ function SourceTable({
                 <form action={deleteSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
                   <SubmitButton
-                    className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                    className="rounded border border-[color:var(--amber-tint)] px-2 py-1 text-[11px] text-[color:var(--amber)] hover:bg-[color:var(--amber-tint)]"
                     pendingLabel="Removing"
                   >
                     Remove
@@ -1027,9 +1027,9 @@ function SourceTable({
 
 function CardStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded bg-stone-50 px-1 py-1.5">
+    <div className="rounded bg-[color:var(--bg-subtle)] px-1 py-1.5">
       <div className="text-sm font-light tabular-nums">{value}</div>
-      <div className="text-[10px] text-stone-500">{label}</div>
+      <div className="text-[10px] text-[color:var(--fg-subtle)]">{label}</div>
     </div>
   );
 }
@@ -1038,7 +1038,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-2xl font-light tabular-nums">{value}</div>
-      <div className="text-[11px] text-stone-500">{label}</div>
+      <div className="text-[11px] text-[color:var(--fg-subtle)]">{label}</div>
     </div>
   );
 }

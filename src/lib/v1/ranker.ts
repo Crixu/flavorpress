@@ -149,20 +149,40 @@ export async function rankCluster(
 /**
  * Top-N fired clusters for a user, ranker-ordered. Used by Today screen.
  * Pre-render top-5 (architect's call) so dismissal of #1 keeps things instant.
+ *
+ * `folderId` scopes the result to clusters whose items come from sources in
+ * the given folder; pass "ungrouped" to mean folder_id IS NULL; pass null to
+ * skip filtering.
  */
 export async function topFiredClusters(
   userId: string,
   limit: number,
+  folderId: string | null = null,
 ): Promise<Array<Cluster & { signals: RankerSignals | null }>> {
   await ensureSchema();
+  const folderClause =
+    folderId === null
+      ? ""
+      : folderId === "ungrouped"
+        ? `AND EXISTS (
+             SELECT 1 FROM items i JOIN sources s ON s.id = i.source_id
+             WHERE i.cluster_id = c.id AND s.folder_id IS NULL
+           )`
+        : `AND EXISTS (
+             SELECT 1 FROM items i JOIN sources s ON s.id = i.source_id
+             WHERE i.cluster_id = c.id AND s.folder_id = ?
+           )`;
+  const args: (string | number)[] = [userId];
+  if (folderId !== null && folderId !== "ungrouped") args.push(folderId);
+  args.push(limit);
   const r = await db.execute({
     sql: `SELECT c.*, rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite, rs.computed_at
           FROM clusters c
           LEFT JOIN ranker_signals rs ON rs.cluster_id = c.id AND rs.user_id = c.user_id
-          WHERE c.user_id = ? AND c.state = 'fired'
+          WHERE c.user_id = ? AND c.state = 'fired' ${folderClause}
           ORDER BY COALESCE(rs.composite, 0) DESC, c.fired_at DESC
           LIMIT ?`,
-    args: [userId, limit],
+    args,
   });
   return r.rows.map((row) => ({
     id: String(row.id),

@@ -14,12 +14,51 @@ import { ClusterActions } from "./_components/ClusterActions";
 
 export const dynamic = "force-dynamic";
 
-export default async function TodayPage() {
+interface PageProps {
+  searchParams: Promise<{ folder?: string }>;
+}
+
+export default async function TodayPage({ searchParams }: PageProps) {
   await ensureSchema();
   await ensureSingleUser();
   await ensureRegisteredCapabilities();
 
-  const clusters = await topFiredClusters(SINGLE_USER_ID, 3);
+  const sp = await searchParams;
+  const folderFilter = sp.folder && sp.folder !== "all" ? sp.folder : null;
+
+  const clusters = await topFiredClusters(SINGLE_USER_ID, 3, folderFilter);
+
+  const foldersR = await db.execute({
+    sql: `SELECT id, name FROM source_folders WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
+    args: [SINGLE_USER_ID],
+  });
+  const folders = foldersR.rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+  }));
+
+  // Cluster counts per folder (single grouped query) so chips can show
+  // accurate badges. Counts include "ungrouped" as a virtual folder.
+  const folderCountsR = await db.execute({
+    sql: `SELECT
+            CASE WHEN s.folder_id IS NULL THEN 'ungrouped' ELSE s.folder_id END AS folder_id,
+            COUNT(DISTINCT c.id) AS n
+          FROM clusters c
+          JOIN items i ON i.cluster_id = c.id
+          JOIN sources s ON s.id = i.source_id
+          WHERE c.user_id = ? AND c.state = 'fired'
+          GROUP BY folder_id`,
+    args: [SINGLE_USER_ID],
+  });
+  const folderCounts = new Map<string, number>();
+  for (const row of folderCountsR.rows) {
+    folderCounts.set(String(row.folder_id), Number(row.n));
+  }
+  const allClusterCountR = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
+    args: [SINGLE_USER_ID],
+  });
+  const totalClusterCount = Number(allClusterCountR.rows[0]!.n);
 
   const outlets = await listOutlets(SINGLE_USER_ID);
   const hasOutlet = outlets.some((o) => o.connected);
@@ -85,16 +124,36 @@ export default async function TodayPage() {
     }),
   );
 
+  const activeFolderName =
+    folderFilter === "ungrouped"
+      ? "Ungrouped"
+      : folderFilter
+        ? (folders.find((f) => f.id === folderFilter)?.name ?? "Folder")
+        : null;
+  const ungroupedCount = folderCounts.get("ungrouped") ?? 0;
+  const showFolderFilter =
+    folders.length > 0 || ungroupedCount > 0 || totalClusterCount > 0;
+
   return (
     <div className="space-y-8">
       <header className="space-y-1.5">
         <div className="fp-eyebrow">{formatDate(Date.now())}</div>
         <h1 className="fp-h1 fp-h1-serif">
           {clusters.length === 0
-            ? "No clusters yet"
+            ? activeFolderName
+              ? `No clusters in ${activeFolderName}`
+              : "No clusters yet"
             : clusters.length === 1
             ? "One cluster worth your attention"
             : `${clusters.length} clusters worth your attention`}
+          {activeFolderName && clusters.length > 0 ? (
+            <span
+              className="ml-3 align-middle text-base font-normal"
+              style={{ color: "var(--fg-muted)" }}
+            >
+              in {activeFolderName}
+            </span>
+          ) : null}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
           Three is the cap. Each cluster has crossed combined source-trust 1.0
@@ -102,8 +161,18 @@ export default async function TodayPage() {
         </p>
       </header>
 
+      {showFolderFilter ? (
+        <FolderFilter
+          folders={folders}
+          counts={folderCounts}
+          totalCount={totalClusterCount}
+          ungroupedCount={ungroupedCount}
+          active={folderFilter}
+        />
+      ) : null}
+
       {clusters.length === 0 ? (
-        <EmptyClusters />
+        <EmptyClusters folderName={activeFolderName} />
       ) : (
         <div className="space-y-4">
           {previews.map((preview, idx) => (
@@ -117,6 +186,78 @@ export default async function TodayPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function FolderFilter({
+  folders,
+  counts,
+  totalCount,
+  ungroupedCount,
+  active,
+}: {
+  folders: { id: string; name: string }[];
+  counts: Map<string, number>;
+  totalCount: number;
+  ungroupedCount: number;
+  active: string | null;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="fp-eyebrow mr-1">Filter</span>
+      <FolderChip href="/" label="All" count={totalCount} active={!active} />
+      {folders.map((f) => (
+        <FolderChip
+          key={f.id}
+          href={`/?folder=${encodeURIComponent(f.id)}`}
+          label={f.name}
+          count={counts.get(f.id) ?? 0}
+          active={active === f.id}
+        />
+      ))}
+      {ungroupedCount > 0 ? (
+        <FolderChip
+          href="/?folder=ungrouped"
+          label="Ungrouped"
+          count={ungroupedCount}
+          active={active === "ungrouped"}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function FolderChip({
+  href,
+  label,
+  count,
+  active,
+}: {
+  href: string;
+  label: string;
+  count: number;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] transition"
+      style={{
+        background: active ? "var(--fg)" : "var(--surface)",
+        color: active ? "var(--surface)" : "var(--fg-muted)",
+        border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
+        boxShadow: active ? "var(--shadow-xs)" : undefined,
+        fontWeight: active ? 500 : 400,
+      }}
+    >
+      <span>{label}</span>
+      <span
+        className="font-mono tabular text-[10px]"
+        style={{ color: active ? "var(--surface)" : "var(--fg-subtle)", opacity: active ? 0.85 : 1 }}
+      >
+        {count}
+      </span>
+    </Link>
   );
 }
 
@@ -239,7 +380,7 @@ function RankerSignal({ label, value }: { label: string; value: number }) {
   );
 }
 
-function EmptyClusters() {
+function EmptyClusters({ folderName }: { folderName?: string | null }) {
   return (
     <div
       className="fp-card-feature p-10 text-center"
@@ -252,14 +393,21 @@ function EmptyClusters() {
         </svg>
       </div>
       <h2 className="fp-h1-serif" style={{ fontSize: 22 }}>
-        Sources are polling. Clusters fire automatically.
+        {folderName
+          ? `No fired clusters in ${folderName} yet.`
+          : "Sources are polling. Clusters fire automatically."}
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm" style={{ color: "var(--fg-muted)" }}>
-        A cluster fires when 3 or more sources cover the same story within 72
-        hours, from at least 2 distinct domains. Want it now? Hit "Poll all"
-        on Sources.
+        {folderName
+          ? "Try poll the folder, broaden the filter, or check back after the next poll cycle."
+          : "A cluster fires when 3 or more sources cover the same story within 72 hours, from at least 2 distinct domains. Want it now? Hit \"Poll all\" on Sources."}
       </p>
       <div className="mt-5 flex justify-center gap-2">
+        {folderName ? (
+          <Link href="/" className="fp-btn fp-btn-ghost">
+            Show all folders
+          </Link>
+        ) : null}
         <Link href="/sources" className="fp-btn fp-btn-ghost">
           Manage sources
         </Link>

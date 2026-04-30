@@ -56,28 +56,53 @@ export default async function EditorPage({ params }: PageProps) {
   const voiceScore = Number(d.voice_match_score ?? 0);
   const traceId = String(d.trace_id ?? "");
 
+  const voiceOk = voiceScore >= 75;
+  const sourceCount = cluster ? Number(cluster.source_count) : 0;
+
   return (
-    <div className="-mx-6 -my-10 min-h-[calc(100vh-58px)] bg-white">
-      {/* Editor header */}
-      <div className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-2.5">
-        <div className="flex items-center gap-3 text-xs text-stone-500">
-          <Link href="/" className="rounded px-2 py-1 hover:bg-stone-100 text-stone-700">
-            ← Back
-          </Link>
-          <span className="text-stone-300">|</span>
-          <span>
-            Cluster · {cluster ? Number(cluster.source_count) : 0} sources
-          </span>
-          <span className="text-stone-300">|</span>
-          <span className="font-mono text-[10px] text-stone-400">{traceId}</span>
+    <div className="space-y-6">
+      {/* Page header — same eyebrow + serif h1 pattern as the rest of the app */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1.5">
+          <div className="fp-eyebrow">
+            <Link
+              href="/"
+              className="hover:underline"
+              style={{ color: "var(--fg-subtle)" }}
+            >
+              ← Today
+            </Link>
+            <span className="mx-2" style={{ color: "var(--border-strong)" }}>
+              ·
+            </span>
+            <span>Editor</span>
+            <span className="mx-2" style={{ color: "var(--border-strong)" }}>
+              ·
+            </span>
+            <span>{sourceCount} sources</span>
+          </div>
+          <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "22ch" }}>
+            {String(d.headline)}
+          </h1>
         </div>
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2">
+          <span
+            className="hidden rounded-full px-3 py-1.5 font-mono text-[10px] sm:inline"
+            style={{
+              background: "var(--surface)",
+              color: "var(--fg-subtle)",
+              border: "1px solid var(--border)",
+            }}
+            title="Trace ID"
+          >
+            {traceId.slice(0, 8) || "—"}
+          </span>
           {d.wp_edit_link ? (
             <a
               href={String(d.wp_edit_link)}
               target="_blank"
               rel="noreferrer"
-              className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700"
+              className="fp-btn fp-btn-primary"
             >
               Open in WordPress →
             </a>
@@ -86,230 +111,357 @@ export default async function EditorPage({ params }: PageProps) {
               <input type="hidden" name="draftId" value={String(d.id)} />
               <input type="hidden" name="status" value="draft" />
               <SubmitButton
-                className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700"
+                className="fp-btn fp-btn-primary"
                 pendingLabel="Saving draft"
               >
-                Push to WordPress as draft →
+                Push to WordPress draft →
               </SubmitButton>
             </form>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* Decision Strip — 2 cells per engineer review */}
-      <div className="bg-stone-900 px-6 py-3 text-white">
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-[10px] uppercase tracking-wider text-stone-500">
-            Pre-publish
+      {/* Editor frame: a single Canvas card */}
+      <div
+        className="overflow-hidden"
+        style={{
+          background: "var(--surface)",
+          borderRadius: "var(--radius-xl)",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        {/* Topbar — light, in-card, replaces the old dark decision strip */}
+        <div
+          className="flex flex-wrap items-center gap-3 px-6 py-3"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <span className="fp-eyebrow">Pre-publish</span>
+          <span
+            className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px]"
+            style={{
+              background: voiceOk ? "var(--emerald-tint)" : "var(--amber-tint)",
+              color: voiceOk ? "#3F7556" : "var(--amber)",
+            }}
+          >
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{
+                background: voiceOk ? "var(--emerald)" : "var(--amber)",
+              }}
+            />
+            <span style={{ fontWeight: 600 }}>voice-match {voiceScore}</span>
+            <span style={{ opacity: 0.75 }}>
+              {voiceOk ? "sounds like you" : "below threshold"}
+            </span>
           </span>
           <span
-            className={`flex items-center gap-2 rounded border px-3 py-1.5 text-xs ${
-              voiceScore >= 75
-                ? "border-emerald-700 bg-emerald-900"
-                : "border-amber-700 bg-amber-900"
-            }`}
+            className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px]"
+            style={{
+              background: "var(--bg-subtle)",
+              color: "var(--fg-muted)",
+            }}
           >
-            <span className={voiceScore >= 75 ? "text-emerald-300" : "text-amber-300"}>●</span>
-            <span className="text-stone-400">voice-match</span>
-            <span className={`font-medium ${voiceScore >= 75 ? "text-emerald-300" : "text-amber-300"}`}>
-              {voiceScore}
-            </span>
-            <span className="text-[10px] text-stone-500">
-              {voiceScore >= 75 ? "sounds like you" : "below threshold"}
-            </span>
+            <span style={{ color: "var(--fg-subtle)" }}>⊙</span>
+            <span style={{ fontWeight: 600 }}>fact-check</span>
+            <span style={{ color: "var(--fg-subtle)" }}>v1.1</span>
           </span>
-          <span className="flex items-center gap-2 rounded border border-stone-700 bg-stone-800 px-3 py-1.5 text-xs">
-            <span className="text-stone-400">⊙</span>
-            <span className="text-stone-400">fact-check</span>
-            <span className="font-medium text-stone-200">v1.1</span>
-            <span className="text-[10px] text-stone-500">
-              shipping next pass
+          <span className="ml-auto flex items-center gap-2 text-[12px]">
+            <span
+              className="hidden font-mono tabular text-[11px] md:inline"
+              style={{ color: "var(--fg-subtle)" }}
+            >
+              {String(d.body ?? "").replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length} words
             </span>
           </span>
         </div>
-      </div>
 
-      <div className="grid grid-cols-12 gap-0">
-        {/* Left rail: cluster sources */}
-        <aside className="col-span-3 border-r border-stone-200 bg-stone-50 p-5">
-          <div className="mb-3 text-[11px] uppercase tracking-wider text-stone-500">
-            Sources · {itemsR.rows.length}
-          </div>
-          <div className="space-y-2 text-xs">
-            {itemsR.rows.map((row) => (
-              <div
-                key={String(row.id)}
-                className="rounded border border-stone-200 bg-white p-2.5"
-              >
-                <div className="font-medium text-stone-900">
-                  {String(row.display_name ?? hostFromUrl(String(row.source_url)))}
-                </div>
-                <div className="text-[11px] text-stone-500">
-                  {relativeTime(Number(row.published_at))}
-                </div>
-                <div className="mt-1 text-stone-700 leading-snug line-clamp-3">
-                  {String(row.title)}
-                </div>
+        {/* Three panes — soft cream rails, white centre, no hard borders */}
+        <div className="grid grid-cols-12">
+          {/* Left rail */}
+          <aside
+            className="col-span-12 p-5 lg:col-span-3"
+            style={{ background: "#FAF7F1" }}
+          >
+            <div className="fp-eyebrow mb-3">Sources · {itemsR.rows.length}</div>
+            <ul className="space-y-2 text-xs">
+              {itemsR.rows.map((row) => (
+                <li
+                  key={String(row.id)}
+                  className="rounded-2xl p-3"
+                  style={{
+                    background: "var(--surface)",
+                    boxShadow: "var(--shadow-xs)",
+                  }}
+                >
+                  <div className="text-[12.5px] font-medium" style={{ color: "var(--fg)" }}>
+                    {String(row.display_name ?? hostFromUrl(String(row.source_url)))}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[10px]" style={{ color: "var(--fg-subtle)" }}>
+                    {relativeTime(Number(row.published_at))}
+                  </div>
+                  <div className="mt-1.5 line-clamp-3 leading-snug" style={{ color: "var(--fg-muted)" }}>
+                    {String(row.title)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </aside>
+
+          {/* Centre: manuscript */}
+          <div className="col-span-12 px-10 pt-10 pb-16 lg:col-span-6">
+            <div className="mx-auto max-w-[640px]">
+              <div className="fp-eyebrow">
+                Draft · 1 of {headlineAlternates.length + 1}
               </div>
-            ))}
-          </div>
-        </aside>
+              <h2
+                className="mt-3 fp-h1-serif"
+                style={{ fontSize: "clamp(28px, 3vw, 40px)", lineHeight: 1.06, letterSpacing: "-0.02em" }}
+              >
+                {String(d.headline)}
+              </h2>
+              {headlineAlternates.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {headlineAlternates.map((alt, i) => (
+                    <button
+                      key={i}
+                      className="rounded-full px-3 py-1 text-[11px]"
+                      style={{
+                        background: "var(--bg-subtle)",
+                        color: "var(--fg-muted)",
+                      }}
+                    >
+                      {alt}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
-        {/* Center: draft body */}
-        <div className="col-span-6 p-8">
-          <div className="mx-auto max-w-2xl">
-            <div className="mb-2 text-xs text-stone-500">
-              Headline · 1 of {headlineAlternates.length + 1}
-            </div>
-            <h1 className="mb-2 text-2xl font-semibold leading-tight">
-              {String(d.headline)}
-            </h1>
-            {headlineAlternates.length > 0 ? (
-              <div className="mb-6 flex flex-wrap gap-2 text-[11px]">
-                {headlineAlternates.map((alt, i) => (
-                  <button
-                    key={i}
-                    className="rounded border border-stone-200 px-2 py-0.5 text-stone-600 hover:bg-stone-50"
+              <article
+                className="prose prose-stone mt-7 max-w-none"
+                style={{
+                  fontFamily: "var(--font-serif), Georgia, serif",
+                  fontSize: 17.5,
+                  lineHeight: 1.72,
+                  color: "var(--fg)",
+                }}
+                dangerouslySetInnerHTML={{ __html: String(d.body ?? "") }}
+              />
+
+              {quotes.length > 0 ? (
+                <div
+                  className="mt-10 pt-6"
+                  style={{ borderTop: "1px solid var(--border)" }}
+                >
+                  <div className="fp-eyebrow">Citations · {quotes.length}</div>
+                  <ol
+                    className="mt-3 list-decimal space-y-1.5 pl-5 text-[12px]"
+                    style={{ color: "var(--fg-muted)" }}
                   >
-                    {alt}
-                  </button>
-                ))}
+                    {quotes.map((q, i) => (
+                      <li key={i}>{q.citation}</li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Right rail: inspector */}
+          <aside
+            className="col-span-12 space-y-3 p-5 lg:col-span-3"
+            style={{ background: "#FAF7F1" }}
+          >
+            {/* Voice match */}
+            <div
+              className="rounded-2xl p-4"
+              style={{
+                background: "var(--surface)",
+                boxShadow: "var(--shadow-xs)",
+              }}
+            >
+              <div className="fp-eyebrow">Voice-match</div>
+              <div className="mt-2 flex items-baseline gap-3">
+                <span
+                  className="font-mono tabular"
+                  style={{
+                    fontSize: 32,
+                    fontWeight: 700,
+                    letterSpacing: "-0.03em",
+                    color: voiceOk ? "var(--emerald)" : "var(--amber)",
+                  }}
+                >
+                  {voiceScore}
+                </span>
+                <span className="flex-1">
+                  <div
+                    className="h-1.5 overflow-hidden rounded-full"
+                    style={{ background: "var(--bg-subtle)" }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, voiceScore)}%`,
+                        background: voiceOk
+                          ? "var(--emerald)"
+                          : "linear-gradient(90deg, var(--rose) 0%, #F5B26A 100%)",
+                      }}
+                    />
+                  </div>
+                  <div
+                    className="mt-1 text-[10px]"
+                    style={{ color: "var(--fg-subtle)" }}
+                  >
+                    Burrows' Delta on function-word distribution
+                  </div>
+                </span>
+              </div>
+              <button
+                className="mt-3 w-full rounded-full py-1.5 text-[12px]"
+                style={{
+                  background: "var(--bg-subtle)",
+                  color: "var(--fg)",
+                }}
+              >
+                Voice-tighten regenerate
+              </button>
+            </div>
+
+            {/* Angle */}
+            {d.angle_archive || d.angle_gap ? (
+              <div
+                className="rounded-2xl p-4"
+                style={{
+                  background: "var(--surface)",
+                  boxShadow: "var(--shadow-xs)",
+                }}
+              >
+                <div className="fp-eyebrow">Angle</div>
+                <div className="mt-2 space-y-1.5 text-[12px]">
+                  {d.angle_archive ? (
+                    <button
+                      className="w-full rounded-xl px-3 py-2 text-left"
+                      style={{
+                        background: "var(--rose-tint)",
+                        color: "#9C4A22",
+                      }}
+                    >
+                      <div className="font-semibold">Archive habit</div>
+                      <div className="mt-0.5 text-[11px]">
+                        {String(d.angle_archive)}
+                      </div>
+                    </button>
+                  ) : null}
+                  {d.angle_gap ? (
+                    <button
+                      className="w-full rounded-xl px-3 py-2 text-left"
+                      style={{
+                        background: "var(--bg-subtle)",
+                        color: "var(--fg)",
+                      }}
+                    >
+                      <div className="font-semibold">Cluster-gap</div>
+                      <div
+                        className="mt-0.5 text-[11px]"
+                        style={{ color: "var(--fg-muted)" }}
+                      >
+                        {String(d.angle_gap)}
+                      </div>
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
-            <article
-              className="prose prose-stone prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: String(d.body ?? "") }}
-            />
-
+            {/* Quote pool */}
             {quotes.length > 0 ? (
-              <div className="mt-8 border-t border-stone-200 pt-6">
-                <div className="mb-2 text-xs uppercase tracking-wider text-stone-500">
-                  Citations · {quotes.length}
+              <div
+                className="rounded-2xl p-4"
+                style={{
+                  background: "var(--surface)",
+                  boxShadow: "var(--shadow-xs)",
+                }}
+              >
+                <div className="fp-eyebrow">
+                  Quote pool · {quotes.length} in draft
                 </div>
-                <ol className="list-decimal list-inside space-y-1 text-xs text-stone-600">
+                <ul className="mt-3 space-y-2 text-[12px]">
                   {quotes.map((q, i) => (
-                    <li key={i}>
-                      {q.citation}
+                    <li
+                      key={i}
+                      className="rounded-lg p-2.5 leading-snug"
+                      style={{
+                        background: "var(--bg-subtle)",
+                        color: "var(--fg)",
+                        fontFamily: "var(--font-serif), Georgia, serif",
+                      }}
+                    >
+                      {q.text.slice(0, 100)}
+                      {q.text.length > 100 ? "…" : ""}
                     </li>
                   ))}
-                </ol>
+                </ul>
               </div>
             ) : null}
-          </div>
+
+            {/* Agent slot — Canvas-styled placeholder */}
+            <div
+              className="rounded-2xl p-4"
+              style={{
+                background:
+                  "linear-gradient(135deg, var(--plum-tint) 0%, #E9DEF4 100%)",
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="fp-eyebrow" style={{ color: "#5D3A6E" }}>
+                  Agent slot
+                </div>
+                <span className="text-[10px]" style={{ color: "#5D3A6E" }}>
+                  v1.1+
+                </span>
+              </div>
+              <p
+                className="mt-2 text-[11.5px] leading-snug"
+                style={{ color: "#3F2360" }}
+              >
+                Research, scheduling, plagiarism, analytics. Capabilities plug
+                in here in v1.1.
+              </p>
+            </div>
+
+            {/* Publish actions */}
+            <div className="space-y-2 pt-1">
+              {d.wp_edit_link ? (
+                <a
+                  href={String(d.wp_edit_link)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="fp-btn fp-btn-primary w-full"
+                  style={{ width: "100%" }}
+                >
+                  Open in WordPress →
+                </a>
+              ) : (
+                <form action={publishDraftToWPAction}>
+                  <input type="hidden" name="draftId" value={String(d.id)} />
+                  <input type="hidden" name="status" value="draft" />
+                  <SubmitButton
+                    className="fp-btn fp-btn-primary"
+                    style={{ width: "100%" }}
+                    pendingLabel="Saving draft"
+                  >
+                    Push to WordPress draft
+                  </SubmitButton>
+                </form>
+              )}
+              <button
+                className="w-full py-2 text-[12px]"
+                style={{ color: "var(--fg-subtle)" }}
+              >
+                Schedule for later
+              </button>
+            </div>
+          </aside>
         </div>
-
-        {/* Right rail */}
-        <aside className="col-span-3 border-l border-stone-200 bg-stone-50 p-5">
-          <div className="mb-4 rounded-xl border border-stone-200 bg-white p-3">
-            <div className="mb-2 text-xs uppercase tracking-wider text-stone-500">
-              Voice-match
-            </div>
-            <div className="flex items-center gap-3">
-              <div
-                className={`text-3xl font-light tabular-nums ${
-                  voiceScore >= 75 ? "text-emerald-600" : "text-amber-600"
-                }`}
-              >
-                {voiceScore}
-              </div>
-              <div className="flex-1">
-                <div className="h-1.5 overflow-hidden rounded bg-stone-100">
-                  <div
-                    className={`h-full ${voiceScore >= 75 ? "bg-emerald-500" : "bg-amber-500"}`}
-                    style={{ width: `${Math.min(100, voiceScore)}%` }}
-                  />
-                </div>
-                <div className="mt-0.5 text-[10px] text-stone-500">
-                  Burrows' Delta on function-word distribution
-                </div>
-              </div>
-            </div>
-            <button className="mt-2 w-full rounded border border-stone-200 py-1 text-[11px] text-stone-700 hover:bg-stone-50">
-              Voice-tighten regenerate
-            </button>
-          </div>
-
-          <div className="mb-4 rounded-xl border border-stone-200 bg-white p-3">
-            <div className="mb-2 text-xs uppercase tracking-wider text-stone-500">
-              Angle
-            </div>
-            <div className="space-y-1.5 text-xs">
-              {d.angle_archive ? (
-                <button className="w-full rounded border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-left text-indigo-800">
-                  <div className="font-medium">Archive habit</div>
-                  <div className="text-[10px] text-indigo-600">
-                    {String(d.angle_archive)}
-                  </div>
-                </button>
-              ) : null}
-              {d.angle_gap ? (
-                <button className="w-full rounded border border-stone-200 px-2 py-1.5 text-left hover:bg-stone-50">
-                  <div className="font-medium">Cluster-gap</div>
-                  <div className="text-[10px] text-stone-500">
-                    {String(d.angle_gap)}
-                  </div>
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mb-4 rounded-xl border border-stone-200 bg-white p-3">
-            <div className="mb-2 text-xs uppercase tracking-wider text-stone-500">
-              Quote pool · {quotes.length} in draft
-            </div>
-            <div className="space-y-1 text-[11px]">
-              {quotes.map((q, i) => (
-                <div
-                  key={i}
-                  className="border-l-2 border-emerald-400 pl-2 text-stone-700"
-                >
-                  {q.text.slice(0, 80)}{q.text.length > 80 ? "…" : ""}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-4 rounded-xl border border-dashed border-stone-300 bg-white p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs uppercase tracking-wider text-stone-500">
-                Agent slot
-              </div>
-              <span className="text-[10px] text-stone-400">v1.1+</span>
-            </div>
-            <div className="text-[11px] text-stone-600 leading-snug">
-              Capabilities plug in here. Research agent (v1.1) renders primary
-              sources. Scheduling, analytics, plagiarism follow in v2.
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {d.wp_edit_link ? (
-              <a
-                href={String(d.wp_edit_link)}
-                target="_blank"
-                rel="noreferrer"
-                className="flex w-full items-center justify-center rounded bg-indigo-600 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                Open in WordPress →
-              </a>
-            ) : (
-              <form action={publishDraftToWPAction}>
-                <input type="hidden" name="draftId" value={String(d.id)} />
-                <input type="hidden" name="status" value="draft" />
-                <SubmitButton
-                  className="w-full rounded bg-indigo-600 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
-                  pendingLabel="Saving draft"
-                >
-                  Push to WordPress draft
-                </SubmitButton>
-              </form>
-            )}
-            <button className="w-full py-1.5 text-xs text-stone-500 hover:text-stone-800">
-              Schedule for later
-            </button>
-          </div>
-        </aside>
       </div>
     </div>
   );
