@@ -24,6 +24,7 @@ import {
   bulkAssignSourcesToFolderAction,
 } from "@/lib/v1/actions";
 import { HelpTrigger } from "@/components/Help";
+import { PendingStages, SubmitButton } from "../_components/SubmitButton";
 import {
   listOutlets,
   resolveOutletSourceIds,
@@ -128,12 +129,12 @@ export default async function SourcesPage({ searchParams }: PageProps) {
         {!isEmpty ? (
           <div className="flex items-center gap-2">
             <form action={pollAllSourcesAction}>
-              <button
-                type="submit"
+              <SubmitButton
                 className="rounded border border-stone-200 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+                pendingLabel="Polling"
               >
                 ↻ Poll all
-              </button>
+              </SubmitButton>
             </form>
             <div className="inline-flex rounded-lg border border-stone-200 bg-white p-0.5 text-xs">
               <Link
@@ -216,17 +217,26 @@ https://hnrss.org/frontpage`}
             className="w-full rounded border border-stone-300 px-3 py-2 font-mono text-xs"
           />
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
+            <SubmitButton
               className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
+              pendingLabel="Adding"
             >
               Add
-            </button>
+            </SubmitButton>
             <FolderSelect folders={folders} />
             <span className="text-[11px] text-stone-500">
               kind auto-detected from URL pattern
             </span>
           </div>
+          <PendingStages
+            title="Adding sources"
+            stages={[
+              "Reading pasted feed URLs",
+              "Detecting source type",
+              "Saving active feeds",
+              "Refreshing clusters",
+            ]}
+          />
         </form>
       </section>
 
@@ -248,12 +258,12 @@ https://hnrss.org/frontpage`}
               placeholder="New folder name"
               className="rounded border border-stone-300 px-2 py-1 text-xs"
             />
-            <button
-              type="submit"
+            <SubmitButton
               className="rounded border border-stone-200 px-2.5 py-1 text-xs hover:bg-stone-50"
+              pendingLabel="Creating"
             >
               + Folder
-            </button>
+            </SubmitButton>
           </form>
         </div>
         {folders.length > 0 ? (
@@ -274,35 +284,35 @@ https://hnrss.org/frontpage`}
                       maxLength={60}
                       className="rounded border border-stone-200 px-2 py-1 text-xs"
                     />
-                    <button
-                      type="submit"
+                    <SubmitButton
                       className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                      pendingLabel="Saving"
                     >
                       Save
-                    </button>
+                    </SubmitButton>
                   </form>
                   <span className="text-stone-500">{count} source{count === 1 ? "" : "s"}</span>
                   <span className="ml-auto flex items-center gap-1.5">
                     <form action={pollFolderAction}>
                       <input type="hidden" name="folderId" value={f.id} />
-                      <button
-                        type="submit"
+                      <SubmitButton
                         className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
                         disabled={count === 0}
                         title={count === 0 ? "Empty folder" : "Poll all sources in this folder"}
+                        pendingLabel="Polling"
                       >
                         ↻ Poll folder
-                      </button>
+                      </SubmitButton>
                     </form>
                     <form action={deleteFolderAction}>
                       <input type="hidden" name="folderId" value={f.id} />
-                      <button
-                        type="submit"
+                      <SubmitButton
                         className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
                         title="Delete folder; sources move to Ungrouped"
+                        pendingLabel="Removing"
                       >
                         Remove
-                      </button>
+                      </SubmitButton>
                     </form>
                   </span>
                 </li>
@@ -579,12 +589,12 @@ function SourceExplorer({
         </div>
         <div className="flex items-center gap-2">
           <FolderSelect folders={folders} />
-          <button
-            type="submit"
+          <SubmitButton
             className="rounded border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+            pendingLabel="Moving"
           >
             Move selected
-          </button>
+          </SubmitButton>
         </div>
       </form>
 
@@ -688,21 +698,21 @@ function SourceExplorer({
                           </Link>
                           <form action={pollSourceAction}>
                             <input type="hidden" name="sourceId" value={row.id} />
-                            <button
-                              type="submit"
+                            <SubmitButton
                               className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                              pendingLabel="Polling"
                             >
                               Poll
-                            </button>
+                            </SubmitButton>
                           </form>
                           <form action={deleteSourceAction}>
                             <input type="hidden" name="sourceId" value={row.id} />
-                            <button
-                              type="submit"
+                            <SubmitButton
                               className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                              pendingLabel="Removing"
                             >
                               Remove
-                            </button>
+                            </SubmitButton>
                           </form>
                         </div>
                       </div>
@@ -744,14 +754,14 @@ function GroupedCards({
             </span>
             <form action={pollFolderAction} className="ml-auto">
               <input type="hidden" name="folderId" value={group.id ?? ""} />
-              <button
-                type="submit"
+              <SubmitButton
                 className="rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:bg-stone-50"
                 disabled={group.rows.length === 0}
                 title="Poll every source in this folder"
+                pendingLabel="Polling"
               >
                 ↻ Poll folder
-              </button>
+              </SubmitButton>
             </form>
           </div>
           <SourceCards
@@ -840,12 +850,12 @@ function SourceCards({
                 folders={folders}
                 currentFolderId={row.folder_id}
               />
-              <button
-                type="submit"
+              <SubmitButton
                 className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                pendingLabel="Moving"
               >
                 Move
-              </button>
+              </SubmitButton>
             </form>
 
             {/* Outlet chips: explicit assignment, or "All outlets" default */}
@@ -890,25 +900,25 @@ function SourceCards({
                 </Link>
                 <form action={pollSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="fp-btn fp-btn-ghost"
-                    style={{ padding: "4px 8px", fontSize: 11 }}
+                    style={{ padding: "4px 8px", fontSize: 11, minWidth: 30 }}
                     title="Poll now"
+                    pendingLabel=""
                   >
                     ↻
-                  </button>
+                  </SubmitButton>
                 </form>
                 <form action={deleteSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="fp-btn fp-btn-danger"
-                    style={{ padding: "4px 8px", fontSize: 11 }}
+                    style={{ padding: "4px 8px", fontSize: 11, minWidth: 30 }}
                     title="Remove"
+                    pendingLabel=""
                   >
                     ×
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </div>
@@ -968,12 +978,12 @@ function SourceTable({
                 <form action={assignSourceToFolderAction} className="flex items-center gap-1">
                   <input type="hidden" name="sourceId" value={row.id} />
                   <FolderSelect folders={folders} currentFolderId={row.folder_id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-stone-200 px-1.5 py-1 text-[10px] hover:bg-stone-50"
+                    pendingLabel="Moving"
                   >
                     Move
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
               <div className="col-span-1">
@@ -990,21 +1000,21 @@ function SourceTable({
               <div className="col-span-2 flex justify-end gap-1.5">
                 <form action={pollSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                    pendingLabel="Polling"
                   >
                     Poll
-                  </button>
+                  </SubmitButton>
                 </form>
                 <form action={deleteSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                    pendingLabel="Removing"
                   >
                     Remove
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </div>
