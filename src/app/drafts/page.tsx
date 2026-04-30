@@ -7,8 +7,14 @@
 
 import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
+import { deleteDraftAction } from "@/lib/v1/actions";
 
 export const dynamic = "force-dynamic";
+
+// A draft is "stale" once it stops being a same-day artifact. The product
+// thesis is reading-to-writing within the day; flag drafts that missed it
+// so the user notices abandoned work instead of letting it pile up silently.
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 interface DraftRow {
   id: string;
@@ -95,44 +101,72 @@ export default async function DraftsPage() {
         </div>
       ) : (
         <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
-          {drafts.map((d) => (
-            <li key={d.id}>
-              <Link
-                href={`/editor/${d.id}`}
-                className="flex items-start gap-4 px-5 py-4 transition hover:bg-stone-50"
+          {drafts.map((d) => {
+            const isStale = Date.now() - d.created_at > STALE_AFTER_MS;
+            return (
+              <li
+                key={d.id}
+                className="flex items-start gap-3 px-5 py-4 transition hover:bg-stone-50"
               >
-                <div className="flex-1 min-w-0">
-                  <div className="line-clamp-2 text-sm font-medium text-stone-900">
-                    {d.headline}
+                <Link
+                  href={`/editor/${d.id}`}
+                  className="flex flex-1 items-start gap-4 min-w-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="line-clamp-2 text-sm font-medium text-stone-900">
+                      {d.headline}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
+                      <span>{relativeTime(d.created_at)}</span>
+                      <span className="text-stone-300">·</span>
+                      <span>
+                        {d.outlet_display_name ??
+                          (d.outlet_base_url
+                            ? hostFromUrl(d.outlet_base_url)
+                            : "no outlet")}
+                      </span>
+                      {d.source_count !== null ? (
+                        <>
+                          <span className="text-stone-300">·</span>
+                          <span>
+                            {d.source_count}{" "}
+                            {d.source_count === 1 ? "source" : "sources"}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
-                    <span>{relativeTime(d.created_at)}</span>
-                    <span className="text-stone-300">·</span>
-                    <span>
-                      {d.outlet_display_name ??
-                        (d.outlet_base_url
-                          ? hostFromUrl(d.outlet_base_url)
-                          : "no outlet")}
-                    </span>
-                    {d.source_count !== null ? (
-                      <>
-                        <span className="text-stone-300">·</span>
-                        <span>
-                          {d.source_count}{" "}
-                          {d.source_count === 1 ? "source" : "sources"}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-                <VoiceChip score={d.voice_match_score} />
-                <div className="text-stone-400">→</div>
-              </Link>
-            </li>
-          ))}
+                  {isStale ? <StaleChip /> : null}
+                  <VoiceChip score={d.voice_match_score} />
+                </Link>
+                <form action={deleteDraftAction}>
+                  <input type="hidden" name="draftId" value={d.id} />
+                  <button
+                    type="submit"
+                    className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                    title="Delete this draft"
+                    aria-label={`Delete draft: ${d.headline}`}
+                  >
+                    Delete
+                  </button>
+                </form>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
+  );
+}
+
+function StaleChip() {
+  return (
+    <span
+      className="shrink-0 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700"
+      title="Created more than 24 hours ago. Same-day drafting is the goal; consider finishing or deleting."
+    >
+      Stale
+    </span>
   );
 }
 

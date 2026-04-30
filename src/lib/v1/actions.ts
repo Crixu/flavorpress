@@ -496,6 +496,50 @@ export async function deleteSourceAction(formData: FormData) {
   revalidatePath("/sources");
 }
 
+/**
+ * Delete an unsent draft. Refuses if the draft has already been pushed to
+ * WordPress; once a draft has a wp_post_id, the canonical version lives on
+ * the user's site and removing it should happen in WordPress.
+ *
+ * Form fields: draftId, redirectTo (optional; when set, redirect there
+ * after deletion. The editor uses this to bounce back to /drafts).
+ */
+export async function deleteDraftAction(formData: FormData) {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const r = await db.execute({
+    sql: `SELECT wp_post_id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (r.rows[0]!.wp_post_id) {
+    throw new Error(
+      "Draft is already in WordPress. Delete it from your site instead.",
+    );
+  }
+
+  await db.execute({
+    sql: `DELETE FROM fact_check_results WHERE draft_id = ?`,
+    args: [draftId],
+  });
+  await db.execute({
+    sql: `DELETE FROM originality_results WHERE draft_id = ?`,
+    args: [draftId],
+  });
+  await db.execute({
+    sql: `DELETE FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+
+  revalidatePath("/drafts");
+  revalidatePath("/");
+
+  const redirectTo = String(formData.get("redirectTo") ?? "");
+  if (redirectTo === "/drafts") redirect("/drafts");
+}
+
 export async function buildVoiceProfileAction(formData: FormData) {
   await ensureSchema();
   await ensureSingleUser();
