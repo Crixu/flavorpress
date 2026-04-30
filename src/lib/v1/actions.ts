@@ -497,6 +497,9 @@ export async function deleteSourceAction(formData: FormData) {
     args: [sourceId, SINGLE_USER_ID],
   });
   revalidatePath("/sources");
+
+  const redirectTo = String(formData.get("redirectTo") ?? "");
+  if (redirectTo === "/sources") redirect("/sources");
 }
 
 /**
