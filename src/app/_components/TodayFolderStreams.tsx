@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { pollFolderAction } from "@/lib/v1/actions";
+import { dismissClusterAction, pollFolderAction } from "@/lib/v1/actions";
 import { ClusterActions } from "./ClusterActions";
 
 export interface TodayClusterPreview {
@@ -49,34 +49,13 @@ const INITIAL_VISIBLE = 1;
 const MORE_STEP = 2;
 
 export function TodayFolderStreams({ previews }: Props) {
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
 
   const streams = useMemo(() => buildStreams(previews), [previews]);
-  const visibleStreams = streams.filter((stream) => !dismissed.has(stream.id));
-
-  if (visibleStreams.length === 0) {
-    return (
-      <div className="fp-card p-6">
-        <div className="fp-eyebrow">Cleared for now</div>
-        <h2 className="mt-2 text-lg font-semibold">No folder streams in view.</h2>
-        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-          Bring them back when you want another pass through today&apos;s reading.
-        </p>
-        <button
-          type="button"
-          className="fp-btn fp-btn-primary fp-press mt-4"
-          onClick={() => setDismissed(new Set())}
-        >
-          Show streams
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
-      {visibleStreams.map((stream) => {
+      {streams.map((stream) => {
         const visibleCount = visibleCounts[stream.id] ?? INITIAL_VISIBLE;
         const shown = stream.clusters.slice(0, visibleCount);
         const remaining = stream.clusters.length - shown.length;
@@ -85,13 +64,6 @@ export function TodayFolderStreams({ previews }: Props) {
             <FolderStreamHeader
               stream={stream}
               remaining={remaining}
-              onDismiss={() => {
-                setDismissed((current) => {
-                  const next = new Set(current);
-                  next.add(stream.id);
-                  return next;
-                });
-              }}
               onMore={() => {
                 setVisibleCounts((current) => ({
                   ...current,
@@ -142,12 +114,10 @@ function buildStreams(previews: TodayClusterPreview[]): TodayFolderStream[] {
 function FolderStreamHeader({
   stream,
   remaining,
-  onDismiss,
   onMore,
 }: {
   stream: TodayFolderStream;
   remaining: number;
-  onDismiss: () => void;
   onMore: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -188,9 +158,6 @@ function FolderStreamHeader({
         >
           {pending ? "Refreshing" : "Refresh"}
         </button>
-        <button type="button" className="fp-btn fp-btn-ghost" onClick={onDismiss}>
-          Not now
-        </button>
       </div>
     </div>
   );
@@ -205,11 +172,26 @@ function ClusterCard({
   rank: number;
   isTop: boolean;
 }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const c = preview.cluster;
   const headline = preview.items[0]?.title ?? "Untitled cluster";
   const fit = c.signals?.composite ?? 0;
+
+  function dismiss() {
+    const fd = new FormData();
+    fd.set("clusterId", c.id);
+    startTransition(async () => {
+      await dismissClusterAction(fd);
+      router.refresh();
+    });
+  }
+
   return (
-    <article className={`fp-card ${isTop ? "fp-card-feature" : "fp-card-hover"} relative p-6`}>
+    <article
+      className={`fp-card ${isTop ? "fp-card-feature" : "fp-card-hover"} relative p-6`}
+      style={pending ? { opacity: 0.5 } : undefined}
+    >
       {isTop ? (
         <div
           className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white"
@@ -270,8 +252,16 @@ function ClusterCard({
         </div>
       ) : null}
 
-      <div className="mt-5">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <ClusterActions clusterId={c.id} draft={preview.draft} />
+        <button
+          type="button"
+          className="fp-btn fp-btn-ghost"
+          onClick={dismiss}
+          disabled={pending}
+        >
+          {pending ? "Dismissing" : "Not now"}
+        </button>
       </div>
     </article>
   );

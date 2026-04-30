@@ -308,6 +308,17 @@ export async function bulkAssignSourcesToFolderAction(formData: FormData) {
   revalidatePath("/sources");
 }
 
+export async function dismissClusterAction(formData: FormData) {
+  await ensureSchema();
+  const clusterId = String(formData.get("clusterId") ?? "");
+  if (!clusterId) throw new Error("clusterId required.");
+  await db.execute({
+    sql: `UPDATE clusters SET state = 'dismissed' WHERE id = ? AND user_id = ?`,
+    args: [clusterId, SINGLE_USER_ID],
+  });
+  revalidatePath("/");
+}
+
 export async function pollFolderAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
