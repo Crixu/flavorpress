@@ -276,8 +276,8 @@ function ClusterCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
-        {dedupeSourceChips(preview.items).map((chip) => (
-          <span key={chip.sourceId} className="fp-chip">
+        {dedupeSourceChips(preview.items).map((chip, idx) => (
+          <span key={`${idx}:${chip.sourceId}`} className="fp-chip">
             {chip.label}
             {chip.count > 1 ? (
               <span style={{ color: "var(--fg-muted)" }}> · {chip.count}</span>
