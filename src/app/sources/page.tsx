@@ -16,6 +16,7 @@ import {
   deleteSourceAction,
 } from "@/lib/v1/actions";
 import { HelpTrigger } from "@/components/Help";
+import { PendingStages, SubmitButton } from "../_components/SubmitButton";
 import {
   listOutlets,
   resolveOutletSourceIds,
@@ -109,12 +110,12 @@ export default async function SourcesPage({ searchParams }: PageProps) {
         {!isEmpty ? (
           <div className="flex items-center gap-2">
             <form action={pollAllSourcesAction}>
-              <button
-                type="submit"
+              <SubmitButton
                 className="rounded border border-stone-200 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+                pendingLabel="Polling"
               >
                 ↻ Poll all
-              </button>
+              </SubmitButton>
             </form>
             <div className="inline-flex rounded-lg border border-stone-200 bg-white p-0.5 text-xs">
               <Link
@@ -193,16 +194,25 @@ https://hnrss.org/frontpage`}
             className="w-full rounded border border-stone-300 px-3 py-2 font-mono text-xs"
           />
           <div className="flex items-center gap-2">
-            <button
-              type="submit"
+            <SubmitButton
               className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
+              pendingLabel="Adding"
             >
               Add
-            </button>
+            </SubmitButton>
             <span className="text-[11px] text-stone-500">
               kind auto-detected from URL pattern
             </span>
           </div>
+          <PendingStages
+            title="Adding sources"
+            stages={[
+              "Reading pasted feed URLs",
+              "Detecting source type",
+              "Saving active feeds",
+              "Refreshing clusters",
+            ]}
+          />
         </form>
       </section>
 
@@ -478,25 +488,25 @@ function SourceCards({
                 </Link>
                 <form action={pollSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="fp-btn fp-btn-ghost"
-                    style={{ padding: "4px 8px", fontSize: 11 }}
+                    style={{ padding: "4px 8px", fontSize: 11, minWidth: 30 }}
                     title="Poll now"
+                    pendingLabel=""
                   >
                     ↻
-                  </button>
+                  </SubmitButton>
                 </form>
                 <form action={deleteSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="fp-btn fp-btn-danger"
-                    style={{ padding: "4px 8px", fontSize: 11 }}
+                    style={{ padding: "4px 8px", fontSize: 11, minWidth: 30 }}
                     title="Remove"
+                    pendingLabel=""
                   >
                     ×
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </div>
@@ -559,21 +569,21 @@ function SourceTable({ rows }: { rows: SourceRow[] }) {
               <div className="col-span-2 flex justify-end gap-1.5">
                 <form action={pollSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
+                    pendingLabel="Polling"
                   >
                     Poll
-                  </button>
+                  </SubmitButton>
                 </form>
                 <form action={deleteSourceAction}>
                   <input type="hidden" name="sourceId" value={row.id} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                    pendingLabel="Removing"
                   >
                     Remove
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </div>

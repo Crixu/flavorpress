@@ -17,6 +17,10 @@ import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
 import { getOutlet } from "@/lib/v1/outlets";
 import { HelpTrigger } from "@/components/Help";
 import {
+  PendingMessage,
+  SubmitButton,
+} from "@/app/_components/SubmitButton";
+import {
   addVoiceTermAction,
   removeVoiceTermAction,
   buildVoiceProfileAction,
@@ -105,9 +109,15 @@ export default async function VoiceDetailPage({ params }: PageProps) {
           </p>
           <form action={buildVoiceProfileAction} className="mt-4">
             <input type="hidden" name="outletId" value={outletId} />
-            <button type="submit" className="fp-btn fp-btn-primary">
+            <SubmitButton
+              className="fp-btn fp-btn-primary"
+              pendingLabel="Building voice"
+            >
               Build voice profile
-            </button>
+            </SubmitButton>
+            <PendingMessage>
+              Pulling recent posts and extracting this outlet's voice.
+            </PendingMessage>
           </form>
         </section>
       ) : (
@@ -126,9 +136,12 @@ export default async function VoiceDetailPage({ params }: PageProps) {
               </h2>
               <form action={buildVoiceProfileAction}>
                 <input type="hidden" name="outletId" value={outletId} />
-                <button type="submit" className="fp-btn fp-btn-ghost">
+                <SubmitButton
+                  className="fp-btn fp-btn-ghost"
+                  pendingLabel="Re-training"
+                >
                   ↻ Re-train from archive
-                </button>
+                </SubmitButton>
               </form>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -304,9 +317,12 @@ function ChipEditor({
           placeholder={placeholder}
           className="fp-input flex-1 min-w-[240px]"
         />
-        <button type="submit" className="fp-btn fp-btn-ghost">
+        <SubmitButton
+          className="fp-btn fp-btn-ghost"
+          pendingLabel="Adding"
+        >
           + Add
-        </button>
+        </SubmitButton>
       </form>
       {terms.length === 0 ? (
         <div
@@ -326,15 +342,15 @@ function ChipEditor({
               <input type="hidden" name="outletId" value={outletId} />
               <input type="hidden" name="list" value={list} />
               <input type="hidden" name="term" value={t} />
-              <button
-                type="submit"
+              <SubmitButton
                 className={`${chipClass} inline-flex items-center gap-1 transition hover:opacity-80`}
                 style={{ ...chipStyle, cursor: "pointer" }}
                 title={`Remove "${t}"`}
+                pendingLabel="Removing"
               >
                 <span>{t}</span>
                 <span style={{ opacity: 0.6 }}>×</span>
-              </button>
+              </SubmitButton>
             </form>
           ))}
         </div>

@@ -12,6 +12,10 @@ import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
 import { HelpTrigger } from "@/components/Help";
 import {
+  PendingMessage,
+  SubmitButton,
+} from "@/app/_components/SubmitButton";
+import {
   pollSourceAction,
   deleteSourceAction,
   assignSourceOutletsAction,
@@ -175,15 +179,21 @@ export default async function SourceDetailPage({ params }: PageProps) {
       <div className="flex flex-wrap gap-2">
         <form action={pollSourceAction}>
           <input type="hidden" name="sourceId" value={id} />
-          <button type="submit" className="fp-btn fp-btn-ghost">
+          <SubmitButton
+            className="fp-btn fp-btn-ghost"
+            pendingLabel="Polling source"
+          >
             ↻ Poll now
-          </button>
+          </SubmitButton>
         </form>
         <form action={deleteSourceAction}>
           <input type="hidden" name="sourceId" value={id} />
-          <button type="submit" className="fp-btn fp-btn-danger">
+          <SubmitButton
+            className="fp-btn fp-btn-danger"
+            pendingLabel="Removing source"
+          >
             Remove source
-          </button>
+          </SubmitButton>
         </form>
       </div>
 
@@ -236,9 +246,12 @@ export default async function SourceDetailPage({ params }: PageProps) {
               })}
             </div>
             <div className="flex items-center gap-3">
-              <button type="submit" className="fp-btn fp-btn-primary">
+              <SubmitButton
+                className="fp-btn fp-btn-primary"
+                pendingLabel="Saving assignment"
+              >
                 Save assignment
-              </button>
+              </SubmitButton>
               <span
                 className="text-[11px]"
                 style={{ color: "var(--fg-subtle)" }}
@@ -247,9 +260,12 @@ export default async function SourceDetailPage({ params }: PageProps) {
                   ? "Currently: All outlets (default)"
                   : `Currently assigned to ${assignedOutletIds.size} outlet${
                       assignedOutletIds.size === 1 ? "" : "s"
-                    }`}
+                  }`}
               </span>
             </div>
+            <PendingMessage>
+              Saving which outlet reads this source.
+            </PendingMessage>
           </form>
         </section>
       ) : null}
