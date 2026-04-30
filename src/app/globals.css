@@ -300,6 +300,27 @@ html, body {
   border-radius: var(--radius-sm);
 }
 
+/* Indeterminate progress bar (drafting state) */
+@keyframes fp-bar-slide {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(360%); }
+}
+.fp-bar-indeterminate {
+  left: 0;
+  animation: fp-bar-slide 1.6s var(--ease) infinite;
+}
+
+/* Pulsing ring (status dot + active stage glyph) */
+@keyframes fp-pulse-ring {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  80%  { transform: scale(2.4); opacity: 0;    }
+  100% { transform: scale(2.4); opacity: 0;    }
+}
+.fp-pulse-ring {
+  animation: fp-pulse-ring 1.5s var(--ease) infinite;
+  transform-origin: center;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
