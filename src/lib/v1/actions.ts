@@ -25,6 +25,7 @@ import {
   setDefaultOutlet,
   getOutlet,
   getOutletCredentials,
+  setSourceOutlets,
 } from "./outlets";
 
 function getOrigin(): string {
@@ -327,6 +328,27 @@ export async function buildVoiceProfileAction(formData: FormData) {
   });
 
   revalidatePath("/voice");
+}
+
+/**
+ * Replace a source's outlet assignment. Form fields:
+ *   sourceId
+ *   outletIds (multiple values allowed via repeated `outletIds` field)
+ *
+ * Empty assignment = "All outlets (default)" — meaning the source will be
+ * read by any outlet whose own assignment list is empty.
+ */
+export async function assignSourceOutletsAction(formData: FormData) {
+  await ensureSchema();
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) throw new Error("sourceId required.");
+  const outletIds = formData
+    .getAll("outletIds")
+    .map((v) => String(v))
+    .filter((v) => v.length > 0);
+  await setSourceOutlets(sourceId, outletIds);
+  revalidatePath("/sources");
+  revalidatePath(`/sources/${sourceId}`);
 }
 
 /**

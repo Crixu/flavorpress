@@ -16,11 +16,16 @@ import {
   deleteSourceAction,
 } from "@/lib/v1/actions";
 import { HelpTrigger } from "@/components/Help";
+import {
+  listOutlets,
+  resolveOutletSourceIds,
+  getOutletAssignmentsForSources,
+} from "@/lib/v1/outlets";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; outlet?: string }>;
 }
 
 export default async function SourcesPage({ searchParams }: PageProps) {
@@ -29,6 +34,17 @@ export default async function SourcesPage({ searchParams }: PageProps) {
 
   const sp = await searchParams;
   const view = sp.view === "table" ? "table" : "cards";
+  const outletFilter = sp.outlet && sp.outlet !== "all" ? sp.outlet : null;
+
+  const outlets = await listOutlets(SINGLE_USER_ID);
+
+  // If filtering by an outlet, resolve which source IDs are in scope.
+  // Outlets with no explicit assignment fall back to all sources, so the
+  // filtered view is identical to "All" — that's intentional (zero-config
+  // default; assigning narrows the slice).
+  const inScopeIds: Set<string> | null = outletFilter
+    ? new Set(await resolveOutletSourceIds(SINGLE_USER_ID, outletFilter))
+    : null;
 
   const sourcesR = await db.execute({
     sql: `SELECT s.*,
@@ -37,6 +53,21 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           FROM sources s WHERE s.user_id = ? ORDER BY s.created_at DESC`,
     args: [Date.now() - 24 * 60 * 60 * 1000, SINGLE_USER_ID],
   });
+
+  const allRows = sourcesR.rows as unknown as SourceRow[];
+  const visibleRows = inScopeIds
+    ? allRows.filter((r) => inScopeIds.has(String(r.id)))
+    : allRows;
+
+  const assignments = await getOutletAssignmentsForSources(
+    visibleRows.map((r) => String(r.id)),
+  );
+  const outletDisplayMap = new Map(
+    outlets.map((o) => [
+      o.id,
+      o.displayName ?? hostFromUrl(o.baseUrl),
+    ] as const),
+  );
 
   const stats = await db.execute({
     sql: `SELECT
@@ -53,7 +84,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     ],
   });
 
-  const isEmpty = sourcesR.rows.length === 0;
+  const isEmpty = allRows.length === 0;
+  const filteredEmpty = !isEmpty && visibleRows.length === 0;
 
   return (
     <div className="space-y-6">
@@ -63,7 +95,15 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             What you read
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Sources · {sourcesR.rows.length}
+            Sources · {visibleRows.length}
+            {outletFilter ? (
+              <span
+                className="ml-2 text-sm font-normal"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                in scope for {outletDisplayMap.get(outletFilter) ?? "outlet"}
+              </span>
+            ) : null}
           </h1>
         </div>
         {!isEmpty ? (
@@ -93,6 +133,42 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           </div>
         ) : null}
       </div>
+
+      {/* Outlet filter tabs */}
+      {outlets.length > 0 && !isEmpty ? (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <span
+            className="text-[11px] uppercase tracking-wider"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            Filter by outlet
+          </span>
+          <Link
+            href={view === "table" ? "/sources?view=table" : "/sources"}
+            className={`fp-chip ${
+              !outletFilter ? "fp-chip-indigo" : ""
+            } transition`}
+          >
+            All sources · {allRows.length}
+          </Link>
+          {outlets.map((o) => {
+            const url = view === "table"
+              ? `/sources?view=table&outlet=${o.id}`
+              : `/sources?outlet=${o.id}`;
+            const active = outletFilter === o.id;
+            const display = o.displayName ?? hostFromUrl(o.baseUrl);
+            return (
+              <Link
+                key={o.id}
+                href={url}
+                className={`fp-chip ${active ? "fp-chip-indigo" : ""} transition whitespace-nowrap`}
+              >
+                {display}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
 
       {/* Add sources */}
       <section className="rounded-2xl border border-stone-200 bg-white p-6">
@@ -184,14 +260,35 @@ https://hnrss.org/frontpage`}
             />
           </div>
           <p className="text-xs text-stone-500">
-            Aim for 5+ feeds covering the same beat. Clusters fire when 3+
-            sources cross within 72 hours from at least 2 distinct domains.
+            Aim for 5+ feeds covering the same beat. Clusters fire when the{" "}
+            combined trust of distinct sources crosses 1.0 within 72 hours
+            from at least 2 distinct domains. New sources start at 0.5
+            trust, so two fresh feeds covering the same story already fire.
           </p>
         </section>
+      ) : filteredEmpty ? (
+        <div
+          className="rounded-xl border border-dashed p-8 text-center text-sm"
+          style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
+        >
+          No sources assigned to this outlet yet. The outlet currently
+          inherits all sources by default.{" "}
+          <Link
+            href="/sources"
+            className="font-medium hover:underline"
+            style={{ color: "var(--indigo)" }}
+          >
+            Show all sources →
+          </Link>
+        </div>
       ) : view === "cards" ? (
-        <SourceCards rows={sourcesR.rows as unknown as SourceRow[]} />
+        <SourceCards
+          rows={visibleRows}
+          assignments={assignments}
+          outletDisplayMap={outletDisplayMap}
+        />
       ) : (
-        <SourceTable rows={sourcesR.rows as unknown as SourceRow[]} />
+        <SourceTable rows={visibleRows} />
       )}
 
       {/* Diagnostics */}
@@ -281,7 +378,15 @@ const KIND_META: Record<
   youtube: { icon: "▶", color: "bg-rose-100 text-rose-800", label: "YouTube" },
 };
 
-function SourceCards({ rows }: { rows: SourceRow[] }) {
+function SourceCards({
+  rows,
+  assignments,
+  outletDisplayMap,
+}: {
+  rows: SourceRow[];
+  assignments: Map<string, string[]>;
+  outletDisplayMap: Map<string, string>;
+}) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {rows.map((row) => {
@@ -290,6 +395,7 @@ function SourceCards({ rows }: { rows: SourceRow[] }) {
         const trustPct = Math.round(trust * 100);
         const isPending =
           row.kind === "podcast" || row.kind === "youtube";
+        const assignedOutletIds = assignments.get(String(row.id)) ?? [];
         return (
           <div
             key={row.id}
@@ -328,6 +434,31 @@ function SourceCards({ rows }: { rows: SourceRow[] }) {
               <CardStat label="items" value={String(Number(row.item_count))} />
               <CardStat label="24h" value={String(Number(row.items_24h))} />
               <CardStatTrust value={`${trustPct}%`} />
+            </div>
+
+            {/* Outlet chips: explicit assignment, or "All outlets" default */}
+            <div className="mt-3 flex flex-wrap items-center gap-1">
+              <span
+                className="text-[10px] uppercase tracking-wider"
+                style={{ color: "var(--fg-subtle)" }}
+              >
+                Outlets:
+              </span>
+              {assignedOutletIds.length === 0 ? (
+                <span className="fp-chip" title="Read by every outlet whose own assignment list is empty">
+                  All outlets · default
+                </span>
+              ) : (
+                assignedOutletIds.map((oid) => (
+                  <Link
+                    key={oid}
+                    href={`/sources?outlet=${oid}`}
+                    className="fp-chip fp-chip-indigo transition hover:scale-[1.02]"
+                  >
+                    {outletDisplayMap.get(oid) ?? oid.slice(0, 6)}
+                  </Link>
+                ))
+              )}
             </div>
 
             <div className="mt-3 flex items-center justify-between">

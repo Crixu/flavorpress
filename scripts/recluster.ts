@@ -34,7 +34,8 @@ async function main() {
   });
 
   const items = await db.execute({
-    sql: `SELECT id FROM items WHERE user_id = ? ORDER BY published_at ASC`,
+    sql: `SELECT id, source_id, canonical_url, content_hash
+          FROM items WHERE user_id = ? ORDER BY published_at ASC`,
     args: [SINGLE_USER_ID],
   });
   console.log(`re-running cluster engine on ${items.rows.length} items...`);
@@ -45,7 +46,12 @@ async function main() {
   let processed = 0;
   for (const row of items.rows) {
     const result = await handleItemIngested(
-      { itemId: String(row.id) },
+      {
+        itemId: String(row.id),
+        sourceId: String(row.source_id),
+        canonicalUrl: String(row.canonical_url),
+        contentHash: String(row.content_hash),
+      },
       { userId: SINGLE_USER_ID, traceId: crypto.randomUUID() },
     );
     if (result.clusterId) clustered++;

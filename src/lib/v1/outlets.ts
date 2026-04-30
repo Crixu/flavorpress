@@ -295,3 +295,118 @@ function hostFromUrl(s: string): string {
     return s;
   }
 }
+
+// ===== outlet ↔ source assignment =====
+//
+// An outlet with NO rows in outlet_sources reads from all the user's
+// sources (zero-config default — adding a new outlet inherits the full
+// roster). Once you add a row, assignment narrows: only the listed
+// sources feed that outlet's drafts. Toggle a chip on the source detail
+// page or via the action below.
+
+/**
+ * IDs of sources assigned to an outlet. Returns null if no assignment
+ * rows exist (= "all sources" default — caller falls back to all user
+ * sources).
+ */
+export async function getAssignedSourceIds(
+  outletId: string,
+): Promise<string[] | null> {
+  await ensureSchema();
+  const r = await db.execute({
+    sql: `SELECT source_id FROM outlet_sources WHERE outlet_id = ?`,
+    args: [outletId],
+  });
+  if (r.rows.length === 0) return null;
+  return r.rows.map((row) => String(row.source_id));
+}
+
+/**
+ * Outlet IDs this source is explicitly assigned to. A source not in any
+ * outlet_sources row is implicitly "in scope for all outlets that have no
+ * explicit assignment" — surface that in the UI as "All outlets (default)".
+ */
+export async function getOutletIdsForSource(
+  sourceId: string,
+): Promise<string[]> {
+  await ensureSchema();
+  const r = await db.execute({
+    sql: `SELECT outlet_id FROM outlet_sources WHERE source_id = ?`,
+    args: [sourceId],
+  });
+  return r.rows.map((row) => String(row.outlet_id));
+}
+
+/**
+ * Replace a source's outlet assignment with the given list. If `outletIds`
+ * is empty, the source falls back to "All outlets (default)" — meaning it
+ * will be read by any outlet whose own assignment list is empty.
+ */
+export async function setSourceOutlets(
+  sourceId: string,
+  outletIds: string[],
+): Promise<void> {
+  await ensureSchema();
+  await db.execute({
+    sql: `DELETE FROM outlet_sources WHERE source_id = ?`,
+    args: [sourceId],
+  });
+  if (outletIds.length === 0) return;
+  const now = Date.now();
+  await db.batch(
+    outletIds.map((oid) => ({
+      sql: `INSERT OR IGNORE INTO outlet_sources (outlet_id, source_id, created_at)
+            VALUES (?, ?, ?)`,
+      args: [oid, sourceId, now],
+    })),
+    "write",
+  );
+}
+
+/**
+ * Resolve the actual source IDs an outlet reads from right now. If the
+ * outlet has explicit assignments, returns those. If empty, returns ALL
+ * the user's source IDs (zero-config default). Use this at draft time
+ * and for any per-outlet ranker query.
+ */
+export async function resolveOutletSourceIds(
+  userId: string,
+  outletId: string,
+): Promise<string[]> {
+  await ensureSchema();
+  const explicit = await getAssignedSourceIds(outletId);
+  if (explicit !== null) return explicit;
+  const all = await db.execute({
+    sql: `SELECT id FROM sources WHERE user_id = ?`,
+    args: [userId],
+  });
+  return all.rows.map((row) => String(row.id));
+}
+
+/**
+ * Bulk lookup: outlet assignments for many sources at once. Returns a map
+ * of `sourceId -> outletId[]`. Sources with no rows omit from the map.
+ * Used by the sources index to render outlet chips on every row in one
+ * query instead of N+1.
+ */
+export async function getOutletAssignmentsForSources(
+  sourceIds: string[],
+): Promise<Map<string, string[]>> {
+  await ensureSchema();
+  const map = new Map<string, string[]>();
+  if (sourceIds.length === 0) return map;
+  const placeholders = sourceIds.map(() => "?").join(",");
+  const r = await db.execute({
+    sql: `SELECT source_id, outlet_id FROM outlet_sources
+          WHERE source_id IN (${placeholders})`,
+    args: sourceIds,
+  });
+  for (const row of r.rows) {
+    const sid = String(row.source_id);
+    const oid = String(row.outlet_id);
+    const arr = map.get(sid);
+    if (arr) arr.push(oid);
+    else map.set(sid, [oid]);
+  }
+  return map;
+}

@@ -14,7 +14,9 @@ import { HelpTrigger } from "@/components/Help";
 import {
   pollSourceAction,
   deleteSourceAction,
+  assignSourceOutletsAction,
 } from "@/lib/v1/actions";
+import { listOutlets, getOutletIdsForSource } from "@/lib/v1/outlets";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,9 @@ export default async function SourceDetailPage({ params }: PageProps) {
           ORDER BY published_at DESC LIMIT 30`,
     args: [id],
   });
+
+  const outlets = await listOutlets(SINGLE_USER_ID);
+  const assignedOutletIds = new Set(await getOutletIdsForSource(id));
 
   // For each item that has a cluster_id, list the OTHER sources in that
   // cluster — the "Also covered by" widget.
@@ -181,6 +186,73 @@ export default async function SourceDetailPage({ params }: PageProps) {
           </button>
         </form>
       </div>
+
+      {/* Outlet assignment */}
+      {outlets.length > 0 ? (
+        <section className="fp-card p-5">
+          <div className="mb-2">
+            <div className="fp-eyebrow">Reads into</div>
+            <p
+              className="text-[13px] leading-relaxed"
+              style={{ color: "var(--fg-muted)" }}
+            >
+              Pick which outlets see this source. Leave all unchecked to fall
+              back to the default — every outlet that has no explicit
+              assignment of its own reads from this source.
+            </p>
+          </div>
+          <form action={assignSourceOutletsAction} className="space-y-3">
+            <input type="hidden" name="sourceId" value={id} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              {outlets.map((o) => {
+                const checked = assignedOutletIds.has(o.id);
+                const display =
+                  o.displayName ?? hostFromUrl(String(o.baseUrl));
+                return (
+                  <label
+                    key={o.id}
+                    className="flex cursor-pointer items-start gap-2 rounded-lg p-2 transition hover:bg-[color:var(--bg-subtle)]"
+                  >
+                    <input
+                      type="checkbox"
+                      name="outletIds"
+                      value={o.id}
+                      defaultChecked={checked}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {display}
+                      </div>
+                      <div
+                        className="truncate text-[11px]"
+                        style={{ color: "var(--fg-muted)" }}
+                      >
+                        {o.baseUrl}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="submit" className="fp-btn fp-btn-primary">
+                Save assignment
+              </button>
+              <span
+                className="text-[11px]"
+                style={{ color: "var(--fg-subtle)" }}
+              >
+                {assignedOutletIds.size === 0
+                  ? "Currently: All outlets (default)"
+                  : `Currently assigned to ${assignedOutletIds.size} outlet${
+                      assignedOutletIds.size === 1 ? "" : "s"
+                    }`}
+              </span>
+            </div>
+          </form>
+        </section>
+      ) : null}
 
       {/* Items */}
       <section>
