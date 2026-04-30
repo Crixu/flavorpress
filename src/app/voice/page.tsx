@@ -305,7 +305,16 @@ function OutletCard({
 
       {outlet.connected && profile ? (
         <div className="mt-4">
-          <div className="fp-eyebrow mb-2">Voice profile</div>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="fp-eyebrow">Voice profile</div>
+            <Link
+              href={`/voice/${outlet.id}`}
+              className="text-[11px] font-medium transition hover:underline"
+              style={{ color: "var(--indigo)" }}
+            >
+              View & edit →
+            </Link>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             <MiniStat label="Posts" value={String(archiveSize)} />
             <MiniStat label="Avg sentence" value={`${sentenceMean.toFixed(1)}w`} />
@@ -328,6 +337,7 @@ function OutletCard({
           </div>
         </div>
       ) : null}
+
 
       {outlet.connected && !profile ? (
         <div className="mt-4 rounded-lg border border-dashed p-3 text-[12px]" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>

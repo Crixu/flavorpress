@@ -164,7 +164,7 @@ export function HelpFlyout() {
             </p>
           ))}
 
-          {entry.formula ? (
+          {entry!.formula ? (
             <div className="mt-2">
               <div className="fp-eyebrow mb-1.5">Formula</div>
               <pre
@@ -176,12 +176,12 @@ export function HelpFlyout() {
                     "ui-monospace, SFMono-Regular, Menlo, monospace",
                 }}
               >
-                {entry.formula}
+                {entry!.formula}
               </pre>
             </div>
           ) : null}
 
-          {entry.example ? (
+          {entry!.example ? (
             <div className="mt-2">
               <div className="fp-eyebrow mb-1.5">Example</div>
               <p
@@ -192,16 +192,16 @@ export function HelpFlyout() {
                     "1px solid color-mix(in srgb, var(--indigo) 25%, var(--border))",
                 }}
               >
-                {entry.example}
+                {entry!.example}
               </p>
             </div>
           ) : null}
 
-          {entry.appearsIn && entry.appearsIn.length > 0 ? (
+          {entry!.appearsIn && entry!.appearsIn.length > 0 ? (
             <div className="mt-2">
               <div className="fp-eyebrow mb-1.5">Appears in</div>
               <div className="flex flex-wrap gap-1.5">
-                {entry.appearsIn.map((a) => (
+                {entry!.appearsIn.map((a) => (
                   <span key={a} className="fp-chip">
                     {a}
                   </span>

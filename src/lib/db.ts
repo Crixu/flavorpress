@@ -92,6 +92,19 @@ export async function ensureSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_sources_poll ON sources(active, last_polled_at)`,
       `CREATE INDEX IF NOT EXISTS idx_sources_folder ON sources(folder_id)`,
 
+      // Outlet ↔ source assignment. Empty assignment for an outlet means
+      // "all user sources" (zero-config default). Only present rows
+      // narrow the slice. Cluster engine still runs at user scope so a
+      // story spanning both outlets gets one cluster with one trust sum.
+      `CREATE TABLE IF NOT EXISTS outlet_sources (
+        outlet_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (outlet_id, source_id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_outlet_sources_outlet ON outlet_sources(outlet_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_outlet_sources_source ON outlet_sources(source_id)`,
+
       `CREATE TABLE IF NOT EXISTS items (
         id TEXT PRIMARY KEY,
         source_id TEXT NOT NULL,

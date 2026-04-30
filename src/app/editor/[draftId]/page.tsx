@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
+import { publishDraftToWPAction } from "@/lib/v1/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -70,12 +71,27 @@ export default async function EditorPage({ params }: PageProps) {
           <span className="font-mono text-[10px] text-stone-400">{traceId}</span>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <button className="rounded border border-stone-200 px-3 py-1.5 text-stone-700 hover:bg-stone-50">
-            Save draft
-          </button>
-          <button className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700">
-            Publish to WordPress →
-          </button>
+          {d.wp_edit_link ? (
+            <a
+              href={String(d.wp_edit_link)}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700"
+            >
+              Open in WordPress →
+            </a>
+          ) : (
+            <form action={publishDraftToWPAction}>
+              <input type="hidden" name="draftId" value={String(d.id)} />
+              <input type="hidden" name="status" value="draft" />
+              <button
+                type="submit"
+                className="rounded bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700"
+              >
+                Push to WordPress as draft →
+              </button>
+            </form>
+          )}
         </div>
       </div>
 

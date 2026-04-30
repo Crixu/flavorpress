@@ -1,0 +1,344 @@
+/**
+ * Per-outlet voice profile detail.
+ *
+ * Two halves:
+ *   - Auto-derived stats (read-only): archive size, sentence length stats,
+ *     em-dash density, hedge frequency, quote density, top function words.
+ *     These come from the archive analyzer; the user can rebuild but not
+ *     edit individual values.
+ *   - User-curated lists (editable): banned terms ("don't say 'leverage'")
+ *     and signature terms ("we always use 'shipping' not 'launching'").
+ *     Chip-input UI: type a term, press Add. Click X to remove.
+ */
+
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
+import { getOutlet } from "@/lib/v1/outlets";
+import { HelpTrigger } from "@/components/Help";
+import {
+  addVoiceTermAction,
+  removeVoiceTermAction,
+  buildVoiceProfileAction,
+} from "@/lib/v1/actions";
+
+export const dynamic = "force-dynamic";
+
+interface PageProps {
+  params: Promise<{ outletId: string }>;
+}
+
+export default async function VoiceDetailPage({ params }: PageProps) {
+  await ensureSchema();
+  await ensureSingleUser();
+  const { outletId } = await params;
+  const outlet = await getOutlet(outletId);
+  if (!outlet || outlet.userId !== SINGLE_USER_ID) notFound();
+
+  const r = await db.execute({
+    sql: `SELECT * FROM voice_profiles WHERE outlet_id = ?`,
+    args: [outletId],
+  });
+  const profile = r.rows[0] ?? null;
+
+  const banned: string[] = profile
+    ? (JSON.parse(String(profile.banned_terms ?? "[]")) as string[])
+    : [];
+  const signature: string[] = profile
+    ? (JSON.parse(String(profile.signature_terms ?? "[]")) as string[])
+    : [];
+  const styleYaml = profile ? String(profile.style_sheet_yaml ?? "") : "";
+  const archiveSize = profile ? Number(profile.archive_index_size ?? 0) : 0;
+  const sentenceMean = profile
+    ? Number(profile.sentence_length_mean ?? 0)
+    : 0;
+  const sentenceVar = profile
+    ? Number(profile.sentence_length_variance ?? 0)
+    : 0;
+  const emDash = profile ? Number(profile.em_dash_density ?? 0) : 0;
+  const hedge = profile ? Number(profile.hedge_frequency ?? 0) : 0;
+  const quoteDensity = profile ? Number(profile.quote_density ?? 0) : 0;
+  const lastBuilt = profile ? Number(profile.last_rebuilt_at ?? 0) : 0;
+
+  // Top function words (best effort: stored as packed Float64Array; show top
+  // 10 indices ranked by frequency). For now we render archive size + flag
+  // that fingerprint exists; the per-word view is v1.1.
+  const hasFingerprint =
+    profile && (profile.function_word_distribution as unknown) !== null;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <Link
+          href="/voice"
+          className="text-xs font-medium transition hover:underline"
+          style={{ color: "var(--fg-muted)" }}
+        >
+          ← All outlets
+        </Link>
+      </div>
+
+      <header className="space-y-1.5">
+        <div className="fp-eyebrow">
+          <HelpTrigger id="voice-profile">Voice profile</HelpTrigger>
+        </div>
+        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "26ch" }}>
+          {outlet.displayName ?? outlet.baseUrl}
+        </h1>
+        <a
+          href={outlet.baseUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-mono break-all hover:underline"
+          style={{ color: "var(--fg-muted)" }}
+        >
+          {outlet.baseUrl}
+        </a>
+      </header>
+
+      {!profile ? (
+        <section className="fp-card-feature p-6">
+          <div className="text-base font-semibold">No voice profile yet.</div>
+          <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+            Build the profile from your last 50 published posts. Takes about
+            30 seconds.
+          </p>
+          <form action={buildVoiceProfileAction} className="mt-4">
+            <input type="hidden" name="outletId" value={outletId} />
+            <button type="submit" className="fp-btn fp-btn-primary">
+              Build voice profile
+            </button>
+          </form>
+        </section>
+      ) : (
+        <>
+          {/* Stats grid */}
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold tracking-tight">
+                Fingerprint{" "}
+                <span
+                  className="ml-1 text-xs font-normal"
+                  style={{ color: "var(--fg-subtle)" }}
+                >
+                  auto-derived · read-only
+                </span>
+              </h2>
+              <form action={buildVoiceProfileAction}>
+                <input type="hidden" name="outletId" value={outletId} />
+                <button type="submit" className="fp-btn fp-btn-ghost">
+                  ↻ Re-train from archive
+                </button>
+              </form>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <Stat
+                label="Posts in archive"
+                value={String(archiveSize)}
+                hint="archive-overlap"
+              />
+              <Stat
+                label="Avg sentence"
+                value={`${sentenceMean.toFixed(1)}w`}
+              />
+              <Stat
+                label="Sentence variance"
+                value={sentenceVar.toFixed(1)}
+              />
+              <Stat
+                label="Em-dash / 1k"
+                value={emDash.toFixed(2)}
+              />
+              <Stat
+                label="Hedge / 1k"
+                value={hedge.toFixed(2)}
+              />
+              <Stat
+                label="Quote / 1k"
+                value={quoteDensity.toFixed(2)}
+              />
+            </div>
+            <div
+              className="mt-2 text-[11px]"
+              style={{ color: "var(--fg-muted)" }}
+            >
+              Last built {lastBuilt ? new Date(lastBuilt).toLocaleString() : "—"}
+              {hasFingerprint
+                ? " · function-word distribution captured"
+                : ""}
+            </div>
+          </section>
+
+          {/* Editable: signature terms */}
+          <section>
+            <h2 className="mb-2 text-base font-semibold tracking-tight">
+              <HelpTrigger id="signature-terms">Signature terms</HelpTrigger>
+              <span
+                className="ml-2 text-xs font-normal"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                phrases this voice prefers
+              </span>
+            </h2>
+            <p
+              className="mb-3 text-[13px] leading-relaxed"
+              style={{ color: "var(--fg-muted)" }}
+            >
+              Words and phrases drafts should reach for. The model nudges
+              toward these when generating. Auto-detected from your archive;
+              add or remove freely.
+            </p>
+            <ChipEditor
+              outletId={outletId}
+              list="signature"
+              terms={signature}
+              placeholder="add a signature term, e.g. shipping"
+              variant="emerald"
+            />
+          </section>
+
+          {/* Editable: banned terms */}
+          <section>
+            <h2 className="mb-2 text-base font-semibold tracking-tight">
+              <HelpTrigger id="banned-terms">Banned terms</HelpTrigger>
+              <span
+                className="ml-2 text-xs font-normal"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                words drafts must avoid
+              </span>
+            </h2>
+            <p
+              className="mb-3 text-[13px] leading-relaxed"
+              style={{ color: "var(--fg-muted)" }}
+            >
+              The model rewrites around these. Useful for AI-slop words
+              ("leverage", "delve", "tapestry") or jargon you've outgrown.
+            </p>
+            <ChipEditor
+              outletId={outletId}
+              list="banned"
+              terms={banned}
+              placeholder="add a banned term, e.g. leverage"
+              variant="rose"
+            />
+          </section>
+
+          {/* Style YAML preview */}
+          {styleYaml ? (
+            <section>
+              <h2 className="mb-2 text-base font-semibold tracking-tight">
+                Style sheet (YAML)
+                <span
+                  className="ml-2 text-xs font-normal"
+                  style={{ color: "var(--fg-muted)" }}
+                >
+                  what the model sees
+                </span>
+              </h2>
+              <pre
+                className="overflow-x-auto rounded-lg p-4 text-[12px] leading-relaxed"
+                style={{
+                  background: "var(--bg-subtle)",
+                  border: "1px solid var(--border)",
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Menlo, monospace",
+                }}
+              >
+                {styleYaml}
+              </pre>
+            </section>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="fp-stat">
+      <div className="text-2xl font-light tabular">{value}</div>
+      <div className="text-[11px]" style={{ color: "var(--fg-muted)" }}>
+        {hint ? <HelpTrigger id={hint}>{label}</HelpTrigger> : label}
+      </div>
+    </div>
+  );
+}
+
+function ChipEditor({
+  outletId,
+  list,
+  terms,
+  placeholder,
+  variant,
+}: {
+  outletId: string;
+  list: "banned" | "signature";
+  terms: string[];
+  placeholder: string;
+  variant: "emerald" | "rose";
+}) {
+  const chipClass =
+    variant === "emerald" ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose";
+  const chipStyle =
+    variant === "rose" ? { textDecoration: "line-through" as const } : undefined;
+  return (
+    <div className="space-y-3">
+      <form action={addVoiceTermAction} className="flex flex-wrap gap-2">
+        <input type="hidden" name="outletId" value={outletId} />
+        <input type="hidden" name="list" value={list} />
+        <input
+          type="text"
+          name="term"
+          required
+          maxLength={64}
+          placeholder={placeholder}
+          className="fp-input flex-1 min-w-[240px]"
+        />
+        <button type="submit" className="fp-btn fp-btn-ghost">
+          + Add
+        </button>
+      </form>
+      {terms.length === 0 ? (
+        <div
+          className="rounded-md border border-dashed p-3 text-xs"
+          style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
+        >
+          None yet.
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {terms.map((t) => (
+            <form
+              action={removeVoiceTermAction}
+              key={`${list}-${t}`}
+              className="inline-flex"
+            >
+              <input type="hidden" name="outletId" value={outletId} />
+              <input type="hidden" name="list" value={list} />
+              <input type="hidden" name="term" value={t} />
+              <button
+                type="submit"
+                className={`${chipClass} inline-flex items-center gap-1 transition hover:opacity-80`}
+                style={{ ...chipStyle, cursor: "pointer" }}
+                title={`Remove "${t}"`}
+              >
+                <span>{t}</span>
+                <span style={{ opacity: 0.6 }}>×</span>
+              </button>
+            </form>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
