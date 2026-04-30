@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
+import { HeadlineSelector } from "./HeadlineSelector";
 import { PublishToWpForm } from "./PublishToWpForm";
 
 export const dynamic = "force-dynamic";
@@ -154,24 +155,12 @@ export default async function EditorPage({ params }: PageProps) {
         {/* Center: draft body */}
         <div className="col-span-6 p-8">
           <div className="mx-auto max-w-2xl">
-            <div className="mb-2 text-xs text-stone-500">
-              Headline · 1 of {headlineAlternates.length + 1}
-            </div>
-            <h1 className="mb-2 text-2xl font-semibold leading-tight">
-              {String(d.headline)}
-            </h1>
-            {headlineAlternates.length > 0 ? (
-              <div className="mb-6 flex flex-wrap gap-2 text-[11px]">
-                {headlineAlternates.map((alt, i) => (
-                  <button
-                    key={i}
-                    className="rounded border border-stone-200 px-2 py-0.5 text-stone-600 hover:bg-stone-50"
-                  >
-                    {alt}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <HeadlineSelector
+              draftId={String(d.id)}
+              headline={String(d.headline)}
+              alternates={headlineAlternates}
+              locked={Boolean(d.wp_post_id)}
+            />
 
             <article
               className="prose prose-stone prose-sm max-w-none"
