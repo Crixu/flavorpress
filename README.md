@@ -16,7 +16,7 @@ This repo is the open-source core. Self-host it, bring your own LLM key, run it 
 - **Subscribe** to your own sources: RSS, Reddit, podcasts, YouTube. (Newsletter forwarding and X arrive in v1.1.)
 - **Group** them with a 3-layer cluster engine: canonical URL match, named-entity overlap + title trigram, sentence-embedding cosine.
 - **Rank** clusters with a 3-signal personal model: archive overlap, beat match, source trust. Down-weight any signal per cluster; the ranker learns.
-- **Draft** a 600-word post in your voice via streaming Anthropic Sonnet, with mid-flight Burrows' Delta voice check that cancels and restarts if the draft drifts.
+- **Draft** a 600-word post in your voice via streaming Anthropic Claude, with Haiku as the default and a mid-flight Burrows' Delta voice check that cancels and restarts if the draft drifts.
 - **Publish** to your WordPress site via Application Password, as a draft, scheduled, or live.
 - **Extend** with capabilities. Every internal feature (cluster engine, voice generator, fact-check, originality, source connectors) is a manifest in the capability registry. Future agents (research, scheduling, analytics) plug in via the same contract. The MCP server at `/api/mcp` exposes them to Claude Desktop and other AI agents.
 
@@ -47,8 +47,8 @@ You should see 7 capabilities registered, 3 sources created, 1 cluster fired (en
 
 | Key | Required | Purpose |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | yes | Sonnet calls for the draft generator. Without it, the generator returns a deterministic stub so the loop still closes for local dev. |
-| `ANTHROPIC_DRAFT_MODEL` | no | Model name. Defaults to `claude-sonnet-4-5`. |
+| `ANTHROPIC_API_KEY` | yes | Claude calls for the draft generator. Without it, the generator returns a deterministic stub so the loop still closes for local dev. |
+| `ANTHROPIC_DRAFT_MODEL` | no | Model name. Defaults to `claude-haiku-4-5-20251001`. |
 | `LIBSQL_URL` | no | Set for hosted Turso. Leave unset for local SQLite at `.data/flavorpress.db`. |
 | `LIBSQL_AUTH_TOKEN` | no | Required if `LIBSQL_URL` is set. |
 | `INBOUND_SECRET` | no | Webhook secret for `/api/inbound` (newsletter forwarding, v1.1). |
@@ -230,7 +230,7 @@ src/
 │       ├── cluster-engine.ts   # 3-layer pipeline
 │       ├── ranker.ts           # 3-signal personal ranker
 │       ├── style-sheet.ts      # Burrows' Delta extraction
-│       ├── draft-generator.ts  # streaming Sonnet draft + voice check
+│       ├── draft-generator.ts  # streaming Claude draft + voice check
 │       └── bootstrap.ts        # capability registration
 └── scripts/
     └── v1-smoke.ts             # foundation verification
