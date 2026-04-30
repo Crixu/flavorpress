@@ -11,6 +11,7 @@ export interface TodayClusterPreview {
     id: string;
     formedAt: number;
     firedAt: number | null;
+    latestPublishedAt: number;
     sourceCount: number;
     signals: {
       archiveOverlap: number;
@@ -245,7 +246,7 @@ function ClusterCard({
             </span>
             <span style={{ color: "var(--border-strong)" }}>·</span>
             <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {relativeTime(c.firedAt ?? c.formedAt)}
+              {relativeTime(c.latestPublishedAt)}
             </span>
             <span className="fp-chip fp-chip-emerald ml-1">
               fit {fit.toFixed(2)}

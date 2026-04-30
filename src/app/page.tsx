@@ -85,6 +85,7 @@ export default async function TodayPage() {
           id: c.id,
           formedAt: c.formedAt,
           firedAt: c.firedAt,
+          latestPublishedAt: c.latestPublishedAt,
           sourceCount: c.sourceCount,
           signals: c.signals
             ? {

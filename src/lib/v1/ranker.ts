@@ -19,6 +19,7 @@ import { db, ensureSchema } from "../db";
 import type { Cluster, RankerSignals } from "./types";
 import { RANKER_WEIGHTS } from "./types";
 import { rowToItem, type ItemRow } from "./source-connector";
+import { CLUSTER_WINDOW_MS } from "./cluster-engine";
 
 export async function rankCluster(
   cluster: Cluster,
@@ -158,7 +159,9 @@ export async function topFiredClusters(
   userId: string,
   limit: number,
   folderId: string | null = null,
-): Promise<Array<Cluster & { signals: RankerSignals | null }>> {
+): Promise<
+  Array<Cluster & { signals: RankerSignals | null; latestPublishedAt: number }>
+> {
   await ensureSchema();
   const folderClause =
     folderId === null
@@ -172,15 +175,28 @@ export async function topFiredClusters(
              SELECT 1 FROM items i JOIN sources s ON s.id = i.source_id
              WHERE i.cluster_id = c.id AND s.folder_id = ?
            )`;
-  const args: (string | number)[] = [userId];
+  // Drop clusters whose freshest item is older than the cluster window.
+  // A cluster firing today on months-old items isn't "today's news"; it
+  // shouldn't surface on Today.
+  const freshnessCutoff = Date.now() - CLUSTER_WINDOW_MS;
+  const args: (string | number)[] = [userId, freshnessCutoff];
   if (folderId !== null && folderId !== "ungrouped") args.push(folderId);
   args.push(limit);
   const r = await db.execute({
-    sql: `SELECT c.*, rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite, rs.computed_at
+    sql: `SELECT c.*, rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite, rs.computed_at,
+                 latest.latest_published_at
           FROM clusters c
           LEFT JOIN ranker_signals rs ON rs.cluster_id = c.id AND rs.user_id = c.user_id
-          WHERE c.user_id = ? AND c.state = 'fired' ${folderClause}
-          ORDER BY COALESCE(rs.composite, 0) DESC, c.fired_at DESC
+          LEFT JOIN (
+            SELECT cluster_id, MAX(published_at) AS latest_published_at
+            FROM items WHERE cluster_id IS NOT NULL GROUP BY cluster_id
+          ) latest ON latest.cluster_id = c.id
+          WHERE c.user_id = ? AND c.state = 'fired'
+            AND COALESCE(latest.latest_published_at, c.formed_at) >= ?
+            ${folderClause}
+          ORDER BY COALESCE(rs.composite, 0) DESC,
+                   COALESCE(latest.latest_published_at, c.formed_at) DESC,
+                   c.fired_at DESC
           LIMIT ?`,
     args,
   });
@@ -203,6 +219,10 @@ export async function topFiredClusters(
       ? String(row.capability_version_pin)
       : null,
     state: String(row.state) as Cluster["state"],
+    latestPublishedAt:
+      row.latest_published_at !== null && row.latest_published_at !== undefined
+        ? Number(row.latest_published_at)
+        : Number(row.formed_at),
     signals: row.composite !== null && row.composite !== undefined
       ? {
           clusterId: String(row.id),
