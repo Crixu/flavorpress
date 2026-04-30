@@ -11,6 +11,7 @@
 
 import { db, ensureSchema } from "../db";
 import { getBus } from "./event-bus";
+import { BackoffError } from "./polite-fetch";
 import { traceLogger, newTraceId } from "./trace";
 import type {
   Item,
@@ -82,6 +83,20 @@ export async function runConnector<TRaw>(
   try {
     raws = await connector.fetch(ctx);
   } catch (err) {
+    if (err instanceof BackoffError) {
+      // politeFetch already persisted backoff_until and last_error. Just
+      // log it at warn level and bump last_polled_at so the UI shows we
+      // tried.
+      await log.warn("connector.fetch", `backoff: ${err.message}`, {
+        status: err.status,
+        retryAfterMs: err.retryAfterMs,
+      });
+      await db.execute({
+        sql: `UPDATE sources SET last_polled_at = ? WHERE id = ?`,
+        args: [Date.now(), source.id],
+      });
+      return { ingested: 0, traceId };
+    }
     const message = err instanceof Error ? err.message : String(err);
     await log.error("connector.fetch", `fetch failed: ${message}`);
     await db.execute({

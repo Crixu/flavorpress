@@ -85,6 +85,9 @@ export async function ensureSchema(): Promise<void> {
         poll_interval_seconds INTEGER NOT NULL DEFAULT 300,
         last_polled_at INTEGER,
         last_error TEXT,
+        last_etag TEXT,
+        last_modified TEXT,
+        backoff_until INTEGER,
         active INTEGER DEFAULT 1,
         created_at INTEGER NOT NULL
       )`,
@@ -332,7 +335,7 @@ async function migrateLegacyTables(): Promise<void> {
     // Table will be created clean by CREATE IF NOT EXISTS.
   }
 
-  // sources: check for folder_id column.
+  // sources: check for folder_id and politeness columns.
   try {
     const pragma = await db.execute("PRAGMA table_info(sources)");
     if (pragma.rows.length > 0) {
@@ -341,6 +344,23 @@ async function migrateLegacyTables(): Promise<void> {
         // eslint-disable-next-line no-console
         console.info("[migrate] sources: adding folder_id column");
         await db.execute("ALTER TABLE sources ADD COLUMN folder_id TEXT");
+      }
+      if (!cols.includes("last_etag")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] sources: adding last_etag column");
+        await db.execute("ALTER TABLE sources ADD COLUMN last_etag TEXT");
+      }
+      if (!cols.includes("last_modified")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] sources: adding last_modified column");
+        await db.execute("ALTER TABLE sources ADD COLUMN last_modified TEXT");
+      }
+      if (!cols.includes("backoff_until")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] sources: adding backoff_until column");
+        await db.execute(
+          "ALTER TABLE sources ADD COLUMN backoff_until INTEGER",
+        );
       }
     }
   } catch {
