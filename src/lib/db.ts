@@ -197,6 +197,7 @@ export async function ensureSchema(): Promise<void> {
         banned_terms TEXT,
         signature_terms TEXT,
         anchored_post_ids TEXT,
+        description TEXT,
         last_rebuilt_at INTEGER NOT NULL
       )`,
       `CREATE INDEX IF NOT EXISTS idx_voice_user ON voice_profiles(user_id)`,
@@ -313,6 +314,15 @@ async function migrateLegacyTables(): Promise<void> {
           "[migrate] voice_profiles: dropping legacy table (was keyed on user_id; rebuilding under outlet_id)",
         );
         await db.execute("DROP TABLE voice_profiles");
+      } else {
+        const cols = pragma.rows.map((r) => String(r.name));
+        if (!cols.includes("description")) {
+          // eslint-disable-next-line no-console
+          console.info("[migrate] voice_profiles: adding description column");
+          await db.execute(
+            "ALTER TABLE voice_profiles ADD COLUMN description TEXT",
+          );
+        }
       }
     }
   } catch {

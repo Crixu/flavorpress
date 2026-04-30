@@ -25,6 +25,8 @@ import {
   removeVoiceTermAction,
   buildVoiceProfileAction,
   seedVoiceFromSamplesAction,
+  saveBlogDescriptionAction,
+  deriveBlogDescriptionAction,
 } from "@/lib/v1/actions";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +55,9 @@ export default async function VoiceDetailPage({ params }: PageProps) {
     ? (JSON.parse(String(profile.signature_terms ?? "[]")) as string[])
     : [];
   const styleYaml = profile ? String(profile.style_sheet_yaml ?? "") : "";
+  const description = profile
+    ? String((profile as Record<string, unknown>).description ?? "")
+    : "";
   const archiveSize = profile ? Number(profile.archive_index_size ?? 0) : 0;
   const sentenceMean = profile
     ? Number(profile.sentence_length_mean ?? 0)
@@ -102,28 +107,25 @@ export default async function VoiceDetailPage({ params }: PageProps) {
       </header>
 
       {!profile ? (
-        <>
-          <section className="fp-card-feature p-6">
-            <div className="text-base font-semibold">No voice profile yet.</div>
-            <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-              Build the profile from your last 50 published posts. Takes about
-              30 seconds.
-            </p>
-            <form action={buildVoiceProfileAction} className="mt-4">
-              <input type="hidden" name="outletId" value={outletId} />
-              <SubmitButton
-                className="fp-btn fp-btn-primary"
-                pendingLabel="Building voice"
-              >
-                Build voice profile
-              </SubmitButton>
-              <PendingMessage>
-                Pulling recent posts and extracting this outlet's voice.
-              </PendingMessage>
-            </form>
-          </section>
-          <SeedFromSamples outletId={outletId} />
-        </>
+        <section className="fp-card-feature p-6">
+          <div className="text-base font-semibold">No voice profile yet.</div>
+          <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+            Build the profile from your last 50 published posts. Takes about
+            30 seconds.
+          </p>
+          <form action={buildVoiceProfileAction} className="mt-4">
+            <input type="hidden" name="outletId" value={outletId} />
+            <SubmitButton
+              className="fp-btn fp-btn-primary"
+              pendingLabel="Building voice"
+            >
+              Build voice profile
+            </SubmitButton>
+            <PendingMessage>
+              Pulling recent posts and extracting this outlet's voice.
+            </PendingMessage>
+          </form>
+        </section>
       ) : (
         <>
           {/* Stats grid */}
@@ -185,6 +187,12 @@ export default async function VoiceDetailPage({ params }: PageProps) {
                 : ""}
             </div>
           </section>
+
+          {/* Editable: blog description */}
+          <BlogDescriptionEditor
+            outletId={outletId}
+            description={description}
+          />
 
           {/* Editable: signature terms */}
           <section>
@@ -268,6 +276,8 @@ export default async function VoiceDetailPage({ params }: PageProps) {
           ) : null}
         </>
       )}
+
+      <SeedFromSamples outletId={outletId} hasProfile={!!profile} />
     </div>
   );
 }
@@ -291,19 +301,93 @@ function Stat({
   );
 }
 
-function SeedFromSamples({ outletId }: { outletId: string }) {
+function BlogDescriptionEditor({
+  outletId,
+  description,
+}: {
+  outletId: string;
+  description: string;
+}) {
+  return (
+    <section>
+      <h2 className="mb-2 text-base font-semibold tracking-tight">
+        Blog description
+        <span
+          className="ml-2 text-xs font-normal"
+          style={{ color: "var(--fg-muted)" }}
+        >
+          two or three sentences the drafter sees
+        </span>
+      </h2>
+      <p
+        className="mb-3 text-[13px] leading-relaxed"
+        style={{ color: "var(--fg-muted)" }}
+      >
+        What this blog is about. The model reads it before every draft so
+        clusters get framed in context, not as generic news. Auto-derive
+        pulls from your homepage; edit the result freely.
+      </p>
+      <form
+        action={saveBlogDescriptionAction}
+        className="space-y-3"
+      >
+        <input type="hidden" name="outletId" value={outletId} />
+        <textarea
+          name="description"
+          rows={4}
+          maxLength={1000}
+          defaultValue={description}
+          placeholder="e.g. A blog about distributed systems and the people who run them, written by a former SRE who left the on-call rotation and kept the opinions."
+          className="fp-input w-full"
+          style={{ fontSize: "14px", lineHeight: "1.5" }}
+        />
+        <div className="flex flex-wrap gap-2">
+          <SubmitButton
+            className="fp-btn fp-btn-primary"
+            pendingLabel="Saving"
+          >
+            Save description
+          </SubmitButton>
+        </div>
+      </form>
+      <form action={deriveBlogDescriptionAction} className="mt-2">
+        <input type="hidden" name="outletId" value={outletId} />
+        <SubmitButton
+          className="fp-btn fp-btn-ghost"
+          pendingLabel="Reading homepage"
+        >
+          ↻ Auto-derive from homepage
+        </SubmitButton>
+        <PendingMessage>
+          Reading the site root and homepage to draft a description.
+        </PendingMessage>
+      </form>
+    </section>
+  );
+}
+
+function SeedFromSamples({
+  outletId,
+  hasProfile,
+}: {
+  outletId: string;
+  hasProfile: boolean;
+}) {
   return (
     <section className="fp-card p-6">
       <div className="text-base font-semibold">
-        Brand-new site? Seed from sample writing.
+        {hasProfile
+          ? "Reseed from sample writing."
+          : "Brand-new site? Seed from sample writing."}
       </div>
       <p
         className="mt-1 text-sm leading-relaxed"
         style={{ color: "var(--fg-muted)" }}
       >
-        Paste at least 200 words of your prose from anywhere; an old post, a
-        draft, an essay. We extract the same fingerprint we would build from
-        your archive. Separate multiple samples with a line containing only{" "}
+        {hasProfile
+          ? "Replace the current fingerprint by pasting fresh prose; an old post, a draft, an essay. Your signature and banned terms are recomputed from the new sample."
+          : "Paste at least 200 words of your prose from anywhere; an old post, a draft, an essay. We extract the same fingerprint we would build from your archive."}{" "}
+        Separate multiple samples with a line containing only{" "}
         <code className="rounded bg-[color:var(--bg-subtle)] px-1">---</code>.
       </p>
       <form action={seedVoiceFromSamplesAction} className="mt-4 space-y-3">
@@ -325,12 +409,14 @@ function SeedFromSamples({ outletId }: { outletId: string }) {
         />
         <SubmitButton
           className="fp-btn fp-btn-primary"
-          pendingLabel="Seeding voice"
+          pendingLabel={hasProfile ? "Reseeding voice" : "Seeding voice"}
         >
-          Seed voice from samples
+          {hasProfile ? "Reseed voice from samples" : "Seed voice from samples"}
         </SubmitButton>
         <PendingMessage>
-          Extracting a voice fingerprint from your pasted samples.
+          {hasProfile
+            ? "Replacing the fingerprint with one extracted from your pasted samples."
+            : "Extracting a voice fingerprint from your pasted samples."}
         </PendingMessage>
       </form>
     </section>

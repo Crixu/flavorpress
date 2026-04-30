@@ -130,6 +130,7 @@ export interface VoiceProfile {
   bannedTerms: string[];
   signatureTerms: string[];
   anchoredPostIds: string[];
+  description: string | null;
   lastRebuiltAt: number;
 }
 

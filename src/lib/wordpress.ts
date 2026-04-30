@@ -308,6 +308,78 @@ export function decodePreflight(s: string | null): PreflightResult | null {
   }
 }
 
+export interface WPSiteIdentity {
+  name: string;
+  tagline: string;
+  homeUrl: string;
+}
+
+/**
+ * Fetch the unauthenticated WP root descriptor. Returns the site name,
+ * tagline (`bloginfo('description')`), and the canonical home URL. All WP
+ * sites with the REST API expose this; no app password needed.
+ */
+export async function fetchSiteIdentity(
+  baseUrl: string,
+): Promise<WPSiteIdentity | null> {
+  const root = baseUrl.replace(/\/$/, "");
+  try {
+    const res = await fetch(`${root}/wp-json/`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      name?: string;
+      description?: string;
+      home?: string;
+      url?: string;
+    };
+    return {
+      name: String(data.name ?? ""),
+      tagline: String(data.description ?? ""),
+      homeUrl: String(data.home ?? data.url ?? root),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the homepage HTML and extract the first chunk of readable prose.
+ * Best-effort: strips scripts, styles, and tags; returns the first ~2000
+ * chars so a downstream summarizer has substance without paying for a
+ * whole archive page.
+ */
+export async function fetchHomepageProse(
+  homeUrl: string,
+  charBudget = 2000,
+): Promise<string> {
+  try {
+    const res = await fetch(homeUrl, {
+      headers: { Accept: "text/html" },
+    });
+    if (!res.ok) return "";
+    const html = await res.text();
+    const stripped = html
+      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    return stripped.slice(0, charBudget);
+  } catch {
+    return "";
+  }
+}
+
 /** Pull the user's last N posts. Used by the voice profile build. */
 export async function listRecentPosts(
   creds: WPCredentials,
