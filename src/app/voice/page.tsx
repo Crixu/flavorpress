@@ -317,7 +317,7 @@ function OutletCard({
         </div>
       ) : null}
 
-      {outlet.connected && profile ? (
+      {outlet.connected ? (
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
             <div className="fp-eyebrow">Voice profile</div>
@@ -326,37 +326,38 @@ function OutletCard({
               className="text-[11px] font-medium transition hover:underline"
               style={{ color: "var(--indigo)" }}
             >
-              View & edit →
+              {profile ? "View & edit →" : "Edit →"}
             </Link>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <MiniStat label="Posts" value={String(archiveSize)} />
-            <MiniStat label="Avg sentence" value={`${sentenceMean.toFixed(1)}w`} />
-            <MiniStat label="Em-dash/1k" value={emDash.toFixed(2)} />
-          </div>
-          <div className="mt-3 flex flex-wrap gap-1">
-            {signature.slice(0, 8).map((t) => (
-              <span key={t} className="fp-chip fp-chip-emerald">
-                {t}
-              </span>
-            ))}
-            {banned.slice(0, 4).map((t) => (
-              <span key={t} className="fp-chip fp-chip-rose" style={{ textDecoration: "line-through" }}>
-                {t}
-              </span>
-            ))}
-          </div>
-          <div className="mt-2 text-[11px]" style={{ color: "var(--fg-muted)" }}>
-            last built {lastBuilt ? new Date(lastBuilt).toLocaleDateString() : "—"}
-          </div>
-        </div>
-      ) : null}
-
-
-      {outlet.connected && !profile ? (
-        <div className="mt-4 rounded-lg border border-dashed p-3 text-[12px]" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>
-          Voice profile not built yet. Pulls your last 50 posts and extracts a
-          stylometric fingerprint.
+          {profile ? (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <MiniStat label="Posts" value={String(archiveSize)} />
+                <MiniStat label="Avg sentence" value={`${sentenceMean.toFixed(1)}w`} />
+                <MiniStat label="Em-dash/1k" value={emDash.toFixed(2)} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {signature.slice(0, 8).map((t) => (
+                  <span key={t} className="fp-chip fp-chip-emerald">
+                    {t}
+                  </span>
+                ))}
+                {banned.slice(0, 4).map((t) => (
+                  <span key={t} className="fp-chip fp-chip-rose" style={{ textDecoration: "line-through" }}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-2 text-[11px]" style={{ color: "var(--fg-muted)" }}>
+                last built {lastBuilt ? new Date(lastBuilt).toLocaleDateString() : "—"}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-lg border border-dashed p-3 text-[12px]" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>
+              Voice profile not built yet. Pulls your last 50 posts and extracts a
+              stylometric fingerprint, or seed from a writing sample.
+            </div>
+          )}
         </div>
       ) : null}
 
