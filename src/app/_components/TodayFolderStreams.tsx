@@ -26,6 +26,7 @@ export interface TodayClusterPreview {
   };
   items: {
     title: string;
+    sourceId: string;
     sourceUrl: string;
     displayName: string;
   }[];
@@ -275,9 +276,12 @@ function ClusterCard({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
-        {preview.items.map((item, i) => (
-          <span key={i} className="fp-chip">
-            {item.displayName || hostFromUrl(item.sourceUrl)}
+        {dedupeSourceChips(preview.items).map((chip) => (
+          <span key={chip.sourceId} className="fp-chip">
+            {chip.label}
+            {chip.count > 1 ? (
+              <span style={{ color: "var(--fg-muted)" }}> · {chip.count}</span>
+            ) : null}
           </span>
         ))}
       </div>
@@ -352,6 +356,30 @@ function relativeTime(ms: number): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   return `${day}d ago`;
+}
+
+function dedupeSourceChips(
+  items: TodayClusterPreview["items"],
+): { sourceId: string; label: string; count: number }[] {
+  const order: string[] = [];
+  const groups = new Map<
+    string,
+    { sourceId: string; label: string; count: number }
+  >();
+  for (const item of items) {
+    const existing = groups.get(item.sourceId);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    order.push(item.sourceId);
+    groups.set(item.sourceId, {
+      sourceId: item.sourceId,
+      label: item.displayName || hostFromUrl(item.sourceUrl),
+      count: 1,
+    });
+  }
+  return order.map((id) => groups.get(id)!);
 }
 
 function hostFromUrl(s: string): string {
