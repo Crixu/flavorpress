@@ -16,10 +16,10 @@ import {
   bulkAssignSourcesToFolderAction,
   deleteSourceAction,
   pauseSourceAction,
-  pollSourceAction,
   resumeSourceAction,
 } from "@/lib/v1/actions";
 import { SubmitButton } from "../../_components/SubmitButton";
+import { PollSourceButton } from "./PollSourceButton";
 
 interface FolderRow {
   id: string;
@@ -233,15 +233,7 @@ function ExplorerRow({
         ) : (
           <SnoozePicker sourceId={row.id} />
         )}
-        <form action={pollSourceAction}>
-          <input type="hidden" name="sourceId" value={row.id} />
-          <SubmitButton
-            className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
-            pendingLabel="Polling"
-          >
-            Poll
-          </SubmitButton>
-        </form>
+        <PollSourceButton sourceId={row.id} />
         <form action={deleteSourceAction}>
           <input type="hidden" name="sourceId" value={row.id} />
           <SubmitButton

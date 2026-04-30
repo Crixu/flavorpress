@@ -6,6 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
@@ -322,7 +323,15 @@ export async function dismissClusterAction(formData: FormData) {
   revalidatePath("/");
 }
 
-export async function pollFolderAction(formData: FormData) {
+/**
+ * Poll every active source in a folder. The actual fetches run in the
+ * background via `after()` so the UI stops waiting on the slowest feed.
+ * Returns the count of sources we kicked off so the client can render
+ * "Refreshing N sources" without round-tripping back.
+ */
+export async function pollFolderAction(
+  formData: FormData,
+): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const folderId = String(formData.get("folderId") ?? "");
@@ -345,27 +354,9 @@ export async function pollFolderAction(formData: FormData) {
           args: [SINGLE_USER_ID, now],
         },
   );
-  const registry = getRegistry();
-  await Promise.all(
-    sources.rows.map(async (row) => {
-      try {
-        await registry.invoke(
-          "source-connector.rss",
-          undefined,
-          { sourceId: String(row.id) },
-          {
-            userId: SINGLE_USER_ID,
-            requestId: crypto.randomUUID(),
-            traceId: crypto.randomUUID(),
-          },
-        );
-      } catch (err) {
-        console.warn(`pollFolder source ${row.id}: ${err}`);
-      }
-    }),
-  );
-  revalidatePath("/sources");
-  revalidatePath("/");
+  const sourceIds = sources.rows.map((row) => String(row.id));
+  after(() => runBackgroundPolls(sourceIds, "pollFolder"));
+  return { sourceCount: sourceIds.length };
 }
 
 /**
@@ -389,24 +380,19 @@ function detectKind(
   return "rss";
 }
 
-export async function pollSourceAction(formData: FormData) {
+export async function pollSourceAction(
+  formData: FormData,
+): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
 
-  const registry = getRegistry();
-  await registry.invoke("source-connector.rss", undefined, { sourceId }, {
-    userId: SINGLE_USER_ID,
-    requestId: crypto.randomUUID(),
-    traceId: crypto.randomUUID(),
-  });
-
-  revalidatePath("/sources");
-  revalidatePath("/");
+  after(() => runBackgroundPolls([sourceId], "pollSource"));
+  return { sourceCount: 1 };
 }
 
-export async function pollAllSourcesAction() {
+export async function pollAllSourcesAction(): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const sources = await db.execute({
@@ -415,14 +401,34 @@ export async function pollAllSourcesAction() {
             AND (paused_until IS NULL OR paused_until <= ?)`,
     args: [SINGLE_USER_ID, Date.now()],
   });
+  const sourceIds = sources.rows.map((row) => String(row.id));
+  after(() => runBackgroundPolls(sourceIds, "pollAll"));
+  return { sourceCount: sourceIds.length };
+}
+
+/**
+ * Run RSS polling for a batch of sources off the request path. Called from
+ * `after()` so the user's click returns instantly; revalidates the routes
+ * the writer is most likely watching once the batch settles, so the next
+ * `router.refresh()` from the client lands on fresh data.
+ */
+async function runBackgroundPolls(
+  sourceIds: string[],
+  label: string,
+): Promise<void> {
+  if (sourceIds.length === 0) {
+    revalidatePath("/sources");
+    revalidatePath("/");
+    return;
+  }
   const registry = getRegistry();
   await Promise.all(
-    sources.rows.map(async (row) => {
+    sourceIds.map(async (sourceId) => {
       try {
         await registry.invoke(
           "source-connector.rss",
           undefined,
-          { sourceId: String(row.id) },
+          { sourceId },
           {
             userId: SINGLE_USER_ID,
             requestId: crypto.randomUUID(),
@@ -430,8 +436,7 @@ export async function pollAllSourcesAction() {
           },
         );
       } catch (err) {
-        // Don't fail the batch on one bad feed; the source row records the error.
-        console.warn(`pollAll source ${row.id}: ${err}`);
+        console.warn(`${label} source ${sourceId}: ${err}`);
       }
     }),
   );
