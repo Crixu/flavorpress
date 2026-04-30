@@ -19,6 +19,8 @@ import {
   pollSourceAction,
   deleteSourceAction,
   assignSourceOutletsAction,
+  pauseSourceAction,
+  resumeSourceAction,
 } from "@/lib/v1/actions";
 import { listOutlets, getOutletIdsForSource } from "@/lib/v1/outlets";
 
@@ -95,6 +97,11 @@ export default async function SourceDetailPage({ params }: PageProps) {
   const trustPct = Math.round(trust * 100);
   const lastErr = source.last_error ? String(source.last_error) : null;
   const isPending = String(source.kind) === "podcast" || String(source.kind) === "youtube";
+  const pausedUntil =
+    source.paused_until !== null && source.paused_until !== undefined
+      ? Number(source.paused_until)
+      : null;
+  const isPaused = pausedUntil !== null && pausedUntil > Date.now();
 
   return (
     <div className="space-y-6">
@@ -175,6 +182,22 @@ export default async function SourceDetailPage({ params }: PageProps) {
         />
       </section>
 
+      {isPaused ? (
+        <div
+          className="rounded-lg p-4 text-sm"
+          style={{
+            background: "var(--amber-tint)",
+            color: "var(--amber)",
+            border:
+              "1px solid color-mix(in srgb, var(--amber) 25%, var(--border))",
+          }}
+        >
+          Snoozed. Bulk polls will skip this source until{" "}
+          {new Date(pausedUntil!).toLocaleString()}. Resume anytime, or hit
+          Poll now to override the snooze just this once.
+        </div>
+      ) : null}
+
       {/* Action bar */}
       <div className="flex flex-wrap gap-2">
         <form action={pollSourceAction}>
@@ -186,6 +209,37 @@ export default async function SourceDetailPage({ params }: PageProps) {
             ↻ Poll now
           </SubmitButton>
         </form>
+        {isPaused ? (
+          <form action={resumeSourceAction}>
+            <input type="hidden" name="sourceId" value={id} />
+            <SubmitButton
+              className="fp-btn fp-btn-ghost"
+              pendingLabel="Resuming"
+            >
+              ▶ Resume
+            </SubmitButton>
+          </form>
+        ) : (
+          <form action={pauseSourceAction} className="flex items-center gap-2">
+            <input type="hidden" name="sourceId" value={id} />
+            <select
+              name="durationHours"
+              defaultValue="24"
+              className="rounded border border-stone-300 bg-white px-2 py-1 text-xs"
+              aria-label="Snooze duration"
+            >
+              <option value="1">1 hour</option>
+              <option value="24">1 day</option>
+              <option value="168">1 week</option>
+            </select>
+            <SubmitButton
+              className="fp-btn fp-btn-ghost"
+              pendingLabel="Snoozing"
+            >
+              💤 Snooze
+            </SubmitButton>
+          </form>
+        )}
         <form action={deleteSourceAction}>
           <input type="hidden" name="sourceId" value={id} />
           <SubmitButton

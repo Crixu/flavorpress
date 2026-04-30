@@ -88,6 +88,7 @@ export async function ensureSchema(): Promise<void> {
         last_etag TEXT,
         last_modified TEXT,
         backoff_until INTEGER,
+        paused_until INTEGER,
         active INTEGER DEFAULT 1,
         created_at INTEGER NOT NULL
       )`,
@@ -360,6 +361,13 @@ async function migrateLegacyTables(): Promise<void> {
         console.info("[migrate] sources: adding backoff_until column");
         await db.execute(
           "ALTER TABLE sources ADD COLUMN backoff_until INTEGER",
+        );
+      }
+      if (!cols.includes("paused_until")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] sources: adding paused_until column");
+        await db.execute(
+          "ALTER TABLE sources ADD COLUMN paused_until INTEGER",
         );
       }
     }

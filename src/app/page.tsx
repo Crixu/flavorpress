@@ -28,8 +28,10 @@ export default async function TodayPage() {
   const hasOutlet = outlets.some((o) => o.connected);
 
   const sourceCountR = await db.execute({
-    sql: `SELECT COUNT(*) AS n FROM sources WHERE user_id = ? AND active = 1`,
-    args: [SINGLE_USER_ID],
+    sql: `SELECT COUNT(*) AS n FROM sources
+          WHERE user_id = ? AND active = 1
+            AND (paused_until IS NULL OR paused_until <= ?)`,
+    args: [SINGLE_USER_ID, Date.now()],
   });
   const sourceCount = Number(sourceCountR.rows[0]!.n);
 
