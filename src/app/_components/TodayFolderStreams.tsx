@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { dismissClusterAction, pollFolderAction } from "@/lib/v1/actions";
 import { ClusterActions } from "./ClusterActions";
+import { useBackgroundPolling } from "./useBackgroundPolling";
 
 export interface TodayClusterPreview {
   cluster: {
@@ -128,15 +129,17 @@ function FolderStreamHeader({
   remaining: number;
   onMore: () => void;
 }) {
-  const [pending, startTransition] = useTransition();
-  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const polling = useBackgroundPolling();
+  const [lastCount, setLastCount] = useState<number | null>(null);
 
   function refresh() {
     const fd = new FormData();
     fd.set("folderId", stream.folderId ?? "");
+    polling.start();
     startTransition(async () => {
-      await pollFolderAction(fd);
-      router.refresh();
+      const result = await pollFolderAction(fd);
+      setLastCount(result.sourceCount);
     });
   }
 
@@ -152,7 +155,18 @@ function FolderStreamHeader({
           {stream.clusters.length} ready {stream.clusters.length === 1 ? "cluster" : "clusters"} from this reading lane.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {polling.active ? (
+          <PollingPill
+            label={
+              lastCount === null
+                ? "Refreshing"
+                : lastCount === 0
+                  ? "Nothing to poll"
+                  : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
+            }
+          />
+        ) : null}
         {remaining > 0 ? (
           <button type="button" className="fp-btn fp-btn-ghost" onClick={onMore}>
             More
@@ -162,12 +176,29 @@ function FolderStreamHeader({
           type="button"
           className="fp-btn fp-btn-ghost"
           onClick={refresh}
-          disabled={pending}
         >
-          {pending ? "Refreshing" : "Refresh"}
+          Refresh
         </button>
       </div>
     </div>
+  );
+}
+
+export function PollingPill({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        color: "var(--fg-muted)",
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="fp-spinner" aria-hidden />
+      <span>{label}</span>
+    </span>
   );
 }
 

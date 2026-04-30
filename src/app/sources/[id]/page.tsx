@@ -16,13 +16,13 @@ import {
   SubmitButton,
 } from "@/app/_components/SubmitButton";
 import {
-  pollSourceAction,
   deleteSourceAction,
   assignSourceOutletsAction,
   pauseSourceAction,
   resumeSourceAction,
 } from "@/lib/v1/actions";
 import { listOutlets, getOutletIdsForSource } from "@/lib/v1/outlets";
+import { PollSourceButton } from "../_components/PollSourceButton";
 
 export const dynamic = "force-dynamic";
 
@@ -200,15 +200,12 @@ export default async function SourceDetailPage({ params }: PageProps) {
 
       {/* Action bar */}
       <div className="flex flex-wrap gap-2">
-        <form action={pollSourceAction}>
-          <input type="hidden" name="sourceId" value={id} />
-          <SubmitButton
-            className="fp-btn fp-btn-ghost"
-            pendingLabel="Polling source"
-          >
-            ↻ Poll now
-          </SubmitButton>
-        </form>
+        <PollSourceButton
+          sourceId={id}
+          className="fp-btn fp-btn-ghost"
+          label="↻ Poll now"
+          busyLabel="Polling source…"
+        />
         {isPaused ? (
           <form action={resumeSourceAction}>
             <input type="hidden" name="sourceId" value={id} />
@@ -242,6 +239,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
         )}
         <form action={deleteSourceAction}>
           <input type="hidden" name="sourceId" value={id} />
+          <input type="hidden" name="redirectTo" value="/sources" />
           <SubmitButton
             className="fp-btn fp-btn-danger"
             pendingLabel="Removing source"
