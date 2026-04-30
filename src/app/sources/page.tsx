@@ -12,10 +12,7 @@
 
 import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
-import {
-  addSourceAction,
-  pollAllSourcesAction,
-} from "@/lib/v1/actions";
+import { addSourceAction } from "@/lib/v1/actions";
 import { PendingStages, SubmitButton } from "../_components/SubmitButton";
 import {
   listOutlets,
@@ -23,6 +20,7 @@ import {
 } from "@/lib/v1/outlets";
 import { FolderChipBar } from "./_components/FolderChipBar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
+import { PollAllButton } from "./_components/PollAllButton";
 
 export const dynamic = "force-dynamic";
 
@@ -166,16 +164,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             ) : null}
           </h1>
         </div>
-        {!isEmpty ? (
-          <form action={pollAllSourcesAction}>
-            <SubmitButton
-              className="rounded border border-stone-200 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
-              pendingLabel="Polling"
-            >
-              ↻ Poll all
-            </SubmitButton>
-          </form>
-        ) : null}
+        {!isEmpty ? <PollAllButton /> : null}
       </div>
 
       {/* Outlet filter chips */}

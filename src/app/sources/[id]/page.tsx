@@ -16,13 +16,14 @@ import {
   SubmitButton,
 } from "@/app/_components/SubmitButton";
 import {
-  pollSourceAction,
   deleteSourceAction,
   assignSourceOutletsAction,
   pauseSourceAction,
   resumeSourceAction,
 } from "@/lib/v1/actions";
 import { listOutlets, getOutletIdsForSource } from "@/lib/v1/outlets";
+import { PollSourceButton } from "../_components/PollSourceButton";
+import { SourceTitleEditor } from "./_components/SourceTitleEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -117,9 +118,12 @@ export default async function SourceDetailPage({ params }: PageProps) {
 
       <header className="space-y-1.5">
         <div className="fp-eyebrow">{kindLabel(String(source.kind))} source</div>
-        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "26ch" }}>
-          {String(source.display_name ?? hostFromUrl(String(source.url)))}
-        </h1>
+        <SourceTitleEditor
+          sourceId={id}
+          initialTitle={String(
+            source.display_name ?? hostFromUrl(String(source.url)),
+          )}
+        />
         <a
           href={String(source.url)}
           target="_blank"
@@ -200,15 +204,12 @@ export default async function SourceDetailPage({ params }: PageProps) {
 
       {/* Action bar */}
       <div className="flex flex-wrap gap-2">
-        <form action={pollSourceAction}>
-          <input type="hidden" name="sourceId" value={id} />
-          <SubmitButton
-            className="fp-btn fp-btn-ghost"
-            pendingLabel="Polling source"
-          >
-            ↻ Poll now
-          </SubmitButton>
-        </form>
+        <PollSourceButton
+          sourceId={id}
+          className="fp-btn fp-btn-ghost"
+          label="↻ Poll now"
+          busyLabel="Polling source…"
+        />
         {isPaused ? (
           <form action={resumeSourceAction}>
             <input type="hidden" name="sourceId" value={id} />

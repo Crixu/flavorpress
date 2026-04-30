@@ -4,12 +4,14 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { dismissClusterAction, pollFolderAction } from "@/lib/v1/actions";
 import { ClusterActions } from "./ClusterActions";
+import { useBackgroundPolling } from "./useBackgroundPolling";
 
 export interface TodayClusterPreview {
   cluster: {
     id: string;
     formedAt: number;
     firedAt: number | null;
+    latestPublishedAt: number;
     sourceCount: number;
     signals: {
       archiveOverlap: number;
@@ -27,11 +29,15 @@ export interface TodayClusterPreview {
     sourceUrl: string;
     displayName: string;
   }[];
-  draft: {
-    id: string;
-    voiceMatch: number;
-    wpEditLink: string | null;
-  } | null;
+  draftsByOutlet: Record<
+    string,
+    { id: string; voiceMatch: number; wpEditLink: string | null }
+  >;
+}
+
+export interface OutletOption {
+  id: string;
+  displayName: string;
 }
 
 interface TodayFolderStream {
@@ -43,12 +49,14 @@ interface TodayFolderStream {
 
 interface Props {
   previews: TodayClusterPreview[];
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
 }
 
 const INITIAL_VISIBLE = 1;
 const MORE_STEP = 2;
 
-export function TodayFolderStreams({ previews }: Props) {
+export function TodayFolderStreams({ previews, outlets, defaultOutletId }: Props) {
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
 
   const streams = useMemo(() => buildStreams(previews), [previews]);
@@ -78,6 +86,8 @@ export function TodayFolderStreams({ previews }: Props) {
                   preview={preview}
                   rank={idx + 1}
                   isTop={idx === 0}
+                  outlets={outlets}
+                  defaultOutletId={defaultOutletId}
                 />
               ))}
             </div>
@@ -120,15 +130,17 @@ function FolderStreamHeader({
   remaining: number;
   onMore: () => void;
 }) {
-  const [pending, startTransition] = useTransition();
-  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const polling = useBackgroundPolling();
+  const [lastCount, setLastCount] = useState<number | null>(null);
 
   function refresh() {
     const fd = new FormData();
     fd.set("folderId", stream.folderId ?? "");
+    polling.start();
     startTransition(async () => {
-      await pollFolderAction(fd);
-      router.refresh();
+      const result = await pollFolderAction(fd);
+      setLastCount(result.sourceCount);
     });
   }
 
@@ -144,7 +156,18 @@ function FolderStreamHeader({
           {stream.clusters.length} ready {stream.clusters.length === 1 ? "cluster" : "clusters"} from this reading lane.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {polling.active ? (
+          <PollingPill
+            label={
+              lastCount === null
+                ? "Refreshing"
+                : lastCount === 0
+                  ? "Nothing to poll"
+                  : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
+            }
+          />
+        ) : null}
         {remaining > 0 ? (
           <button type="button" className="fp-btn fp-btn-ghost" onClick={onMore}>
             More
@@ -154,12 +177,29 @@ function FolderStreamHeader({
           type="button"
           className="fp-btn fp-btn-ghost"
           onClick={refresh}
-          disabled={pending}
         >
-          {pending ? "Refreshing" : "Refresh"}
+          Refresh
         </button>
       </div>
     </div>
+  );
+}
+
+export function PollingPill({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        color: "var(--fg-muted)",
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="fp-spinner" aria-hidden />
+      <span>{label}</span>
+    </span>
   );
 }
 
@@ -167,10 +207,14 @@ function ClusterCard({
   preview,
   rank,
   isTop,
+  outlets,
+  defaultOutletId,
 }: {
   preview: TodayClusterPreview;
   rank: number;
   isTop: boolean;
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -214,7 +258,7 @@ function ClusterCard({
             </span>
             <span style={{ color: "var(--border-strong)" }}>·</span>
             <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {relativeTime(c.firedAt ?? c.formedAt)}
+              {relativeTime(c.latestPublishedAt)}
             </span>
             <span className="fp-chip fp-chip-emerald ml-1">
               fit {fit.toFixed(2)}
@@ -252,8 +296,13 @@ function ClusterCard({
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <ClusterActions clusterId={c.id} draft={preview.draft} />
+      <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
+        <ClusterActions
+          clusterId={c.id}
+          outlets={outlets}
+          defaultOutletId={defaultOutletId}
+          draftsByOutlet={preview.draftsByOutlet}
+        />
         <button
           type="button"
           className="fp-btn fp-btn-ghost"

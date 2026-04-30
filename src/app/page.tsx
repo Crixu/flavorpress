@@ -25,7 +25,8 @@ export default async function TodayPage() {
   const clusters = await topFiredClusters(SINGLE_USER_ID, 18);
 
   const outlets = await listOutlets(SINGLE_USER_ID);
-  const hasOutlet = outlets.some((o) => o.connected);
+  const connectedOutlets = outlets.filter((o) => o.connected);
+  const hasOutlet = connectedOutlets.length > 0;
 
   const sourceCountR = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM sources
@@ -39,14 +40,35 @@ export default async function TodayPage() {
     sql: `SELECT outlet_id FROM voice_profiles WHERE user_id = ?`,
     args: [SINGLE_USER_ID],
   });
-  const hasVoice = voiceR.rows.length > 0;
+  const profiledOutletIds = new Set(
+    voiceR.rows.map((row) => String(row.outlet_id)),
+  );
 
-  if (!hasOutlet || sourceCount < 5 || !hasVoice) {
+  // Picker only offers outlets that are both connected AND have a voice
+  // profile. Without a profile, the draft generator falls back to a generic
+  // style sheet, breaking the "voice-matched draft" promise. Without a
+  // connection, the WP publish step has nothing to push to. A profile from
+  // a since-disconnected outlet is preserved on disk for reconnect, but
+  // doesn't count as draftable until that outlet is connected again.
+  const draftableOutlets = connectedOutlets.filter((o) =>
+    profiledOutletIds.has(o.id),
+  );
+  const hasDraftableOutlet = draftableOutlets.length > 0;
+  const defaultOutletId =
+    draftableOutlets.find((o) => o.isDefault)?.id ??
+    draftableOutlets[0]?.id ??
+    null;
+  const outletOptions = draftableOutlets.map((o) => ({
+    id: o.id,
+    displayName: o.displayName ?? o.baseUrl,
+  }));
+
+  if (!hasOutlet || sourceCount < 5 || !hasDraftableOutlet) {
     return (
       <Onboarding
         hasSite={hasOutlet}
         sourceCount={sourceCount}
-        hasVoice={hasVoice}
+        hasVoice={hasDraftableOutlet}
       />
     );
   }
@@ -63,15 +85,28 @@ export default async function TodayPage() {
               ORDER BY i.published_at DESC LIMIT 8`,
         args: [c.id],
       });
-      // Existing draft for this cluster (latest). If present, the card
-      // surfaces "Open draft" instead of regenerating from scratch.
+      // Existing drafts for this cluster, keyed by outlet. The card uses
+      // the per-outlet draft to decide between "Open draft" and "Draft this"
+      // for the selected outlet.
       const draftR = await db.execute({
-        sql: `SELECT id, voice_match_score, wp_post_id, wp_edit_link
+        sql: `SELECT id, outlet_id, voice_match_score, wp_post_id, wp_edit_link
               FROM drafts WHERE cluster_id = ? AND user_id = ?
-              ORDER BY created_at DESC LIMIT 1`,
+              ORDER BY created_at DESC`,
         args: [c.id, SINGLE_USER_ID],
       });
-      const existingDraft = draftR.rows[0] ?? null;
+      const draftsByOutlet: Record<
+        string,
+        { id: string; voiceMatch: number; wpEditLink: string | null }
+      > = {};
+      for (const row of draftR.rows) {
+        const oid = row.outlet_id ? String(row.outlet_id) : "";
+        if (!oid || draftsByOutlet[oid]) continue;
+        draftsByOutlet[oid] = {
+          id: String(row.id),
+          voiceMatch: Number(row.voice_match_score ?? 0),
+          wpEditLink: row.wp_edit_link ? String(row.wp_edit_link) : null,
+        };
+      }
       const items = r.rows.map((row) => ({
         title: String(row.title),
         sourceUrl: String(row.source_url),
@@ -85,6 +120,7 @@ export default async function TodayPage() {
           id: c.id,
           formedAt: c.formedAt,
           firedAt: c.firedAt,
+          latestPublishedAt: c.latestPublishedAt,
           sourceCount: c.sourceCount,
           signals: c.signals
             ? {
@@ -101,15 +137,7 @@ export default async function TodayPage() {
           sourceUrl: item.sourceUrl,
           displayName: item.displayName,
         })),
-        draft: existingDraft
-          ? {
-              id: String(existingDraft.id),
-              voiceMatch: Number(existingDraft.voice_match_score ?? 0),
-              wpEditLink: existingDraft.wp_edit_link
-                ? String(existingDraft.wp_edit_link)
-                : null,
-            }
-          : null,
+        draftsByOutlet,
       };
     }),
   );
@@ -139,7 +167,11 @@ export default async function TodayPage() {
       {previews.length === 0 ? (
         <EmptyClusters />
       ) : (
-        <TodayFolderStreams previews={previews} />
+        <TodayFolderStreams
+          previews={previews}
+          outlets={outletOptions}
+          defaultOutletId={defaultOutletId}
+        />
       )}
     </div>
   );

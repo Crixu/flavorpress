@@ -19,17 +19,57 @@ interface DraftRef {
   wpEditLink: string | null;
 }
 
-interface Props {
-  clusterId: string;
-  draft: DraftRef | null;
+interface OutletOption {
+  id: string;
+  displayName: string;
 }
 
-export function ClusterActions({ clusterId, draft }: Props) {
+interface Props {
+  clusterId: string;
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
+  draftsByOutlet: Record<string, DraftRef>;
+}
+
+const PRESET_LENGTHS = [200, 400, 600] as const;
+type LengthChoice = (typeof PRESET_LENGTHS)[number] | "custom";
+const MIN_WORDS = 100;
+const MAX_WORDS = 1500;
+
+export function ClusterActions({
+  clusterId,
+  outlets,
+  defaultOutletId,
+  draftsByOutlet,
+}: Props) {
   const [pending, startTransition] = useTransition();
+  const [lengthChoice, setLengthChoice] = useState<LengthChoice>(600);
+  const [customWords, setCustomWords] = useState<string>("800");
+  const initialOutletId =
+    defaultOutletId && outlets.some((o) => o.id === defaultOutletId)
+      ? defaultOutletId
+      : outlets[0]?.id ?? null;
+  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(
+    initialOutletId,
+  );
+  const draft = selectedOutletId ? draftsByOutlet[selectedOutletId] ?? null : null;
+  const showPicker = outlets.length >= 2;
+
+  function resolveWordCount(): number | null {
+    if (lengthChoice !== "custom") return lengthChoice;
+    const n = Number(customWords);
+    if (!Number.isFinite(n) || n < MIN_WORDS || n > MAX_WORDS) return null;
+    return Math.round(n);
+  }
 
   function trigger(force: boolean) {
+    if (!selectedOutletId) return;
+    const wordCount = resolveWordCount();
+    if (wordCount === null) return;
     const fd = new FormData();
     fd.set("clusterId", clusterId);
+    fd.set("outletId", selectedOutletId);
+    fd.set("wordCount", String(wordCount));
     if (force) fd.set("force", "1");
     startTransition(async () => {
       await generateDraftAction(fd);
@@ -40,55 +80,242 @@ export function ClusterActions({ clusterId, draft }: Props) {
     return <Drafting variant={draft ? "regenerating" : "drafting"} />;
   }
 
+  const customInvalid =
+    lengthChoice === "custom" && resolveWordCount() === null;
+
+  const outletPicker = showPicker ? (
+    <OutletPicker
+      outlets={outlets}
+      selectedId={selectedOutletId}
+      draftsByOutlet={draftsByOutlet}
+      onSelect={setSelectedOutletId}
+    />
+  ) : null;
+
+  const lengthPicker = (
+    <LengthPicker
+      choice={lengthChoice}
+      onChoose={setLengthChoice}
+      customWords={customWords}
+      onCustomWordsChange={setCustomWords}
+      invalid={customInvalid}
+    />
+  );
+
   if (draft) {
     return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={`/editor/${draft.id}`}
-          className="fp-btn fp-btn-primary fp-press"
-        >
-          Open draft →
-        </Link>
-        <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-          voice-match{" "}
-          <span className="font-medium tabular">{draft.voiceMatch}</span>
-          {draft.wpEditLink ? (
-            <>
-              {" · "}
-              <a
-                href={draft.wpEditLink}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline"
-              >
-                in WordPress ↗
-              </a>
-            </>
-          ) : null}
-        </span>
-        <button
-          type="button"
-          onClick={() => trigger(true)}
-          className="fp-btn fp-btn-ghost"
-        >
-          Regenerate
-        </button>
+      <div className="flex flex-col gap-3">
+        {outletPicker}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={`/editor/${draft.id}`}
+            className="fp-btn fp-btn-primary fp-press"
+          >
+            Open draft →
+          </Link>
+          <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+            voice-match{" "}
+            <span className="font-medium tabular">{draft.voiceMatch}</span>
+            {draft.wpEditLink ? (
+              <>
+                {" · "}
+                <a
+                  href={draft.wpEditLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline"
+                >
+                  in WordPress ↗
+                </a>
+              </>
+            ) : null}
+          </span>
+          <button
+            type="button"
+            onClick={() => trigger(true)}
+            disabled={customInvalid || !selectedOutletId}
+            className="fp-btn fp-btn-ghost"
+          >
+            Regenerate
+          </button>
+        </div>
+        {lengthPicker}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        onClick={() => trigger(false)}
-        className="fp-btn fp-btn-primary fp-press"
+    <div className="flex flex-col gap-3">
+      {outletPicker}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => trigger(false)}
+          disabled={customInvalid || !selectedOutletId}
+          className="fp-btn fp-btn-primary fp-press"
+        >
+          Draft this →
+        </button>
+        <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
+          voice-matched {resolveWordCount() ?? "?"}-word draft
+        </span>
+      </div>
+      {lengthPicker}
+    </div>
+  );
+}
+
+function OutletPicker({
+  outlets,
+  selectedId,
+  draftsByOutlet,
+  onSelect,
+}: {
+  outlets: OutletOption[];
+  selectedId: string | null;
+  draftsByOutlet: Record<string, DraftRef>;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className="text-[11px] uppercase tracking-wider"
+        style={{ color: "var(--fg-muted)" }}
       >
-        Draft this →
-      </button>
-      <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
-        voice-matched 600-word draft
+        Draft to
       </span>
+      <div
+        className="inline-flex rounded-lg p-0.5"
+        style={{
+          background: "var(--bg-subtle)",
+          border: "1px solid var(--border)",
+        }}
+        role="radiogroup"
+        aria-label="Outlet"
+      >
+        {outlets.map((o) => {
+          const isSelected = o.id === selectedId;
+          const hasDraft = Boolean(draftsByOutlet[o.id]);
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              onClick={() => onSelect(o.id)}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+              style={{
+                background: isSelected ? "var(--surface)" : "transparent",
+                color: isSelected ? "var(--fg)" : "var(--fg-muted)",
+                boxShadow: isSelected ? "var(--shadow-sm)" : undefined,
+              }}
+            >
+              {o.displayName}
+              {hasDraft ? (
+                <span
+                  className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                  style={{ background: "var(--emerald)" }}
+                  aria-label="has draft"
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface LengthPickerProps {
+  choice: LengthChoice;
+  onChoose: (choice: LengthChoice) => void;
+  customWords: string;
+  onCustomWordsChange: (value: string) => void;
+  invalid: boolean;
+}
+
+function LengthPicker({
+  choice,
+  onChoose,
+  customWords,
+  onCustomWordsChange,
+  invalid,
+}: LengthPickerProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className="text-[11px] uppercase tracking-wide"
+        style={{ color: "var(--fg-subtle)" }}
+      >
+        Length
+      </span>
+      <div
+        role="radiogroup"
+        aria-label="Draft length"
+        className="inline-flex overflow-hidden rounded-md"
+        style={{ border: "1px solid var(--border)" }}
+      >
+        {PRESET_LENGTHS.map((n) => {
+          const active = choice === n;
+          return (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChoose(n)}
+              className="px-2.5 py-1 text-xs tabular"
+              style={{
+                background: active ? "var(--bg-subtle)" : "transparent",
+                color: active ? "var(--fg)" : "var(--fg-muted)",
+                fontWeight: active ? 600 : 400,
+              }}
+            >
+              {n}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={choice === "custom"}
+          onClick={() => onChoose("custom")}
+          className="px-2.5 py-1 text-xs"
+          style={{
+            background: choice === "custom" ? "var(--bg-subtle)" : "transparent",
+            color: choice === "custom" ? "var(--fg)" : "var(--fg-muted)",
+            fontWeight: choice === "custom" ? 600 : 400,
+            borderLeft: "1px solid var(--border)",
+          }}
+        >
+          Custom
+        </button>
+      </div>
+      {choice === "custom" ? (
+        <label className="flex items-center gap-1.5 text-xs">
+          <input
+            type="number"
+            min={MIN_WORDS}
+            max={MAX_WORDS}
+            step={50}
+            value={customWords}
+            onChange={(e) => onCustomWordsChange(e.target.value)}
+            aria-invalid={invalid}
+            className="w-20 rounded-md px-2 py-1 text-xs tabular"
+            style={{
+              border: `1px solid ${invalid ? "var(--rose)" : "var(--border)"}`,
+              background: "var(--bg)",
+              color: "var(--fg)",
+            }}
+          />
+          <span style={{ color: "var(--fg-subtle)" }}>words</span>
+          {invalid ? (
+            <span style={{ color: "var(--rose)" }}>
+              {MIN_WORDS}–{MAX_WORDS}
+            </span>
+          ) : null}
+        </label>
+      ) : null}
     </div>
   );
 }
