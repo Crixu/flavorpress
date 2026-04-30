@@ -19,17 +19,40 @@ interface DraftRef {
   wpEditLink: string | null;
 }
 
-interface Props {
-  clusterId: string;
-  draft: DraftRef | null;
+interface OutletOption {
+  id: string;
+  displayName: string;
 }
 
-export function ClusterActions({ clusterId, draft }: Props) {
+interface Props {
+  clusterId: string;
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
+  draftsByOutlet: Record<string, DraftRef>;
+}
+
+export function ClusterActions({
+  clusterId,
+  outlets,
+  defaultOutletId,
+  draftsByOutlet,
+}: Props) {
   const [pending, startTransition] = useTransition();
+  const initialOutletId =
+    defaultOutletId && outlets.some((o) => o.id === defaultOutletId)
+      ? defaultOutletId
+      : outlets[0]?.id ?? null;
+  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(
+    initialOutletId,
+  );
+  const draft = selectedOutletId ? draftsByOutlet[selectedOutletId] ?? null : null;
+  const showPicker = outlets.length >= 2;
 
   function trigger(force: boolean) {
+    if (!selectedOutletId) return;
     const fd = new FormData();
     fd.set("clusterId", clusterId);
+    fd.set("outletId", selectedOutletId);
     if (force) fd.set("force", "1");
     startTransition(async () => {
       await generateDraftAction(fd);
@@ -40,55 +63,131 @@ export function ClusterActions({ clusterId, draft }: Props) {
     return <Drafting variant={draft ? "regenerating" : "drafting"} />;
   }
 
+  const picker = showPicker ? (
+    <OutletPicker
+      outlets={outlets}
+      selectedId={selectedOutletId}
+      draftsByOutlet={draftsByOutlet}
+      onSelect={setSelectedOutletId}
+    />
+  ) : null;
+
   if (draft) {
     return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={`/editor/${draft.id}`}
-          className="fp-btn fp-btn-primary fp-press"
-        >
-          Open draft →
-        </Link>
-        <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-          voice-match{" "}
-          <span className="font-medium tabular">{draft.voiceMatch}</span>
-          {draft.wpEditLink ? (
-            <>
-              {" · "}
-              <a
-                href={draft.wpEditLink}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline"
-              >
-                in WordPress ↗
-              </a>
-            </>
-          ) : null}
-        </span>
-        <button
-          type="button"
-          onClick={() => trigger(true)}
-          className="fp-btn fp-btn-ghost"
-        >
-          Regenerate
-        </button>
+      <div className="flex flex-col gap-3">
+        {picker}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={`/editor/${draft.id}`}
+            className="fp-btn fp-btn-primary fp-press"
+          >
+            Open draft →
+          </Link>
+          <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+            voice-match{" "}
+            <span className="font-medium tabular">{draft.voiceMatch}</span>
+            {draft.wpEditLink ? (
+              <>
+                {" · "}
+                <a
+                  href={draft.wpEditLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline"
+                >
+                  in WordPress ↗
+                </a>
+              </>
+            ) : null}
+          </span>
+          <button
+            type="button"
+            onClick={() => trigger(true)}
+            className="fp-btn fp-btn-ghost"
+          >
+            Regenerate
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        onClick={() => trigger(false)}
-        className="fp-btn fp-btn-primary fp-press"
+    <div className="flex flex-col gap-3">
+      {picker}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => trigger(false)}
+          className="fp-btn fp-btn-primary fp-press"
+        >
+          Draft this →
+        </button>
+        <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
+          voice-matched 600-word draft
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function OutletPicker({
+  outlets,
+  selectedId,
+  draftsByOutlet,
+  onSelect,
+}: {
+  outlets: OutletOption[];
+  selectedId: string | null;
+  draftsByOutlet: Record<string, DraftRef>;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className="text-[11px] uppercase tracking-wider"
+        style={{ color: "var(--fg-muted)" }}
       >
-        Draft this →
-      </button>
-      <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
-        voice-matched 600-word draft
+        Draft to
       </span>
+      <div
+        className="inline-flex rounded-lg p-0.5"
+        style={{
+          background: "var(--bg-subtle)",
+          border: "1px solid var(--border)",
+        }}
+        role="radiogroup"
+        aria-label="Outlet"
+      >
+        {outlets.map((o) => {
+          const isSelected = o.id === selectedId;
+          const hasDraft = Boolean(draftsByOutlet[o.id]);
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              onClick={() => onSelect(o.id)}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+              style={{
+                background: isSelected ? "var(--surface)" : "transparent",
+                color: isSelected ? "var(--fg)" : "var(--fg-muted)",
+                boxShadow: isSelected ? "var(--shadow-sm)" : undefined,
+              }}
+            >
+              {o.displayName}
+              {hasDraft ? (
+                <span
+                  className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                  style={{ background: "var(--emerald)" }}
+                  aria-label="has draft"
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

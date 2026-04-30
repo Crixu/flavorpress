@@ -27,11 +27,15 @@ export interface TodayClusterPreview {
     sourceUrl: string;
     displayName: string;
   }[];
-  draft: {
-    id: string;
-    voiceMatch: number;
-    wpEditLink: string | null;
-  } | null;
+  draftsByOutlet: Record<
+    string,
+    { id: string; voiceMatch: number; wpEditLink: string | null }
+  >;
+}
+
+export interface OutletOption {
+  id: string;
+  displayName: string;
 }
 
 interface TodayFolderStream {
@@ -43,12 +47,14 @@ interface TodayFolderStream {
 
 interface Props {
   previews: TodayClusterPreview[];
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
 }
 
 const INITIAL_VISIBLE = 1;
 const MORE_STEP = 2;
 
-export function TodayFolderStreams({ previews }: Props) {
+export function TodayFolderStreams({ previews, outlets, defaultOutletId }: Props) {
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
 
   const streams = useMemo(() => buildStreams(previews), [previews]);
@@ -78,6 +84,8 @@ export function TodayFolderStreams({ previews }: Props) {
                   preview={preview}
                   rank={idx + 1}
                   isTop={idx === 0}
+                  outlets={outlets}
+                  defaultOutletId={defaultOutletId}
                 />
               ))}
             </div>
@@ -167,10 +175,14 @@ function ClusterCard({
   preview,
   rank,
   isTop,
+  outlets,
+  defaultOutletId,
 }: {
   preview: TodayClusterPreview;
   rank: number;
   isTop: boolean;
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -252,8 +264,13 @@ function ClusterCard({
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <ClusterActions clusterId={c.id} draft={preview.draft} />
+      <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
+        <ClusterActions
+          clusterId={c.id}
+          outlets={outlets}
+          defaultOutletId={defaultOutletId}
+          draftsByOutlet={preview.draftsByOutlet}
+        />
         <button
           type="button"
           className="fp-btn fp-btn-ghost"
