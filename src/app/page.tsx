@@ -10,7 +10,10 @@ import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { topFiredClusters } from "@/lib/v1/ranker";
 import { listOutlets } from "@/lib/v1/outlets";
-import { ClusterActions } from "./_components/ClusterActions";
+import {
+  TodayFolderStreams,
+  type TodayClusterPreview,
+} from "./_components/TodayFolderStreams";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +22,7 @@ export default async function TodayPage() {
   await ensureSingleUser();
   await ensureRegisteredCapabilities();
 
-  const clusters = await topFiredClusters(SINGLE_USER_ID, 3);
+  const clusters = await topFiredClusters(SINGLE_USER_ID, 18);
 
   const outlets = await listOutlets(SINGLE_USER_ID);
   const hasOutlet = outlets.some((o) => o.connected);
@@ -46,14 +49,16 @@ export default async function TodayPage() {
     );
   }
 
-  const previews = await Promise.all(
+  const previews: TodayClusterPreview[] = await Promise.all(
     clusters.map(async (c) => {
       const r = await db.execute({
-        sql: `SELECT i.title, s.url AS source_url, s.display_name
+        sql: `SELECT i.title, s.url AS source_url, s.display_name,
+                     s.folder_id, sf.name AS folder_name
               FROM items i
               JOIN sources s ON s.id = i.source_id
+              LEFT JOIN source_folders sf ON sf.id = s.folder_id
               WHERE i.cluster_id = ?
-              ORDER BY i.published_at DESC LIMIT 5`,
+              ORDER BY i.published_at DESC LIMIT 8`,
         args: [c.id],
       });
       // Existing draft for this cluster (latest). If present, the card
@@ -65,12 +70,34 @@ export default async function TodayPage() {
         args: [c.id, SINGLE_USER_ID],
       });
       const existingDraft = draftR.rows[0] ?? null;
+      const items = r.rows.map((row) => ({
+        title: String(row.title),
+        sourceUrl: String(row.source_url),
+        displayName: String(row.display_name ?? ""),
+        folderId: row.folder_id ? String(row.folder_id) : null,
+        folderName: row.folder_name ? String(row.folder_name) : "Ungrouped",
+      }));
+      const folder = dominantFolder(items);
       return {
-        cluster: c,
-        items: r.rows.map((row) => ({
-          title: String(row.title),
-          sourceUrl: String(row.source_url),
-          displayName: String(row.display_name ?? ""),
+        cluster: {
+          id: c.id,
+          formedAt: c.formedAt,
+          firedAt: c.firedAt,
+          sourceCount: c.sourceCount,
+          signals: c.signals
+            ? {
+                archiveOverlap: c.signals.archiveOverlap,
+                beatMatch: c.signals.beatMatch,
+                sourceTrust: c.signals.sourceTrust,
+                composite: c.signals.composite,
+              }
+            : null,
+        },
+        folder,
+        items: items.map((item) => ({
+          title: item.title,
+          sourceUrl: item.sourceUrl,
+          displayName: item.displayName,
         })),
         draft: existingDraft
           ? {
@@ -94,147 +121,19 @@ export default async function TodayPage() {
             ? "No clusters yet"
             : clusters.length === 1
             ? "One cluster worth your attention"
-            : `${clusters.length} clusters worth your attention`}
+            : `${previews.length} clusters across ${countFolders(previews)} streams`}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-          Three is the cap. Each cluster has crossed combined source-trust 1.0
-          across 2+ domains in the last 72 hours. Rank, then write.
+          Each folder is a reading lane. Open the strongest cluster, ask for
+          more, or set that lane aside for now.
         </p>
       </header>
 
       {clusters.length === 0 ? (
         <EmptyClusters />
       ) : (
-        <div className="space-y-4">
-          {previews.map((preview, idx) => (
-            <ClusterCard
-              key={preview.cluster.id}
-              preview={preview}
-              rank={idx + 1}
-              isTop={idx === 0}
-            />
-          ))}
-        </div>
+        <TodayFolderStreams previews={previews} />
       )}
-    </div>
-  );
-}
-
-interface ClusterPreview {
-  cluster: Awaited<ReturnType<typeof topFiredClusters>>[number];
-  items: { title: string; sourceUrl: string; displayName: string }[];
-  draft: {
-    id: string;
-    voiceMatch: number;
-    wpEditLink: string | null;
-  } | null;
-}
-
-function ClusterCard({
-  preview,
-  rank,
-  isTop,
-}: {
-  preview: ClusterPreview;
-  rank: number;
-  isTop: boolean;
-}) {
-  const c = preview.cluster;
-  const headline = preview.items[0]?.title ?? "Untitled cluster";
-  const fit = c.signals?.composite ?? 0;
-  return (
-    <article className={`fp-card ${isTop ? "fp-card-feature" : "fp-card-hover"} relative p-6`}>
-      {isTop ? (
-        <div
-          className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white"
-          style={{
-            background: "linear-gradient(135deg, var(--indigo) 0%, var(--rose) 130%)",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <span>★</span> Pre-rendered · instant
-        </div>
-      ) : null}
-
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 fp-eyebrow">
-            <span>#{rank}</span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {c.sourceCount} sources
-            </span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {relativeTime(c.firedAt ?? c.formedAt)}
-            </span>
-            <span className="fp-chip fp-chip-emerald ml-1">
-              fit {fit.toFixed(2)}
-            </span>
-          </div>
-          <h2
-            className={`mt-2 leading-snug font-semibold ${
-              isTop ? "text-2xl fp-h1-serif" : "text-lg"
-            }`}
-            style={{ letterSpacing: "-0.01em" }}
-          >
-            {headline}
-          </h2>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {preview.items.map((item, i) => (
-          <span key={i} className="fp-chip">
-            {item.displayName || hostFromUrl(item.sourceUrl)}
-          </span>
-        ))}
-      </div>
-
-      {c.signals ? (
-        <div
-          className="mt-4 grid grid-cols-3 gap-3 rounded-lg p-3"
-          style={{ background: "var(--bg-subtle)" }}
-        >
-          <RankerSignal
-            label="Archive overlap"
-            value={c.signals.archiveOverlap}
-          />
-          <RankerSignal label="Beat match" value={c.signals.beatMatch} />
-          <RankerSignal label="Source trust" value={c.signals.sourceTrust} />
-        </div>
-      ) : null}
-
-      <div className="mt-5">
-        <ClusterActions clusterId={c.id} draft={preview.draft} />
-      </div>
-    </article>
-  );
-}
-
-function RankerSignal({ label, value }: { label: string; value: number }) {
-  const pct = Math.round(value * 100);
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--fg-muted)" }}>
-        <span>{label}</span>
-        <span className="tabular font-medium" style={{ color: "var(--fg)" }}>
-          {value.toFixed(2)}
-        </span>
-      </div>
-      <div
-        className="mt-1 h-1 overflow-hidden rounded-full"
-        style={{ background: "var(--border)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all"
-          style={{
-            width: `${pct}%`,
-            background:
-              "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 200%)",
-          }}
-        />
-      </div>
     </div>
   );
 }
@@ -475,21 +374,31 @@ function formatDate(ms: number): string {
   });
 }
 
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  return `${day}d ago`;
+function countFolders(previews: TodayClusterPreview[]): number {
+  return new Set(previews.map((preview) => preview.folder.id ?? "ungrouped")).size;
 }
 
-function hostFromUrl(s: string): string {
-  try {
-    return new URL(s).host.replace(/^www\./, "");
-  } catch {
-    return s;
+function dominantFolder(
+  items: Array<{ folderId: string | null; folderName: string }>,
+): { id: string | null; name: string } {
+  const counts = new Map<string, { id: string | null; name: string; count: number }>();
+  for (const item of items) {
+    const key = item.folderId ?? "ungrouped";
+    const current = counts.get(key);
+    if (current) {
+      current.count += 1;
+    } else {
+      counts.set(key, {
+        id: item.folderId,
+        name: item.folderName,
+        count: 1,
+      });
+    }
   }
+  return (
+    Array.from(counts.values()).sort((a, b) => b.count - a.count)[0] ?? {
+      id: null,
+      name: "Ungrouped",
+    }
+  );
 }
