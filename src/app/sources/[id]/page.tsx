@@ -242,6 +242,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
         )}
         <form action={deleteSourceAction}>
           <input type="hidden" name="sourceId" value={id} />
+          <input type="hidden" name="redirectTo" value="/sources" />
           <SubmitButton
             className="fp-btn fp-btn-danger"
             pendingLabel="Removing source"
