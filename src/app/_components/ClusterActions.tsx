@@ -19,9 +19,16 @@ interface DraftRef {
   wpEditLink: string | null;
 }
 
+interface OutletOption {
+  id: string;
+  displayName: string;
+}
+
 interface Props {
   clusterId: string;
-  draft: DraftRef | null;
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
+  draftsByOutlet: Record<string, DraftRef>;
 }
 
 const PRESET_LENGTHS = [200, 400, 600] as const;
@@ -29,10 +36,24 @@ type LengthChoice = (typeof PRESET_LENGTHS)[number] | "custom";
 const MIN_WORDS = 100;
 const MAX_WORDS = 1500;
 
-export function ClusterActions({ clusterId, draft }: Props) {
+export function ClusterActions({
+  clusterId,
+  outlets,
+  defaultOutletId,
+  draftsByOutlet,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [lengthChoice, setLengthChoice] = useState<LengthChoice>(600);
   const [customWords, setCustomWords] = useState<string>("800");
+  const initialOutletId =
+    defaultOutletId && outlets.some((o) => o.id === defaultOutletId)
+      ? defaultOutletId
+      : outlets[0]?.id ?? null;
+  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(
+    initialOutletId,
+  );
+  const draft = selectedOutletId ? draftsByOutlet[selectedOutletId] ?? null : null;
+  const showPicker = outlets.length >= 2;
 
   function resolveWordCount(): number | null {
     if (lengthChoice !== "custom") return lengthChoice;
@@ -42,10 +63,12 @@ export function ClusterActions({ clusterId, draft }: Props) {
   }
 
   function trigger(force: boolean) {
+    if (!selectedOutletId) return;
     const wordCount = resolveWordCount();
     if (wordCount === null) return;
     const fd = new FormData();
     fd.set("clusterId", clusterId);
+    fd.set("outletId", selectedOutletId);
     fd.set("wordCount", String(wordCount));
     if (force) fd.set("force", "1");
     startTransition(async () => {
@@ -60,7 +83,16 @@ export function ClusterActions({ clusterId, draft }: Props) {
   const customInvalid =
     lengthChoice === "custom" && resolveWordCount() === null;
 
-  const picker = (
+  const outletPicker = showPicker ? (
+    <OutletPicker
+      outlets={outlets}
+      selectedId={selectedOutletId}
+      draftsByOutlet={draftsByOutlet}
+      onSelect={setSelectedOutletId}
+    />
+  ) : null;
+
+  const lengthPicker = (
     <LengthPicker
       choice={lengthChoice}
       onChoose={setLengthChoice}
@@ -73,6 +105,7 @@ export function ClusterActions({ clusterId, draft }: Props) {
   if (draft) {
     return (
       <div className="flex flex-col gap-3">
+        {outletPicker}
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href={`/editor/${draft.id}`}
@@ -100,24 +133,25 @@ export function ClusterActions({ clusterId, draft }: Props) {
           <button
             type="button"
             onClick={() => trigger(true)}
-            disabled={customInvalid}
+            disabled={customInvalid || !selectedOutletId}
             className="fp-btn fp-btn-ghost"
           >
             Regenerate
           </button>
         </div>
-        {picker}
+        {lengthPicker}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
+      {outletPicker}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={() => trigger(false)}
-          disabled={customInvalid}
+          disabled={customInvalid || !selectedOutletId}
           className="fp-btn fp-btn-primary fp-press"
         >
           Draft this →
@@ -126,7 +160,68 @@ export function ClusterActions({ clusterId, draft }: Props) {
           voice-matched {resolveWordCount() ?? "?"}-word draft
         </span>
       </div>
-      {picker}
+      {lengthPicker}
+    </div>
+  );
+}
+
+function OutletPicker({
+  outlets,
+  selectedId,
+  draftsByOutlet,
+  onSelect,
+}: {
+  outlets: OutletOption[];
+  selectedId: string | null;
+  draftsByOutlet: Record<string, DraftRef>;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className="text-[11px] uppercase tracking-wider"
+        style={{ color: "var(--fg-muted)" }}
+      >
+        Draft to
+      </span>
+      <div
+        className="inline-flex rounded-lg p-0.5"
+        style={{
+          background: "var(--bg-subtle)",
+          border: "1px solid var(--border)",
+        }}
+        role="radiogroup"
+        aria-label="Outlet"
+      >
+        {outlets.map((o) => {
+          const isSelected = o.id === selectedId;
+          const hasDraft = Boolean(draftsByOutlet[o.id]);
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              onClick={() => onSelect(o.id)}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+              style={{
+                background: isSelected ? "var(--surface)" : "transparent",
+                color: isSelected ? "var(--fg)" : "var(--fg-muted)",
+                boxShadow: isSelected ? "var(--shadow-sm)" : undefined,
+              }}
+            >
+              {o.displayName}
+              {hasDraft ? (
+                <span
+                  className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                  style={{ background: "var(--emerald)" }}
+                  aria-label="has draft"
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
