@@ -236,7 +236,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
               className="fp-btn fp-btn-ghost"
               pendingLabel="Snoozing"
             >
-              💤 Snooze
+              Snooze
             </SubmitButton>
           </form>
         )}
