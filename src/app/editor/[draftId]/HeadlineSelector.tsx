@@ -20,13 +20,22 @@ export function HeadlineSelector({
 
   return (
     <div>
-      <div className="mb-2 text-xs text-stone-500">
-        Headline · 1 of {total}
+      <div className="fp-eyebrow">
+        Draft · 1 of {total}
       </div>
-      <h1 className="mb-2 text-2xl font-semibold leading-tight">{headline}</h1>
+      <h1
+        className="mt-3 fp-h1-serif"
+        style={{
+          fontSize: "clamp(28px, 3vw, 40px)",
+          lineHeight: 1.06,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {headline}
+      </h1>
       {canPickAlternate ? (
-        <div className="mb-6">
-          <div className="mb-1.5 text-[10px] uppercase tracking-wider text-stone-400">
+        <div className="mt-4">
+          <div className="fp-eyebrow mb-1.5">
             Pick a different headline
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">
@@ -36,7 +45,11 @@ export function HeadlineSelector({
                 <input type="hidden" name="headline" value={alt} />
                 <button
                   type="submit"
-                  className="rounded border border-stone-200 px-2 py-0.5 text-left text-stone-600 hover:bg-stone-50 hover:border-stone-300"
+                  className="rounded-full px-3 py-1 text-left"
+                  style={{
+                    background: "var(--bg-subtle)",
+                    color: "var(--fg-muted)",
+                  }}
                   title="Use this headline"
                 >
                   {alt}

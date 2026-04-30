@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Inter, Newsreader } from "next/font/google";
 import { HelpFlyout, HelpIndexButton } from "@/components/Help";
+import { ShellNav } from "./_components/ShellNav";
 import "./globals.css";
 
 const inter = Inter({
@@ -31,25 +32,29 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body>
-        <header className="fp-nav">
-          <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5 text-sm">
-            <Link href="/" className="flex items-center gap-2 group">
+        <header className="fp-pill-nav">
+          <div className="fp-pill-nav-inner">
+            <Link href="/" className="group flex items-center gap-3">
               <BrandMark />
-              <span className="font-semibold tracking-tight">FlavorPress</span>
-              <span className="fp-chip" style={{ fontSize: 10, padding: "1px 6px" }}>v1 alpha</span>
+              <span className="text-[15px] font-semibold tracking-tight">
+                FlavorPress
+              </span>
+              <span
+                className="ml-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]"
+                style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+              >
+                v1 alpha
+              </span>
             </Link>
-            <div className="flex items-center gap-1">
-              <NavLink href="/">Today</NavLink>
-              <NavLink href="/drafts">Drafts</NavLink>
-              <NavLink href="/sources">Sources</NavLink>
-              <NavLink href="/voice">Voice & Publishing</NavLink>
+            <ShellNav />
+            <div className="flex items-center gap-2">
               <Suspense fallback={null}>
                 <HelpIndexButton />
               </Suspense>
             </div>
-          </nav>
+          </div>
         </header>
-        <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+        <main className="mx-auto max-w-[1280px] px-6 pt-8 pb-16">{children}</main>
         <Suspense fallback={null}>
           <HelpFlyout />
         </Suspense>
@@ -58,48 +63,17 @@ export default function RootLayout({
   );
 }
 
-function NavLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-md px-3 py-1.5 text-[13px] font-medium transition hover:bg-[var(--bg-subtle)]"
-      style={{ color: "var(--fg-muted)" }}
-    >
-      {children}
-    </Link>
-  );
-}
-
 function BrandMark() {
   return (
     <span
       aria-hidden
-      className="inline-flex h-7 w-7 items-center justify-center rounded-md transition group-hover:scale-105"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full transition group-hover:scale-105"
       style={{
-        background:
-          "linear-gradient(135deg, var(--indigo) 0%, var(--rose) 120%)",
-        boxShadow: "var(--shadow-sm)",
+        background: "linear-gradient(135deg, #FF8B60 0%, #F5B26A 100%)",
+        boxShadow: "var(--shadow-xs)",
       }}
     >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="white"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-      </svg>
+      <span style={{ color: "#FFFFFF", fontSize: 13, fontWeight: 700 }}>F</span>
     </span>
   );
 }

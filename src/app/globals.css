@@ -1,83 +1,68 @@
 @import "tailwindcss";
 
 /*
- * FlavorPress design tokens — refined editorial.
+ * FlavorPress design tokens — Canvas system.
  *
- * Palette: warm off-white / deep ink; indigo CTA; rose editorial accent.
- * Type: Inter (UI) + Newsreader (editorial draft body), loaded via
- *       next/font/google in layout.tsx; CSS variables --font-sans and
- *       --font-serif are exposed by the layout.
- * Elevation: layered subtle shadows; never harsh.
- * Motion: 200ms cubic-bezier(0.16, 1, 0.3, 1) for everything.
+ * Palette: warm cream paper / deep ink; ink as primary CTA; peach as the
+ *          editorial accent; mint for confirmation; plum and amber for
+ *          informational and warning states.
+ * Type:    Inter (UI) + Newsreader (editorial body & display), loaded via
+ *          next/font/google in layout.tsx; CSS variables --font-sans and
+ *          --font-serif are exposed by the layout.
+ * Shape:   chunky rounded radii (up to 28px), soft drop shadows, pill nav.
+ * Motion:  240ms cubic-bezier(0.16, 1, 0.3, 1) for everything.
  */
 
 :root {
   /* Surfaces */
-  --bg: #FAFAF7;
-  --bg-subtle: #F5F4EF;
+  --bg: #F5F1EA;
+  --bg-subtle: #EFE9DD;
   --surface: #FFFFFF;
   --surface-elev: #FFFFFF;
 
   /* Ink */
-  --fg: #15151A;
-  --fg-muted: #5C5C66;
-  --fg-subtle: #8E8E96;
+  --fg: #1A1814;
+  --fg-muted: #6E695F;
+  --fg-subtle: #A39A8B;
 
   /* Border */
-  --border: #ECEBE6;
-  --border-strong: #DCDAD2;
+  --border: #E5DECF;
+  --border-strong: #D5CDB9;
 
-  /* Brand & semantic */
-  --indigo: #4F46E5;
-  --indigo-hover: #4338CA;
-  --indigo-tint: #EEF2FF;
-  --rose: #E11D48;
-  --rose-tint: #FFF1F2;
-  --emerald: #059669;
-  --emerald-tint: #ECFDF5;
-  --amber: #B45309;
-  --amber-tint: #FFFBEB;
+  /* Brand & semantic
+   * --indigo is repurposed as the primary CTA colour (ink). Keeping the
+   * variable name avoids touching every existing call-site.
+   * --rose is repurposed as the editorial accent (peach). Same reasoning.
+   * --emerald is repurposed as the positive accent (mint). */
+  --indigo: #1A1814;
+  --indigo-hover: #000000;
+  --indigo-tint: #F0EAE0;
+  --rose: #FF8B60;
+  --rose-tint: #FFE3C9;
+  --emerald: #6FB593;
+  --emerald-tint: #E2F0EA;
+  --amber: #874A1A;
+  --amber-tint: #FCE2C7;
+  --plum: #9F7AEA;
+  --plum-tint: #F0E5F5;
 
-  /* Elevation tokens */
-  --shadow-xs: 0 1px 2px rgba(20, 20, 30, 0.04);
-  --shadow-sm: 0 1px 2px rgba(20, 20, 30, 0.04), 0 2px 4px rgba(20, 20, 30, 0.04);
-  --shadow-md: 0 2px 4px rgba(20, 20, 30, 0.04), 0 8px 16px rgba(20, 20, 30, 0.06);
-  --shadow-lg: 0 4px 8px rgba(20, 20, 30, 0.04), 0 16px 32px rgba(20, 20, 30, 0.08);
-  --shadow-glow: 0 0 0 4px rgba(79, 70, 229, 0.12);
+  /* Elevation tokens — softer, more diffuse */
+  --shadow-xs: 0 1px 2px rgba(26, 24, 20, 0.04);
+  --shadow-sm: 0 1px 2px rgba(26, 24, 20, 0.04), 0 4px 12px rgba(26, 24, 20, 0.05);
+  --shadow-md: 0 1px 2px rgba(26, 24, 20, 0.04), 0 8px 24px rgba(26, 24, 20, 0.06);
+  --shadow-lg: 0 4px 12px rgba(26, 24, 20, 0.08), 0 24px 48px rgba(26, 24, 20, 0.10);
+  --shadow-glow: 0 0 0 4px rgba(255, 139, 96, 0.18);
 
-  /* Radii */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  /* Radii — chunkier */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
 
   /* Motion */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --duration: 200ms;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0B0B0F;
-    --bg-subtle: #131319;
-    --surface: #161620;
-    --surface-elev: #1B1B26;
-    --fg: #F5F2EB;
-    --fg-muted: #A8A6A0;
-    --fg-subtle: #6E6C66;
-    --border: #27272F;
-    --border-strong: #3A3A45;
-    --indigo: #818CF8;
-    --indigo-hover: #6366F1;
-    --indigo-tint: rgba(129, 140, 248, 0.12);
-    --rose: #FB7185;
-    --rose-tint: rgba(251, 113, 133, 0.10);
-    --emerald: #34D399;
-    --emerald-tint: rgba(52, 211, 153, 0.10);
-    --amber: #FBBF24;
-    --amber-tint: rgba(251, 191, 36, 0.10);
-  }
+  --duration: 240ms;
 }
 
 html, body {
@@ -101,12 +86,12 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Refined card with hover-lift */
+/* Refined card with hover-lift — Canvas: chunky radius, soft shadow */
 .fp-card {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
   transition: transform var(--duration) var(--ease),
               box-shadow var(--duration) var(--ease),
               border-color var(--duration) var(--ease);
@@ -115,41 +100,36 @@ html, body {
 .fp-card-hover:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: var(--border-strong);
 }
 
 .fp-card-feature {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, #FFE3C9 0%, #FFD0B0 60%, #F7B98C 100%);
+  border: 1px solid transparent;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
   position: relative;
+  color: var(--fg);
 }
 
+/* The mask trick used for gradient borders is no longer needed in Canvas
+ * (feature cards use a peach surface, not a gradient hairline). The pseudo
+ * is left transparent so any prior `fp-card-feature` markup stays visually
+ * clean if it gets nested elsewhere. */
 .fp-card-feature::before {
   content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-xl);
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.18), rgba(225, 29, 72, 0.12) 60%, transparent);
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  pointer-events: none;
+  display: none;
 }
 
-/* Brand-tinted gradient surface */
+/* Brand-tinted gradient surface — used by the onboarding "what happens after"
+ * tile. In Canvas this is a peach-cream wash. */
 .fp-gradient-surface {
   background:
-    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(79, 70, 229, 0.06), transparent 60%),
-    radial-gradient(ellipse 60% 60% at 100% 100%, rgba(225, 29, 72, 0.05), transparent 70%),
+    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(255, 139, 96, 0.10), transparent 60%),
+    radial-gradient(ellipse 60% 60% at 100% 100%, rgba(159, 122, 234, 0.08), transparent 70%),
     var(--surface);
 }
 
-/* Buttons */
+/* Buttons — Canvas: pill-shaped by default */
 .fp-btn {
   display: inline-flex;
   align-items: center;
@@ -158,8 +138,8 @@ html, body {
   font-weight: 500;
   font-size: 14px;
   line-height: 1;
-  border-radius: var(--radius-sm);
-  padding: 0.5rem 0.875rem;
+  border-radius: 9999px;
+  padding: 0.5rem 0.95rem;
   border: 1px solid transparent;
   transition: all var(--duration) var(--ease);
   cursor: pointer;
@@ -192,6 +172,7 @@ html, body {
   background: var(--surface);
   color: var(--fg);
   border-color: var(--border);
+  box-shadow: var(--shadow-xs);
 }
 .fp-btn-ghost:hover {
   background: var(--bg-subtle);
@@ -199,23 +180,45 @@ html, body {
 }
 .fp-btn-danger {
   background: transparent;
-  color: var(--rose);
+  color: var(--amber);
   border-color: var(--border);
 }
 .fp-btn-danger:hover {
-  background: var(--rose-tint);
-  border-color: var(--rose);
+  background: var(--amber-tint);
+  border-color: var(--amber);
 }
 
-/* Nav glass */
+/* Nav glass — kept for backwards compat; Canvas uses .fp-pill-nav below.
+ * Any page that still references .fp-nav will render as a hairline strip. */
 .fp-nav {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: saturate(160%) blur(14px);
   -webkit-backdrop-filter: saturate(160%) blur(14px);
-  border-bottom: 1px solid var(--border);
+}
+
+/* Canvas pill nav — used by the root layout. Floats inside the page,
+ * never spans full width. */
+.fp-pill-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 20px 24px 0 24px;
+}
+.fp-pill-nav-inner {
+  background: var(--surface);
+  border-radius: 9999px;
+  box-shadow: var(--shadow-sm);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 auto;
+  max-width: 1280px;
 }
 
 /* Pill chip */
@@ -223,24 +226,24 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   background: var(--bg-subtle);
   color: var(--fg-muted);
 }
-.fp-chip-emerald { background: var(--emerald-tint); color: var(--emerald); border-color: color-mix(in srgb, var(--emerald) 30%, var(--border)); }
-.fp-chip-rose    { background: var(--rose-tint);    color: var(--rose);    border-color: color-mix(in srgb, var(--rose) 30%, var(--border)); }
-.fp-chip-amber   { background: var(--amber-tint);   color: var(--amber);   border-color: color-mix(in srgb, var(--amber) 30%, var(--border)); }
-.fp-chip-indigo  { background: var(--indigo-tint);  color: var(--indigo);  border-color: color-mix(in srgb, var(--indigo) 30%, var(--border)); }
+.fp-chip-emerald { background: var(--emerald-tint); color: #3F7556; }
+.fp-chip-rose    { background: var(--rose-tint);    color: #9C4A22; }
+.fp-chip-amber   { background: var(--amber-tint);   color: var(--amber); }
+.fp-chip-indigo  { background: var(--indigo-tint);  color: var(--fg); }
 
 /* Inputs */
 .fp-input, .fp-textarea {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: 0.625rem 0.875rem;
   font-size: 14px;
   color: var(--fg);
@@ -249,7 +252,7 @@ html, body {
 }
 .fp-input:focus, .fp-textarea:focus {
   outline: none;
-  border-color: var(--indigo);
+  border-color: var(--rose);
   box-shadow: var(--shadow-glow);
 }
 .fp-input::placeholder, .fp-textarea::placeholder {
@@ -261,14 +264,14 @@ html, body {
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg-muted);
+  letter-spacing: 0.16em;
+  color: var(--fg-subtle);
 }
 .fp-h1 {
-  font-size: clamp(28px, 4vw, 36px);
-  font-weight: 600;
+  font-size: clamp(32px, 4.5vw, 48px);
+  font-weight: 500;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.04;
 }
 .fp-h1-serif {
   font-weight: 500;
@@ -284,9 +287,9 @@ html, body {
 /* Stat tile */
 .fp-stat {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-xs);
 }
 
 /* Press feedback for interactive cards */
