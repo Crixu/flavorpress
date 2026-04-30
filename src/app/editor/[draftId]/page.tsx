@@ -10,8 +10,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
-import { publishDraftToWPAction } from "@/lib/v1/actions";
-import { SubmitButton } from "@/app/_components/SubmitButton";
+import { HeadlineSelector } from "./HeadlineSelector";
+import { PublishToWpForm } from "./PublishToWpForm";
 
 export const dynamic = "force-dynamic";
 
@@ -107,16 +107,13 @@ export default async function EditorPage({ params }: PageProps) {
               Open in WordPress →
             </a>
           ) : (
-            <form action={publishDraftToWPAction}>
-              <input type="hidden" name="draftId" value={String(d.id)} />
-              <input type="hidden" name="status" value="draft" />
-              <SubmitButton
-                className="fp-btn fp-btn-primary"
-                pendingLabel="Saving draft"
-              >
-                Push to WordPress draft →
-              </SubmitButton>
-            </form>
+            <PublishToWpForm
+              draftId={String(d.id)}
+              className="fp-btn fp-btn-primary"
+              pendingLabel="Saving draft"
+            >
+              Push to WordPress draft →
+            </PublishToWpForm>
           )}
         </div>
       </header>
@@ -210,31 +207,12 @@ export default async function EditorPage({ params }: PageProps) {
           {/* Centre: manuscript */}
           <div className="col-span-12 px-10 pt-10 pb-16 lg:col-span-6">
             <div className="mx-auto max-w-[640px]">
-              <div className="fp-eyebrow">
-                Draft · 1 of {headlineAlternates.length + 1}
-              </div>
-              <h2
-                className="mt-3 fp-h1-serif"
-                style={{ fontSize: "clamp(28px, 3vw, 40px)", lineHeight: 1.06, letterSpacing: "-0.02em" }}
-              >
-                {String(d.headline)}
-              </h2>
-              {headlineAlternates.length > 0 ? (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {headlineAlternates.map((alt, i) => (
-                    <button
-                      key={i}
-                      className="rounded-full px-3 py-1 text-[11px]"
-                      style={{
-                        background: "var(--bg-subtle)",
-                        color: "var(--fg-muted)",
-                      }}
-                    >
-                      {alt}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <HeadlineSelector
+                draftId={String(d.id)}
+                headline={String(d.headline)}
+                alternates={headlineAlternates}
+                locked={Boolean(d.wp_post_id)}
+              />
 
               <article
                 className="prose prose-stone mt-7 max-w-none"
@@ -441,17 +419,13 @@ export default async function EditorPage({ params }: PageProps) {
                   Open in WordPress →
                 </a>
               ) : (
-                <form action={publishDraftToWPAction}>
-                  <input type="hidden" name="draftId" value={String(d.id)} />
-                  <input type="hidden" name="status" value="draft" />
-                  <SubmitButton
-                    className="fp-btn fp-btn-primary"
-                    style={{ width: "100%" }}
-                    pendingLabel="Saving draft"
-                  >
-                    Push to WordPress draft
-                  </SubmitButton>
-                </form>
+                <PublishToWpForm
+                  draftId={String(d.id)}
+                  className="fp-btn fp-btn-primary w-full"
+                  pendingLabel="Saving draft"
+                >
+                  Push to WordPress draft
+                </PublishToWpForm>
               )}
               <button
                 className="w-full py-2 text-[12px]"

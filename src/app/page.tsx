@@ -10,55 +10,19 @@ import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { topFiredClusters } from "@/lib/v1/ranker";
 import { listOutlets } from "@/lib/v1/outlets";
-import { ClusterActions } from "./_components/ClusterActions";
+import {
+  TodayFolderStreams,
+  type TodayClusterPreview,
+} from "./_components/TodayFolderStreams";
 
 export const dynamic = "force-dynamic";
 
-interface PageProps {
-  searchParams: Promise<{ folder?: string }>;
-}
-
-export default async function TodayPage({ searchParams }: PageProps) {
+export default async function TodayPage() {
   await ensureSchema();
   await ensureSingleUser();
   await ensureRegisteredCapabilities();
 
-  const sp = await searchParams;
-  const folderFilter = sp.folder && sp.folder !== "all" ? sp.folder : null;
-
-  const clusters = await topFiredClusters(SINGLE_USER_ID, 3, folderFilter);
-
-  const foldersR = await db.execute({
-    sql: `SELECT id, name FROM source_folders WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
-    args: [SINGLE_USER_ID],
-  });
-  const folders = foldersR.rows.map((row) => ({
-    id: String(row.id),
-    name: String(row.name),
-  }));
-
-  // Cluster counts per folder (single grouped query) so chips can show
-  // accurate badges. Counts include "ungrouped" as a virtual folder.
-  const folderCountsR = await db.execute({
-    sql: `SELECT
-            CASE WHEN s.folder_id IS NULL THEN 'ungrouped' ELSE s.folder_id END AS folder_id,
-            COUNT(DISTINCT c.id) AS n
-          FROM clusters c
-          JOIN items i ON i.cluster_id = c.id
-          JOIN sources s ON s.id = i.source_id
-          WHERE c.user_id = ? AND c.state = 'fired'
-          GROUP BY folder_id`,
-    args: [SINGLE_USER_ID],
-  });
-  const folderCounts = new Map<string, number>();
-  for (const row of folderCountsR.rows) {
-    folderCounts.set(String(row.folder_id), Number(row.n));
-  }
-  const allClusterCountR = await db.execute({
-    sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
-    args: [SINGLE_USER_ID],
-  });
-  const totalClusterCount = Number(allClusterCountR.rows[0]!.n);
+  const clusters = await topFiredClusters(SINGLE_USER_ID, 18);
 
   const outlets = await listOutlets(SINGLE_USER_ID);
   const hasOutlet = outlets.some((o) => o.connected);
@@ -85,14 +49,16 @@ export default async function TodayPage({ searchParams }: PageProps) {
     );
   }
 
-  const previews = await Promise.all(
+  const previews: TodayClusterPreview[] = await Promise.all(
     clusters.map(async (c) => {
       const r = await db.execute({
-        sql: `SELECT i.title, s.url AS source_url, s.display_name
+        sql: `SELECT i.title, s.url AS source_url, s.display_name,
+                     s.folder_id, sf.name AS folder_name
               FROM items i
               JOIN sources s ON s.id = i.source_id
+              LEFT JOIN source_folders sf ON sf.id = s.folder_id
               WHERE i.cluster_id = ?
-              ORDER BY i.published_at DESC LIMIT 5`,
+              ORDER BY i.published_at DESC LIMIT 8`,
         args: [c.id],
       });
       // Existing draft for this cluster (latest). If present, the card
@@ -104,12 +70,34 @@ export default async function TodayPage({ searchParams }: PageProps) {
         args: [c.id, SINGLE_USER_ID],
       });
       const existingDraft = draftR.rows[0] ?? null;
+      const items = r.rows.map((row) => ({
+        title: String(row.title),
+        sourceUrl: String(row.source_url),
+        displayName: String(row.display_name ?? ""),
+        folderId: row.folder_id ? String(row.folder_id) : null,
+        folderName: row.folder_name ? String(row.folder_name) : "Ungrouped",
+      }));
+      const folder = dominantFolder(items);
       return {
-        cluster: c,
-        items: r.rows.map((row) => ({
-          title: String(row.title),
-          sourceUrl: String(row.source_url),
-          displayName: String(row.display_name ?? ""),
+        cluster: {
+          id: c.id,
+          formedAt: c.formedAt,
+          firedAt: c.firedAt,
+          sourceCount: c.sourceCount,
+          signals: c.signals
+            ? {
+                archiveOverlap: c.signals.archiveOverlap,
+                beatMatch: c.signals.beatMatch,
+                sourceTrust: c.signals.sourceTrust,
+                composite: c.signals.composite,
+              }
+            : null,
+        },
+        folder,
+        items: items.map((item) => ({
+          title: item.title,
+          sourceUrl: item.sourceUrl,
+          displayName: item.displayName,
         })),
         draft: existingDraft
           ? {
@@ -124,263 +112,33 @@ export default async function TodayPage({ searchParams }: PageProps) {
     }),
   );
 
-  const activeFolderName =
-    folderFilter === "ungrouped"
-      ? "Ungrouped"
-      : folderFilter
-        ? (folders.find((f) => f.id === folderFilter)?.name ?? "Folder")
-        : null;
-  const ungroupedCount = folderCounts.get("ungrouped") ?? 0;
-  const showFolderFilter =
-    folders.length > 0 || ungroupedCount > 0 || totalClusterCount > 0;
-
   return (
     <div className="space-y-8">
       <header className="space-y-1.5">
         <div className="fp-eyebrow">{formatDate(Date.now())}</div>
         <h1 className="fp-h1 fp-h1-serif">
           {clusters.length === 0
-            ? activeFolderName
-              ? `No clusters in ${activeFolderName}`
-              : "No clusters yet"
+            ? "No clusters yet"
             : clusters.length === 1
             ? "One cluster worth your attention"
-            : `${clusters.length} clusters worth your attention`}
-          {activeFolderName && clusters.length > 0 ? (
-            <span
-              className="ml-3 align-middle text-base font-normal"
-              style={{ color: "var(--fg-muted)" }}
-            >
-              in {activeFolderName}
-            </span>
-          ) : null}
+            : `${previews.length} clusters across ${countFolders(previews)} streams`}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-          Three is the cap. Each cluster has crossed combined source-trust 1.0
-          across 2+ domains in the last 72 hours. Rank, then write.
+          Each folder is a reading lane. Open the strongest cluster, ask for
+          more, or set that lane aside for now.
         </p>
       </header>
 
-      {showFolderFilter ? (
-        <FolderFilter
-          folders={folders}
-          counts={folderCounts}
-          totalCount={totalClusterCount}
-          ungroupedCount={ungroupedCount}
-          active={folderFilter}
-        />
-      ) : null}
-
       {clusters.length === 0 ? (
-        <EmptyClusters folderName={activeFolderName} />
+        <EmptyClusters />
       ) : (
-        <div className="space-y-4">
-          {previews.map((preview, idx) => (
-            <ClusterCard
-              key={preview.cluster.id}
-              preview={preview}
-              rank={idx + 1}
-              isTop={idx === 0}
-            />
-          ))}
-        </div>
+        <TodayFolderStreams previews={previews} />
       )}
     </div>
   );
 }
 
-function FolderFilter({
-  folders,
-  counts,
-  totalCount,
-  ungroupedCount,
-  active,
-}: {
-  folders: { id: string; name: string }[];
-  counts: Map<string, number>;
-  totalCount: number;
-  ungroupedCount: number;
-  active: string | null;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="fp-eyebrow mr-1">Filter</span>
-      <FolderChip href="/" label="All" count={totalCount} active={!active} />
-      {folders.map((f) => (
-        <FolderChip
-          key={f.id}
-          href={`/?folder=${encodeURIComponent(f.id)}`}
-          label={f.name}
-          count={counts.get(f.id) ?? 0}
-          active={active === f.id}
-        />
-      ))}
-      {ungroupedCount > 0 ? (
-        <FolderChip
-          href="/?folder=ungrouped"
-          label="Ungrouped"
-          count={ungroupedCount}
-          active={active === "ungrouped"}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function FolderChip({
-  href,
-  label,
-  count,
-  active,
-}: {
-  href: string;
-  label: string;
-  count: number;
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] transition"
-      style={{
-        background: active ? "var(--fg)" : "var(--surface)",
-        color: active ? "var(--surface)" : "var(--fg-muted)",
-        border: `1px solid ${active ? "var(--fg)" : "var(--border)"}`,
-        boxShadow: active ? "var(--shadow-xs)" : undefined,
-        fontWeight: active ? 500 : 400,
-      }}
-    >
-      <span>{label}</span>
-      <span
-        className="font-mono tabular text-[10px]"
-        style={{ color: active ? "var(--surface)" : "var(--fg-subtle)", opacity: active ? 0.85 : 1 }}
-      >
-        {count}
-      </span>
-    </Link>
-  );
-}
-
-interface ClusterPreview {
-  cluster: Awaited<ReturnType<typeof topFiredClusters>>[number];
-  items: { title: string; sourceUrl: string; displayName: string }[];
-  draft: {
-    id: string;
-    voiceMatch: number;
-    wpEditLink: string | null;
-  } | null;
-}
-
-function ClusterCard({
-  preview,
-  rank,
-  isTop,
-}: {
-  preview: ClusterPreview;
-  rank: number;
-  isTop: boolean;
-}) {
-  const c = preview.cluster;
-  const headline = preview.items[0]?.title ?? "Untitled cluster";
-  const fit = c.signals?.composite ?? 0;
-  return (
-    <article className={`fp-card ${isTop ? "fp-card-feature" : "fp-card-hover"} relative p-6`}>
-      {isTop ? (
-        <div
-          className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white"
-          style={{
-            background: "linear-gradient(135deg, var(--indigo) 0%, var(--rose) 130%)",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <span>★</span> Pre-rendered · instant
-        </div>
-      ) : null}
-
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 fp-eyebrow">
-            <span>#{rank}</span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {c.sourceCount} sources
-            </span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {relativeTime(c.firedAt ?? c.formedAt)}
-            </span>
-            <span className="fp-chip fp-chip-emerald ml-1">
-              fit {fit.toFixed(2)}
-            </span>
-          </div>
-          <h2
-            className={`mt-2 leading-snug font-semibold ${
-              isTop ? "text-2xl fp-h1-serif" : "text-lg"
-            }`}
-            style={{ letterSpacing: "-0.01em" }}
-          >
-            {headline}
-          </h2>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {preview.items.map((item, i) => (
-          <span key={i} className="fp-chip">
-            {item.displayName || hostFromUrl(item.sourceUrl)}
-          </span>
-        ))}
-      </div>
-
-      {c.signals ? (
-        <div
-          className="mt-4 grid grid-cols-3 gap-3 rounded-lg p-3"
-          style={{ background: "var(--bg-subtle)" }}
-        >
-          <RankerSignal
-            label="Archive overlap"
-            value={c.signals.archiveOverlap}
-          />
-          <RankerSignal label="Beat match" value={c.signals.beatMatch} />
-          <RankerSignal label="Source trust" value={c.signals.sourceTrust} />
-        </div>
-      ) : null}
-
-      <div className="mt-5">
-        <ClusterActions clusterId={c.id} draft={preview.draft} />
-      </div>
-    </article>
-  );
-}
-
-function RankerSignal({ label, value }: { label: string; value: number }) {
-  const pct = Math.round(value * 100);
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--fg-muted)" }}>
-        <span>{label}</span>
-        <span className="tabular font-medium" style={{ color: "var(--fg)" }}>
-          {value.toFixed(2)}
-        </span>
-      </div>
-      <div
-        className="mt-1 h-1 overflow-hidden rounded-full"
-        style={{ background: "var(--border)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all"
-          style={{
-            width: `${pct}%`,
-            background:
-              "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 200%)",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function EmptyClusters({ folderName }: { folderName?: string | null }) {
+function EmptyClusters() {
   return (
     <div
       className="fp-card-feature p-10 text-center"
@@ -393,21 +151,14 @@ function EmptyClusters({ folderName }: { folderName?: string | null }) {
         </svg>
       </div>
       <h2 className="fp-h1-serif" style={{ fontSize: 22 }}>
-        {folderName
-          ? `No fired clusters in ${folderName} yet.`
-          : "Sources are polling. Clusters fire automatically."}
+        Sources are polling. Clusters fire automatically.
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm" style={{ color: "var(--fg-muted)" }}>
-        {folderName
-          ? "Try poll the folder, broaden the filter, or check back after the next poll cycle."
-          : "A cluster fires when 3 or more sources cover the same story within 72 hours, from at least 2 distinct domains. Want it now? Hit \"Poll all\" on Sources."}
+        A cluster fires when 3 or more sources cover the same story within 72
+        hours, from at least 2 distinct domains. Want it now? Hit "Poll all"
+        on Sources.
       </p>
       <div className="mt-5 flex justify-center gap-2">
-        {folderName ? (
-          <Link href="/" className="fp-btn fp-btn-ghost">
-            Show all folders
-          </Link>
-        ) : null}
         <Link href="/sources" className="fp-btn fp-btn-ghost">
           Manage sources
         </Link>
@@ -623,21 +374,31 @@ function formatDate(ms: number): string {
   });
 }
 
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  return `${day}d ago`;
+function countFolders(previews: TodayClusterPreview[]): number {
+  return new Set(previews.map((preview) => preview.folder.id ?? "ungrouped")).size;
 }
 
-function hostFromUrl(s: string): string {
-  try {
-    return new URL(s).host.replace(/^www\./, "");
-  } catch {
-    return s;
+function dominantFolder(
+  items: Array<{ folderId: string | null; folderName: string }>,
+): { id: string | null; name: string } {
+  const counts = new Map<string, { id: string | null; name: string; count: number }>();
+  for (const item of items) {
+    const key = item.folderId ?? "ungrouped";
+    const current = counts.get(key);
+    if (current) {
+      current.count += 1;
+    } else {
+      counts.set(key, {
+        id: item.folderId,
+        name: item.folderName,
+        count: 1,
+      });
+    }
   }
+  return (
+    Array.from(counts.values()).sort((a, b) => b.count - a.count)[0] ?? {
+      id: null,
+      name: "Ungrouped",
+    }
+  );
 }

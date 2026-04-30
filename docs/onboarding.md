@@ -41,7 +41,7 @@ ANTHROPIC_API_KEY=sk-ant-paste-yours-here
 
 Leave `LIBSQL_URL` and `LIBSQL_AUTH_TOKEN` unset. You'll get a local SQLite file instead, which is what you want for self-host.
 
-Optional: set `ANTHROPIC_DRAFT_MODEL=claude-sonnet-4-5` if you want to pin a specific Sonnet build.
+Optional: set `ANTHROPIC_DRAFT_MODEL` (e.g. `claude-sonnet-4-6`) if you want to override the default Haiku draft model.
 
 ---
 

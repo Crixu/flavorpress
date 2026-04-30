@@ -219,6 +219,9 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
         pollIntervalSeconds: Number(row.poll_interval_seconds ?? 300),
         lastPolledAt: row.last_polled_at ? Number(row.last_polled_at) : null,
         lastError: row.last_error ? String(row.last_error) : null,
+        lastEtag: row.last_etag ? String(row.last_etag) : null,
+        lastModified: row.last_modified ? String(row.last_modified) : null,
+        backoffUntil: row.backoff_until ? Number(row.backoff_until) : null,
         active: Number(row.active ?? 1) === 1,
         createdAt: Number(row.created_at ?? Date.now()),
       };

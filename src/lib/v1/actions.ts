@@ -308,6 +308,17 @@ export async function bulkAssignSourcesToFolderAction(formData: FormData) {
   revalidatePath("/sources");
 }
 
+export async function dismissClusterAction(formData: FormData) {
+  await ensureSchema();
+  const clusterId = String(formData.get("clusterId") ?? "");
+  if (!clusterId) throw new Error("clusterId required.");
+  await db.execute({
+    sql: `UPDATE clusters SET state = 'dismissed' WHERE id = ? AND user_id = ?`,
+    args: [clusterId, SINGLE_USER_ID],
+  });
+  revalidatePath("/");
+}
+
 export async function pollFolderAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
@@ -540,8 +551,8 @@ async function persistVoiceProfile(
  *   sourceId
  *   outletIds (multiple values allowed via repeated `outletIds` field)
  *
- * Empty assignment = "All outlets (default)" — meaning the source will be
- * read by any outlet whose own assignment list is empty.
+ * Empty assignment = "All outlets (default)"; the source will be read by
+ * every outlet.
  */
 export async function assignSourceOutletsAction(formData: FormData) {
   await ensureSchema();
@@ -620,6 +631,64 @@ export async function removeVoiceTermAction(formData: FormData) {
   revalidatePath(`/voice/${outletId}`);
 }
 
+/**
+ * Pick which of the generated headline candidates is the active one. Swaps
+ * the chosen alternate into the primary `headline` slot and pushes the
+ * previous primary back into `headline_alternates`. The publish step reads
+ * `drafts.headline`, so this is what makes the choice show up in WordPress.
+ *
+ * No-op when the chosen value already matches the current headline.
+ */
+export async function selectDraftHeadlineAction(formData: FormData) {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  const headline = String(formData.get("headline") ?? "").trim();
+  if (!draftId) throw new Error("draftId required.");
+  if (!headline) throw new Error("headline required.");
+
+  const r = await db.execute({
+    sql: `SELECT headline, headline_alternates, wp_post_id FROM drafts
+          WHERE id = ? AND user_id = ?`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("Draft not found.");
+  const row = r.rows[0]!;
+  if (row.wp_post_id) {
+    throw new Error(
+      "Headline already sent to WordPress. Edit the title in WordPress.",
+    );
+  }
+  const current = String(row.headline ?? "");
+  if (current === headline) return;
+
+  const alternates: string[] = row.headline_alternates
+    ? JSON.parse(String(row.headline_alternates))
+    : [];
+  // Only allow choices that came from the generator. Guards against a
+  // crafted form value sneaking arbitrary text into the headline slot.
+  if (!alternates.includes(headline)) {
+    throw new Error("Headline must be one of the generated alternates.");
+  }
+
+  const nextAlternates = alternates
+    .filter((alt) => alt !== headline)
+    .concat(current ? [current] : []);
+
+  await db.execute({
+    sql: `UPDATE drafts
+          SET headline = ?, headline_alternates = ?, edited_at = ?
+          WHERE id = ? AND user_id = ?`,
+    args: [
+      headline,
+      JSON.stringify(nextAlternates),
+      Date.now(),
+      draftId,
+      SINGLE_USER_ID,
+    ],
+  });
+  revalidatePath(`/editor/${draftId}`);
+}
+
 export async function generateDraftAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
@@ -677,7 +746,9 @@ export async function generateDraftAction(formData: FormData) {
  * Persists wp_post_id and wp_edit_link on the drafts row so the editor
  * can show "Open in WordPress" instead of "Publish" on subsequent visits.
  */
-export async function publishDraftToWPAction(formData: FormData) {
+export async function publishDraftToWPAction(
+  formData: FormData,
+): Promise<{ editLink: string }> {
   await ensureSchema();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
@@ -690,7 +761,7 @@ export async function publishDraftToWPAction(formData: FormData) {
   const scheduleAt = scheduleAtRaw ? Number(scheduleAtRaw) : undefined;
 
   const r = await db.execute({
-    sql: `SELECT id, outlet_id, headline, body, state, wp_post_id
+    sql: `SELECT id, outlet_id, headline, body, state, wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
@@ -698,9 +769,10 @@ export async function publishDraftToWPAction(formData: FormData) {
   const row = r.rows[0]!;
 
   if (row.wp_post_id) {
-    // Already pushed once; return to the editor — the user can open in WP.
+    // Already pushed once; just hand back the existing edit link so the
+    // client can open WordPress in a new tab.
     revalidatePath(`/editor/${draftId}`);
-    return;
+    return { editLink: String(row.wp_edit_link ?? "") };
   }
 
   const outletId = String(row.outlet_id ?? "");
@@ -736,7 +808,7 @@ export async function publishDraftToWPAction(formData: FormData) {
   });
 
   revalidatePath(`/editor/${draftId}`);
-  redirect(result.editLink);
+  return { editLink: result.editLink };
 }
 
 function stripHtml(s: string): string {

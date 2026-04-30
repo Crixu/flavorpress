@@ -207,8 +207,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
               style={{ color: "var(--fg-muted)" }}
             >
               Pick which outlets see this source. Leave all unchecked to fall
-              back to the default — every outlet that has no explicit
-              assignment of its own reads from this source.
+              back to the default: every outlet reads from this source.
             </p>
           </div>
           <form action={assignSourceOutletsAction} className="space-y-3">

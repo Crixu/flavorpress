@@ -337,10 +337,57 @@ export interface PublishResult {
   editLink: string;
 }
 
+/**
+ * Wrap the draft body's `<p>` and `<blockquote>` tags in Gutenberg block
+ * comments so the post renders as proper blocks in the WP editor instead of
+ * a single Classic block with raw HTML inside.
+ */
+export function htmlToBlocks(html: string): string {
+  const trimmed = html.trim();
+  if (!trimmed) return "";
+
+  const tagRegex = /<(p|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+
+  const pushTextAsParagraphs = (text: string) => {
+    const stripped = text.replace(/\s+/g, " ").trim();
+    if (!stripped) return;
+    for (const chunk of stripped.split(/\n{2,}/)) {
+      const line = chunk.trim();
+      if (!line) continue;
+      parts.push(`<!-- wp:paragraph -->\n<p>${line}</p>\n<!-- /wp:paragraph -->`);
+    }
+  };
+
+  while ((m = tagRegex.exec(trimmed)) !== null) {
+    if (m.index > lastIndex) {
+      pushTextAsParagraphs(trimmed.slice(lastIndex, m.index));
+    }
+    const tag = m[1].toLowerCase();
+    const inner = m[2].trim();
+    if (tag === "p") {
+      parts.push(`<!-- wp:paragraph -->\n<p>${inner}</p>\n<!-- /wp:paragraph -->`);
+    } else {
+      const quoteInner = /<p[\s>]/i.test(inner) ? inner : `<p>${inner}</p>`;
+      parts.push(
+        `<!-- wp:quote -->\n<blockquote class="wp-block-quote">${quoteInner}</blockquote>\n<!-- /wp:quote -->`,
+      );
+    }
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < trimmed.length) {
+    pushTextAsParagraphs(trimmed.slice(lastIndex));
+  }
+
+  return parts.join("\n\n");
+}
+
 export async function publishToWordPress(input: PublishInput): Promise<PublishResult> {
   const body: Record<string, unknown> = {
     title: input.title,
-    content: input.contentHtml,
+    content: htmlToBlocks(input.contentHtml),
     status: input.status ?? "draft",
   };
   if (input.status === "future" && input.scheduleAt) {
