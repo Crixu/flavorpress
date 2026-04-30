@@ -15,7 +15,9 @@ import {
   assignSourceToFolderAction,
   bulkAssignSourcesToFolderAction,
   deleteSourceAction,
+  pauseSourceAction,
   pollSourceAction,
+  resumeSourceAction,
 } from "@/lib/v1/actions";
 import { SubmitButton } from "../../_components/SubmitButton";
 
@@ -33,6 +35,7 @@ interface SourceRow {
   trust_score: number;
   last_polled_at: number | null;
   last_error: string | null;
+  paused_until: number | null;
   item_count: number;
   items_24h: number;
 }
@@ -164,9 +167,17 @@ function ExplorerRow({
   onToggle: () => void;
 }) {
   const meta = KIND_META[row.kind] ?? KIND_META.rss!;
+  const paused =
+    row.paused_until !== null && row.paused_until > Date.now();
   return (
     <div
-      className={`grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs ${selected ? "bg-indigo-50/60" : "hover:bg-stone-50"}`}
+      className={`grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs ${
+        selected
+          ? "bg-indigo-50/60"
+          : paused
+            ? "bg-amber-50/40 hover:bg-amber-50/70"
+            : "hover:bg-stone-50"
+      }`}
     >
       <div className="col-span-1">
         <input
@@ -178,13 +189,20 @@ function ExplorerRow({
         />
       </div>
       <div className="col-span-4 min-w-0">
-        <Link
-          href={`/sources/${row.id}`}
-          prefetch={false}
-          className="font-medium text-stone-900 hover:underline"
-        >
-          {row.display_name || hostFromUrl(row.url)}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/sources/${row.id}`}
+            prefetch={false}
+            className="font-medium text-stone-900 hover:underline"
+          >
+            {row.display_name || hostFromUrl(row.url)}
+          </Link>
+          {paused ? (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-amber-800">
+              Paused · resumes {relativeFuture(row.paused_until!)}
+            </span>
+          ) : null}
+        </div>
         <div className="truncate text-[11px] text-stone-500">{row.url}</div>
         {row.last_error ? (
           <div className="mt-0.5 truncate text-[11px] text-rose-600">
@@ -209,7 +227,7 @@ function ExplorerRow({
       <div className="col-span-2 text-right text-stone-500">
         {row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "never"}
       </div>
-      <div className="col-span-2 flex justify-end gap-1.5">
+      <div className="col-span-2 flex flex-wrap justify-end gap-1.5">
         <Link
           href={`/sources/${row.id}`}
           prefetch={false}
@@ -217,6 +235,19 @@ function ExplorerRow({
         >
           Open
         </Link>
+        {paused ? (
+          <form action={resumeSourceAction}>
+            <input type="hidden" name="sourceId" value={row.id} />
+            <SubmitButton
+              className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 hover:bg-amber-100"
+              pendingLabel="Resuming"
+            >
+              Resume
+            </SubmitButton>
+          </form>
+        ) : (
+          <SnoozePicker sourceId={row.id} />
+        )}
         <form action={pollSourceAction}>
           <input type="hidden" name="sourceId" value={row.id} />
           <SubmitButton
@@ -237,6 +268,39 @@ function ExplorerRow({
         </form>
       </div>
     </div>
+  );
+}
+
+function SnoozePicker({ sourceId }: { sourceId: string }) {
+  const [pending, startTransition] = useTransition();
+
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const hours = e.target.value;
+    if (!hours) return;
+    const fd = new FormData();
+    fd.set("sourceId", sourceId);
+    fd.set("durationHours", hours);
+    startTransition(async () => {
+      await pauseSourceAction(fd);
+    });
+    e.target.value = "";
+  }
+
+  return (
+    <select
+      value=""
+      onChange={handleChange}
+      disabled={pending}
+      aria-label="Snooze source"
+      className="rounded border border-stone-200 bg-white px-2 py-1 text-[11px] hover:border-stone-300 disabled:opacity-60"
+    >
+      <option value="" disabled>
+        {pending ? "Snoozing…" : "💤 Snooze"}
+      </option>
+      <option value="1">1 hour</option>
+      <option value="24">1 day</option>
+      <option value="168">1 week</option>
+    </select>
   );
 }
 
@@ -373,4 +437,15 @@ function relativeTime(ms: number): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   return `${day}d ago`;
+}
+
+function relativeFuture(ms: number): string {
+  const diff = ms - Date.now();
+  if (diff <= 0) return "soon";
+  const min = Math.ceil(diff / 60000);
+  if (min < 60) return `in ${min}m`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `in ${hr}h`;
+  const day = Math.round(hr / 24);
+  return `in ${day}d`;
 }

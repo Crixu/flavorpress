@@ -108,6 +108,10 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     last_polled_at:
       r.last_polled_at === null ? null : Number(r.last_polled_at),
     last_error: r.last_error === null ? null : String(r.last_error),
+    paused_until:
+      r.paused_until === null || r.paused_until === undefined
+        ? null
+        : Number(r.paused_until),
     item_count: Number(r.item_count ?? 0),
     items_24h: Number(r.items_24h ?? 0),
   }));
@@ -442,6 +446,7 @@ interface SourceRow {
   poll_interval_seconds: number;
   last_polled_at: number | null;
   last_error: string | null;
+  paused_until: number | null;
   active: number;
   created_at: number;
   item_count: number;
@@ -464,6 +469,7 @@ interface PlainSourceRow {
   trust_score: number;
   last_polled_at: number | null;
   last_error: string | null;
+  paused_until: number | null;
   item_count: number;
   items_24h: number;
 }

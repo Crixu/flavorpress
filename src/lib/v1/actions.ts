@@ -323,16 +323,23 @@ export async function pollFolderAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const folderId = String(formData.get("folderId") ?? "");
+  const now = Date.now();
   // Empty string means "ungrouped" — poll all sources with folder_id NULL.
+  // Paused sources are skipped in bulk polls (the user can still hit
+  // "Poll now" on a paused row to override).
   const sources = await db.execute(
     folderId
       ? {
-          sql: `SELECT id FROM sources WHERE user_id = ? AND active = 1 AND folder_id = ?`,
-          args: [SINGLE_USER_ID, folderId],
+          sql: `SELECT id FROM sources
+                WHERE user_id = ? AND active = 1 AND folder_id = ?
+                  AND (paused_until IS NULL OR paused_until <= ?)`,
+          args: [SINGLE_USER_ID, folderId, now],
         }
       : {
-          sql: `SELECT id FROM sources WHERE user_id = ? AND active = 1 AND folder_id IS NULL`,
-          args: [SINGLE_USER_ID],
+          sql: `SELECT id FROM sources
+                WHERE user_id = ? AND active = 1 AND folder_id IS NULL
+                  AND (paused_until IS NULL OR paused_until <= ?)`,
+          args: [SINGLE_USER_ID, now],
         },
   );
   const registry = getRegistry();
@@ -400,8 +407,10 @@ export async function pollAllSourcesAction() {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const sources = await db.execute({
-    sql: `SELECT id FROM sources WHERE user_id = ? AND active = 1`,
-    args: [SINGLE_USER_ID],
+    sql: `SELECT id FROM sources
+          WHERE user_id = ? AND active = 1
+            AND (paused_until IS NULL OR paused_until <= ?)`,
+    args: [SINGLE_USER_ID, Date.now()],
   });
   const registry = getRegistry();
   await Promise.all(
@@ -424,6 +433,51 @@ export async function pollAllSourcesAction() {
     }),
   );
   revalidatePath("/sources");
+  revalidatePath("/");
+}
+
+/**
+ * Snooze a source for a chosen window. Bulk polls (Poll all, folder polls,
+ * the dashboard active count) skip the row until `paused_until` elapses.
+ * Manual "Poll now" still works so the user can ad-hoc override.
+ *
+ * Form fields: sourceId, durationHours (preset: 1, 24, 168, or "custom").
+ * "custom" reads `customHours` for an arbitrary positive integer.
+ */
+export async function pauseSourceAction(formData: FormData) {
+  await ensureSchema();
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) throw new Error("sourceId required.");
+
+  const preset = String(formData.get("durationHours") ?? "");
+  const hours =
+    preset === "custom"
+      ? Number(formData.get("customHours") ?? 0)
+      : Number(preset);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    throw new Error("Pick a snooze duration.");
+  }
+
+  const until = Date.now() + hours * 3600 * 1000;
+  await db.execute({
+    sql: `UPDATE sources SET paused_until = ? WHERE id = ? AND user_id = ?`,
+    args: [until, sourceId, SINGLE_USER_ID],
+  });
+  revalidatePath("/sources");
+  revalidatePath(`/sources/${sourceId}`);
+  revalidatePath("/");
+}
+
+export async function resumeSourceAction(formData: FormData) {
+  await ensureSchema();
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) throw new Error("sourceId required.");
+  await db.execute({
+    sql: `UPDATE sources SET paused_until = NULL WHERE id = ? AND user_id = ?`,
+    args: [sourceId, SINGLE_USER_ID],
+  });
+  revalidatePath("/sources");
+  revalidatePath(`/sources/${sourceId}`);
   revalidatePath("/");
 }
 
