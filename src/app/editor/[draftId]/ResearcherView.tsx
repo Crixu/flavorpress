@@ -254,10 +254,7 @@ function SectionHeader({
           {count}
         </span>
       </div>
-      <p
-        className="text-[12px]"
-        style={{ color: "var(--fg-subtle)", maxWidth: "40ch" }}
-      >
+      <p className="text-[12px]" style={{ color: "var(--fg-subtle)", maxWidth: "40ch" }}>
         {description}
       </p>
     </header>
