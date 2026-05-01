@@ -434,12 +434,24 @@ body {
    the slight slide-fade below. Tuned a touch slower than the UA default so
    reorder feels intentional rather than twitchy. */
 @keyframes fp-vt-fade-out {
-  from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(-6px); }
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
 }
 @keyframes fp-vt-fade-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 ::view-transition-old(*) {
   animation: fp-vt-fade-out 220ms var(--ease) forwards;

@@ -113,10 +113,10 @@ export default async function TodayPage() {
           {totalPreviews === 0
             ? "No clusters yet"
             : totalPreviews === 1
-            ? "One cluster worth your attention"
-            : `${totalPreviews} clusters across ${nonEmptyStreams.length} ${
-                nonEmptyStreams.length === 1 ? "stream" : "streams"
-              }`}
+              ? "One cluster worth your attention"
+              : `${totalPreviews} clusters across ${nonEmptyStreams.length} ${
+                  nonEmptyStreams.length === 1 ? "stream" : "streams"
+                }`}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
           Each folder is a reading lane. Open the strongest cluster, ask for more, or set that lane
@@ -453,8 +453,8 @@ function Onboarding({
             const tone = s.done
               ? "var(--emerald)"
               : isCurrent
-              ? "var(--indigo)"
-              : "var(--fg-subtle)";
+                ? "var(--indigo)"
+                : "var(--fg-subtle)";
             return (
               <li key={s.id} className="flex items-center gap-1.5" style={{ color: tone }}>
                 <span
@@ -463,8 +463,8 @@ function Onboarding({
                     background: s.done
                       ? "var(--emerald-tint)"
                       : isCurrent
-                      ? "var(--indigo)"
-                      : "var(--bg-subtle)",
+                        ? "var(--indigo)"
+                        : "var(--bg-subtle)",
                     color: s.done ? "var(--emerald)" : isCurrent ? "#fff" : "var(--fg-subtle)",
                   }}
                 >

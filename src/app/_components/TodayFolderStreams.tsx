@@ -241,8 +241,8 @@ function FolderStreamHeader({ stream, compact }: { stream: TodayFolderStream; co
                 lastCount === null
                   ? "Refreshing"
                   : lastCount === 0
-                  ? "Nothing to poll"
-                  : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
+                    ? "Nothing to poll"
+                    : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
               }
             />
           ) : null}
@@ -279,8 +279,8 @@ function FolderStreamHeader({ stream, compact }: { stream: TodayFolderStream; co
               lastCount === null
                 ? "Refreshing"
                 : lastCount === 0
-                ? "Nothing to poll"
-                : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
+                  ? "Nothing to poll"
+                  : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
             }
           />
         ) : null}
