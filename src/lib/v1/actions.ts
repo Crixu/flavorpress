@@ -37,6 +37,7 @@ import {
 } from "./outlets";
 import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
+import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -196,6 +197,164 @@ export async function addSourceAction(formData: FormData) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes("UNIQUE")) console.warn(`addSource: ${url}: ${msg}`);
+    }
+  }
+
+  if (titleJobs.length > 0) {
+    after(() => runBackgroundAutoTitling(titleJobs));
+  }
+  revalidatePath("/sources");
+  revalidatePath("/");
+}
+
+export interface OpmlPickerFeed {
+  url: string;
+  title: string;
+  groupTitle: string | null;
+  alreadyAdded: boolean;
+}
+
+export interface OpmlParseResponse {
+  ok: true;
+  feeds: OpmlPickerFeed[];
+  rawCount: number;
+  alreadyAddedCount: number;
+}
+
+export interface OpmlParseError {
+  ok: false;
+  error: string;
+}
+
+/**
+ * Parse an uploaded OPML file and return its feeds annotated with whether
+ * the URL already exists for this user. The picker UI uses this to render
+ * the selection list. We do NOT insert anything here; insertion is the
+ * separate `importOpmlSelectionAction` so the user has to confirm.
+ *
+ * Form fields: file (required, the .opml/.xml upload).
+ */
+export async function parseOpmlAction(
+  formData: FormData,
+): Promise<OpmlParseResponse | OpmlParseError> {
+  await ensureSchema();
+  await ensureSingleUser();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Pick an OPML file to import." };
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    return { ok: false, error: "OPML file too large (max 2 MB)." };
+  }
+
+  let xml: string;
+  try {
+    xml = await file.text();
+  } catch {
+    return { ok: false, error: "Could not read the file." };
+  }
+
+  const parsed = parseOpml(xml);
+  if (parsed.feeds.length === 0) {
+    return {
+      ok: false,
+      error:
+        parsed.rawCount > 0
+          ? "OPML had outline entries but no feed URLs."
+          : "No feeds found. Is this an OPML export?",
+    };
+  }
+
+  const existing = await db.execute({
+    sql: `SELECT url FROM sources WHERE user_id = ?`,
+    args: [SINGLE_USER_ID],
+  });
+  const existingSet = new Set(existing.rows.map((r) => String(r.url)));
+
+  let alreadyAddedCount = 0;
+  const feeds: OpmlPickerFeed[] = parsed.feeds.map((f) => {
+    const alreadyAdded = existingSet.has(f.url);
+    if (alreadyAdded) alreadyAddedCount += 1;
+    return {
+      url: f.url,
+      title: f.title,
+      groupTitle: f.groupTitle,
+      alreadyAdded,
+    };
+  });
+
+  return {
+    ok: true,
+    feeds,
+    rawCount: parsed.rawCount,
+    alreadyAddedCount,
+  };
+}
+
+/**
+ * Insert the user's chosen OPML feeds as sources. Caps at OPML_IMPORT_CAP
+ * to keep the volume signal honest — bulk-importing dozens of feeds is the
+ * fastest path to slop. Reuses the same insert + background auto-titling
+ * pipeline as `addSourceAction`, except the OPML title is used as the seed
+ * label so the picker's chosen name survives the auto-title race-guard.
+ *
+ * Form fields:
+ *   url        — repeated; one per selected feed
+ *   title      — repeated; same length as url[]
+ *   folderId   — optional, same shape as the manual add form
+ */
+export async function importOpmlSelectionAction(formData: FormData) {
+  await ensureSchema();
+  await ensureSingleUser();
+  const urls = formData.getAll("url").map((v) => String(v).trim()).filter(Boolean);
+  const titles = formData.getAll("title").map((v) => String(v).trim());
+  if (urls.length === 0) {
+    throw new Error("Pick at least one feed to import.");
+  }
+  if (urls.length > OPML_IMPORT_CAP) {
+    throw new Error(
+      `Pick at most ${OPML_IMPORT_CAP} feeds per import. Run another pass after these settle in.`,
+    );
+  }
+
+  const folderId = await resolveFolderIdField(formData);
+  const titleJobs: { id: string; url: string }[] = [];
+
+  for (let i = 0; i < urls.length; i += 1) {
+    const url = urls[i]!;
+    const kind = detectKind(url);
+    const id = crypto.randomUUID();
+    const seedTitle = (titles[i] ?? "").trim() || hostFromUrl(url);
+    const isPending = kind === "podcast" || kind === "youtube";
+    try {
+      await db.execute({
+        sql: `INSERT INTO sources
+              (id, user_id, kind, url, display_name, folder_id, trust_score,
+               poll_interval_seconds, active, last_error, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, 0.5, ?, ?, ?, ?)`,
+        args: [
+          id,
+          SINGLE_USER_ID,
+          kind,
+          url,
+          seedTitle,
+          folderId,
+          isPending ? 3600 : 300,
+          isPending ? 0 : 1,
+          isPending
+            ? "Pending v1.1 — transcription via Whisper not yet wired. Source saved; activates when v1.1 ships."
+            : null,
+          Date.now(),
+        ],
+      });
+      // Auto-title only when the seed equals the bare host (i.e. OPML didn't
+      // carry a title). Otherwise the picker's chosen label sticks.
+      if (seedTitle === hostFromUrl(url)) {
+        titleJobs.push({ id, url });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("UNIQUE")) console.warn(`importOpml: ${url}: ${msg}`);
     }
   }
 
