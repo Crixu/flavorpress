@@ -6,7 +6,7 @@
  * doc. Keep this file synced with the libSQL schema in `src/lib/db.ts`.
  */
 
-export type SourceKind = "rss" | "reddit" | "podcast" | "youtube" | "newsletter"; // newsletter ingest deferred to v1.1; type kept for forward compat
+export type SourceKind = "rss" | "reddit" | "podcast" | "youtube" | "newsletter" | "x";
 
 export type ClusterState = "forming" | "fired" | "drafted" | "published" | "dismissed";
 
