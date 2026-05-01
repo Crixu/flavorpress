@@ -220,62 +220,93 @@ function Onboarding({
   sourceCount: number;
   hasVoice: boolean;
 }) {
-  const steps = [
+  type GuideStep = {
+    id: number;
+    shortLabel: string;
+    title: string;
+    blurb: string;
+    detail: string;
+    cta: string;
+    href: string;
+    icon: () => React.ReactElement;
+    done: boolean;
+  };
+
+  const steps: GuideStep[] = [
     {
-      done: hasSite,
-      number: 1,
-      title: "Connect WordPress",
-      description:
-        "One click, no copy-pasting passwords. We open your site's authorize page; you click Approve; we get an Application Password back.",
-      cta: hasSite ? "Reconnect" : "Connect WordPress",
+      id: 1,
+      shortLabel: "Connect",
+      title: "Connect your WordPress",
+      blurb:
+        "One click, no copy-pasting passwords. Your site's authorize page opens; you click Approve; we get an Application Password back.",
+      detail:
+        "We never see your login. Drafts always land as drafts; nothing publishes without you clicking the button.",
+      cta: hasSite ? "Manage outlets" : "Connect WordPress",
       href: "/voice",
       icon: ConnectIcon,
+      done: hasSite,
     },
     {
-      done: hasVoice,
-      number: 2,
-      title: "Build voice profile",
-      description:
-        "Pulls your last 50 published posts and extracts a stylometric fingerprint. Sentence rhythm, signature terms, banned vocabulary. Decay-weighted by recency.",
-      cta: hasVoice ? "Re-train" : "Build profile",
+      id: 2,
+      shortLabel: "Voice",
+      title: "Train your voice",
+      blurb:
+        "Your last 50 published posts get pulled and turned into a stylometric fingerprint. Sentence rhythm, signature terms, banned vocabulary, decay-weighted by recency.",
+      detail:
+        "Drafts are voice-matched against this profile. Edit it any time and re-train after a stylistic shift.",
+      cta: hasVoice ? "Review profile" : "Build voice profile",
       href: "/voice",
       icon: VoiceIcon,
+      done: hasVoice,
     },
     {
-      done: sourceCount >= 5,
-      number: 3,
-      title: `Add sources (${sourceCount}/5)`,
-      description:
-        "Bring 5+ feeds in your niche. RSS, Reddit, podcasts, YouTube. We poll continuously; clusters surface when 3+ outlets converge on the same story.",
-      cta: sourceCount >= 5 ? "Add more" : "Add sources",
+      id: 3,
+      shortLabel: "Sources",
+      title: "Plug in your sources",
+      blurb:
+        "Bring 5 or more feeds in your niche. RSS, newsletters, Reddit, podcasts, YouTube. We poll continuously and group items into clusters when 3+ feeds converge on the same story within 72 hours.",
+      detail:
+        sourceCount >= 5
+          ? `${sourceCount} added. Polish folders, prune sources, or import an OPML file.`
+          : `${sourceCount} of 5 added. Use a starter pack for a fast start, paste URLs by hand, or import an OPML from your existing reader.`,
+      cta: sourceCount >= 5 ? "Manage sources" : "Add sources",
       href: "/sources",
       icon: SourceIcon,
+      done: sourceCount >= 5,
     },
   ];
+
+  const currentStep = steps.find((s) => !s.done) ?? steps[steps.length - 1]!;
   const completed = steps.filter((s) => s.done).length;
   const progress = (completed / steps.length) * 100;
+  const upcoming = steps.filter((s) => !s.done && s.id !== currentStep.id);
+  const FocusIcon = currentStep.icon;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {/* Hero */}
       <header className="space-y-3">
         <div className="fp-eyebrow">Welcome to FlavorPress</div>
-        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "16ch" }}>
+        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "18ch" }}>
           Your reading turns into your writing.
         </h1>
-        <p className="max-w-xl text-base leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          Three steps. Connect your WordPress, train the voice, plug in your
-          sources. Then every morning, three story clusters surface, ranked
-          and ready to draft.
+        <p
+          className="max-w-xl text-base leading-relaxed"
+          style={{ color: "var(--fg-muted)" }}
+        >
+          Three steps from a blank slate to your first draft. Connect a
+          WordPress site, train the voice, plug in the feeds you already
+          read. Clusters surface when those feeds converge; you choose
+          which to draft.
         </p>
       </header>
 
-      {/* Progress */}
+      {/* Progress strip with step labels */}
       <div className="fp-card p-5">
         <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">Setup progress</span>
+          <span className="font-medium">Welcome guide</span>
           <span className="tabular" style={{ color: "var(--fg-muted)" }}>
-            {completed} of {steps.length}
+            {completed} of {steps.length} done
           </span>
         </div>
         <div
@@ -292,76 +323,184 @@ function Onboarding({
             }}
           />
         </div>
+        <ol className="mt-3 grid grid-cols-3 gap-2 text-xs">
+          {steps.map((s) => {
+            const isCurrent = s.id === currentStep.id;
+            const tone = s.done
+              ? "var(--emerald)"
+              : isCurrent
+              ? "var(--indigo)"
+              : "var(--fg-subtle)";
+            return (
+              <li
+                key={s.id}
+                className="flex items-center gap-1.5"
+                style={{ color: tone }}
+              >
+                <span
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold tabular"
+                  style={{
+                    background: s.done
+                      ? "var(--emerald-tint)"
+                      : isCurrent
+                      ? "var(--indigo)"
+                      : "var(--bg-subtle)",
+                    color: s.done
+                      ? "var(--emerald)"
+                      : isCurrent
+                      ? "#fff"
+                      : "var(--fg-subtle)",
+                  }}
+                >
+                  {s.done ? "✓" : s.id}
+                </span>
+                <span className={isCurrent ? "font-medium" : ""}>
+                  {s.shortLabel}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
       </div>
 
-      {/* Step cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {steps.map((step) => (
-          <Link
-            key={step.number}
-            href={step.href}
-            className={`fp-card fp-card-hover fp-press p-5 group flex flex-col`}
-            style={
-              !step.done
-                ? { borderColor: "var(--indigo-tint)" }
-                : undefined
-            }
+      {/* Focus card — the one step the user should do next */}
+      <div className="fp-card-feature p-7 md:p-9">
+        <div className="grid gap-6 md:grid-cols-[auto_1fr] items-start">
+          <div
+            className="inline-flex h-14 w-14 items-center justify-center rounded-2xl shrink-0"
+            style={{
+              background: "var(--indigo)",
+              color: "#fff",
+            }}
           >
-            <div className="flex items-start justify-between">
-              <div
-                className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${
-                  step.done ? "" : "transition-transform group-hover:scale-105"
-                }`}
-                style={{
-                  background: step.done ? "var(--emerald-tint)" : "var(--indigo-tint)",
-                  color: step.done ? "var(--emerald)" : "var(--indigo)",
-                }}
+            <FocusIcon />
+          </div>
+          <div>
+            <div className="fp-eyebrow">
+              Step {currentStep.id} of {steps.length}
+            </div>
+            <h2
+              className="fp-h1-serif mt-2"
+              style={{ fontSize: 26, lineHeight: 1.15 }}
+            >
+              {currentStep.title}
+            </h2>
+            <p className="mt-3 max-w-2xl text-base leading-relaxed">
+              {currentStep.blurb}
+            </p>
+            <p
+              className="mt-2 max-w-2xl text-sm"
+              style={{ color: "rgba(0,0,0,0.62)" }}
+            >
+              {currentStep.detail}
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <Link
+                href={currentStep.href}
+                className="fp-btn fp-btn-primary"
               >
-                {step.done ? <CheckIcon /> : <step.icon />}
-              </div>
+                {currentStep.cta} →
+              </Link>
               <span
-                className={step.done ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-indigo"}
+                className="text-xs"
+                style={{ color: "rgba(0,0,0,0.55)" }}
               >
-                {step.done ? "Done" : `Step ${step.number}`}
+                Takes about a minute.
               </span>
             </div>
-            <h3 className="mt-4 text-base font-semibold tracking-tight">
-              {step.title}
-            </h3>
-            <p className="mt-1 text-[13px] leading-relaxed flex-1" style={{ color: "var(--fg-muted)" }}>
-              {step.description}
-            </p>
-            <div
-              className="mt-4 inline-flex items-center gap-1 text-sm font-medium transition-transform group-hover:translate-x-0.5"
-              style={{ color: step.done ? "var(--fg-muted)" : "var(--indigo)" }}
-            >
-              {step.cta} →
-            </div>
-          </Link>
-        ))}
+          </div>
+        </div>
       </div>
 
-      {/* What happens after */}
-      <div
-        className="fp-card-feature fp-gradient-surface p-6"
-      >
-        <div className="fp-eyebrow mb-2">What happens after setup</div>
+      {/* Up next — muted previews of remaining steps */}
+      {upcoming.length > 0 ? (
+        <section className="space-y-3">
+          <div className="fp-eyebrow">Up next</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {upcoming.map((s) => {
+              const Icon = s.icon;
+              return (
+                <div
+                  key={s.id}
+                  className="fp-card p-5 flex items-start gap-3"
+                  style={{ opacity: 0.78 }}
+                >
+                  <div
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg shrink-0"
+                    style={{
+                      background: "var(--bg-subtle)",
+                      color: "var(--fg-muted)",
+                    }}
+                  >
+                    <Icon />
+                  </div>
+                  <div>
+                    <div
+                      className="text-xs tabular"
+                      style={{ color: "var(--fg-subtle)" }}
+                    >
+                      Step {s.id}
+                    </div>
+                    <div className="mt-0.5 text-sm font-medium">
+                      {s.title}
+                    </div>
+                    <div
+                      className="mt-1 text-xs leading-relaxed"
+                      style={{ color: "var(--fg-muted)" }}
+                    >
+                      {s.blurb}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {/* What happens once the guide is done */}
+      <div className="fp-card p-6">
+        <div className="fp-eyebrow mb-3">After the guide</div>
         <div className="grid gap-4 md:grid-cols-3">
-          <Step number="1" label="Sources poll continuously" detail="RSS / Reddit every 5 min; podcasts and YouTube every hour." />
-          <Step number="2" label="Cluster engine fires" detail="3+ sources covering the same story within 72h triggers a cluster." />
-          <Step number="3" label="Drafts surface ranked" detail="Top-3 pre-rendered for instant tap. Voice-matched, fact-checked, ready to publish." />
+          <Step
+            number="1"
+            label="Sources poll continuously"
+            detail="RSS / Reddit every 5 min; podcasts and YouTube every hour."
+          />
+          <Step
+            number="2"
+            label="Cluster engine fires"
+            detail="3+ sources covering the same story within 72h triggers a cluster."
+          />
+          <Step
+            number="3"
+            label="You draft from a cluster"
+            detail="Tap into any cluster to draft from it; voice-matched, fact-checked, your call to publish."
+          />
         </div>
       </div>
     </div>
   );
 }
 
-function Step({ number, label, detail }: { number: string; label: string; detail: string }) {
+function Step({
+  number,
+  label,
+  detail,
+}: {
+  number: string;
+  label: string;
+  detail: string;
+}) {
   return (
     <div>
       <div
         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-xs font-semibold tabular"
-        style={{ background: "var(--surface)", color: "var(--indigo)", border: "1px solid var(--border)" }}
+        style={{
+          background: "var(--surface)",
+          color: "var(--indigo)",
+          border: "1px solid var(--border)",
+        }}
       >
         {number}
       </div>
@@ -399,14 +538,6 @@ function SourceIcon() {
     </svg>
   );
 }
-function CheckIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
-
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString("en-US", {
     weekday: "long",
