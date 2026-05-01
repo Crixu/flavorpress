@@ -1,21 +1,9 @@
 "use client";
 
 import { useTransition } from "react";
-import {
-  setActive,
-  setSlice,
-  useActiveSelection,
-  useExtensionSlice,
-} from "../store";
-import type {
-  ClientExtensionEntry,
-  ExtensionAnnotation,
-  ExtensionPanelProps,
-} from "../types";
-import {
-  clearFactCheckAction,
-  runFactCheckAction,
-} from "./actions";
+import { setActive, setSlice, useActiveSelection, useExtensionSlice } from "../store";
+import type { ClientExtensionEntry, ExtensionAnnotation, ExtensionPanelProps } from "../types";
+import { clearFactCheckAction, runFactCheckAction } from "./actions";
 import { FACT_CHECK_ID, FACT_CHECK_LABEL } from "./types";
 
 const TONE_DOT: Record<ExtensionAnnotation["tone"], string> = {
@@ -105,17 +93,11 @@ function FactCheckPanel({ draftId }: ExtensionPanelProps) {
       </div>
 
       {annotations.length === 0 ? (
-        <p
-          className="mt-2 text-[11.5px] leading-snug"
-          style={{ color: "var(--fg-muted)" }}
-        >
+        <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "var(--fg-muted)" }}>
           Highlights checkable claims in the draft and links a source for each.
         </p>
       ) : (
-        <p
-          className="mt-2 text-[11.5px]"
-          style={{ color: "var(--fg-muted)" }}
-        >
+        <p className="mt-2 text-[11.5px]" style={{ color: "var(--fg-muted)" }}>
           {annotations.length} claim{annotations.length === 1 ? "" : "s"} checked.
         </p>
       )}
@@ -162,9 +144,7 @@ function FactCheckPanel({ draftId }: ExtensionPanelProps) {
       {annotations.length > 0 ? (
         <ul className="mt-4 space-y-2">
           {annotations.map((a) => {
-            const isActive =
-              active?.extensionId === FACT_CHECK_ID &&
-              active.annotationId === a.id;
+            const isActive = active?.extensionId === FACT_CHECK_ID && active.annotationId === a.id;
             return (
               <li
                 key={a.id}
@@ -172,12 +152,8 @@ function FactCheckPanel({ draftId }: ExtensionPanelProps) {
                 onClick={() => handleJump(a.id)}
                 className="cursor-pointer rounded-xl p-3 transition"
                 style={{
-                  background: isActive
-                    ? "var(--bg-subtle)"
-                    : "var(--surface)",
-                  border: isActive
-                    ? "1px solid var(--border-strong)"
-                    : "1px solid var(--border)",
+                  background: isActive ? "var(--bg-subtle)" : "var(--surface)",
+                  border: isActive ? "1px solid var(--border-strong)" : "1px solid var(--border)",
                 }}
               >
                 <div
@@ -199,10 +175,7 @@ function FactCheckPanel({ draftId }: ExtensionPanelProps) {
                 >
                   &ldquo;{a.spanText}&rdquo;
                 </p>
-                <p
-                  className="mt-1.5 text-[12.5px] leading-snug"
-                  style={{ color: "var(--fg)" }}
-                >
+                <p className="mt-1.5 text-[12.5px] leading-snug" style={{ color: "var(--fg)" }}>
                   {a.body}
                 </p>
                 {a.linkUrl ? (

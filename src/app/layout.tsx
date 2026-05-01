@@ -26,9 +26,7 @@ export const metadata: Metadata = {
   description: "Your reading turns into your writing.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body>
@@ -36,9 +34,7 @@ export default function RootLayout({
           <div className="fp-pill-nav-inner">
             <Link href="/" className="group flex items-center gap-3">
               <BrandMark />
-              <span className="text-[15px] font-semibold tracking-tight">
-                FlavorPress
-              </span>
+              <span className="text-[15px] font-semibold tracking-tight">FlavorPress</span>
               <span
                 className="ml-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]"
                 style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}

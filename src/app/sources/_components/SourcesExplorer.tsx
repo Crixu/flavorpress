@@ -101,9 +101,7 @@ export function SourcesExplorer({
               >
                 <summary className="flex cursor-pointer items-center gap-2 bg-stone-100/70 px-4 py-2 text-xs hover:bg-stone-100">
                   <span className="text-stone-500">▾</span>
-                  <span className="font-semibold text-stone-900">
-                    {group.name}
-                  </span>
+                  <span className="font-semibold text-stone-900">{group.name}</span>
                   <span className="text-stone-500">
                     · {group.rows.length} source
                     {group.rows.length === 1 ? "" : "s"}
@@ -111,9 +109,7 @@ export function SourcesExplorer({
                 </summary>
 
                 {group.rows.length === 0 ? (
-                  <div className="px-4 py-4 text-xs text-stone-500">
-                    No sources here yet.
-                  </div>
+                  <div className="px-4 py-4 text-xs text-stone-500">No sources here yet.</div>
                 ) : (
                   <div className="divide-y divide-stone-100">
                     {group.rows.map((row) => (
@@ -133,11 +129,7 @@ export function SourcesExplorer({
         </div>
       </section>
 
-      <BulkActionBar
-        selected={selected}
-        folders={folders}
-        onClear={clearSelection}
-      />
+      <BulkActionBar selected={selected} folders={folders} onClear={clearSelection} />
     </>
   );
 }
@@ -154,12 +146,8 @@ function ExplorerRow({
   onToggle: () => void;
 }) {
   const meta = KIND_META[row.kind] ?? KIND_META.rss!;
-  const paused =
-    row.paused_until !== null && row.paused_until > Date.now();
-  const waiting =
-    !paused &&
-    row.backoff_until !== null &&
-    row.backoff_until > Date.now();
+  const paused = row.paused_until !== null && row.paused_until > Date.now();
+  const waiting = !paused && row.backoff_until !== null && row.backoff_until > Date.now();
   return (
     <div
       className={`grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs ${
@@ -200,14 +188,10 @@ function ExplorerRow({
         </div>
         <div className="truncate text-[11px] text-stone-500">{row.url}</div>
         {row.last_error ? (
-          <div className="mt-0.5 truncate text-[11px] text-rose-600">
-            {row.last_error}
-          </div>
+          <div className="mt-0.5 truncate text-[11px] text-rose-600">{row.last_error}</div>
         ) : null}
         <div className="mt-1.5 flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-stone-500">
-            Trust
-          </span>
+          <span className="text-[10px] uppercase tracking-wider text-stone-500">Trust</span>
           <TrustBoostControl sourceId={row.id} trust={row.trust_score} />
         </div>
       </div>
@@ -219,11 +203,7 @@ function ExplorerRow({
         </span>
       </div>
       <div className="col-span-2">
-        <InlineFolderPicker
-          sourceId={row.id}
-          currentFolderId={row.folder_id}
-          folders={folders}
-        />
+        <InlineFolderPicker sourceId={row.id} currentFolderId={row.folder_id} folders={folders} />
       </div>
       <div className="col-span-2 text-right text-stone-500">
         {row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "never"}
@@ -364,9 +344,7 @@ function BulkActionBar({
   }
 
   const targetLabel =
-    folderId === ""
-      ? "Ungrouped"
-      : (folders.find((f) => f.id === folderId)?.name ?? "folder");
+    folderId === "" ? "Ungrouped" : (folders.find((f) => f.id === folderId)?.name ?? "folder");
 
   return (
     <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2">
@@ -374,9 +352,7 @@ function BulkActionBar({
         onSubmit={handleSubmit}
         className="flex items-center gap-3 rounded-xl border border-stone-300 bg-white px-4 py-3 shadow-lg"
       >
-        <span className="text-sm font-medium text-stone-900">
-          {selected.size} selected
-        </span>
+        <span className="text-sm font-medium text-stone-900">{selected.size} selected</span>
         <span className="text-stone-300">→</span>
         <select
           value={folderId}
@@ -396,9 +372,7 @@ function BulkActionBar({
           disabled={pending}
           className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
         >
-          {pending
-            ? "Moving…"
-            : `Move ${selected.size} to ${targetLabel}`}
+          {pending ? "Moving…" : `Move ${selected.size} to ${targetLabel}`}
         </button>
         <button
           type="button"

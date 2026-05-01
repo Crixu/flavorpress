@@ -22,7 +22,6 @@ import { canonicalize } from "./source-connector";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import type { DraftRenderedPayload, Item, VoiceProfile } from "./types";
-const VOICE_MATCH_FLOOR = 75; // accept threshold (0-100)
 const STREAMING_VOICE_FLOOR = 0.5; // mid-flight Burrows' Delta cutoff
 const MIN_TOKENS_FOR_VOICE_CHECK = 200;
 const CAPABILITY_VERSION = "1.0.0";
@@ -164,10 +163,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
 
   const finalScore =
     voiceProfile && voiceProfile.functionWordDistribution
-      ? voiceMatchScore(
-          fingerprintText(result.body),
-          voiceProfile.functionWordDistribution,
-        )
+      ? voiceMatchScore(fingerprintText(result.body), voiceProfile.functionWordDistribution)
       : 75; // no profile yet → trust the streaming floor and pass
 
   await log.info("draft.generate", "complete", {
@@ -494,10 +490,7 @@ function parseJsonEnvelope(text: string): {
   return { headline, headlineAlternates, body, quotes, angleArchive, angleGap };
 }
 
-async function loadVoiceProfile(
-  outletId: string,
-  userId: string,
-): Promise<VoiceProfile | null> {
+async function loadVoiceProfile(outletId: string, userId: string): Promise<VoiceProfile | null> {
   // Voice profiles are keyed by outlet, not user. The user_id check is a
   // tenancy guard so a stray outlet_id can't leak across users.
   const r = await db.execute({
@@ -511,9 +504,7 @@ async function loadVoiceProfile(
     styleSheetYaml: String(row.style_sheet_yaml ?? ""),
     archiveIndexSize: Number(row.archive_index_size ?? 0),
     functionWordDistribution: row.function_word_distribution
-      ? new Float32Array(
-          new Uint8Array(row.function_word_distribution as ArrayBuffer).buffer,
-        )
+      ? new Float32Array(new Uint8Array(row.function_word_distribution as ArrayBuffer).buffer)
       : new Float32Array(),
     sentenceLengthMean: Number(row.sentence_length_mean ?? 0),
     sentenceLengthVariance: Number(row.sentence_length_variance ?? 0),
@@ -521,12 +512,8 @@ async function loadVoiceProfile(
     emDashDensity: Number(row.em_dash_density ?? 0),
     quoteDensity: Number(row.quote_density ?? 0),
     bannedTerms: row.banned_terms ? JSON.parse(String(row.banned_terms)) : [],
-    signatureTerms: row.signature_terms
-      ? JSON.parse(String(row.signature_terms))
-      : [],
-    anchoredPostIds: row.anchored_post_ids
-      ? JSON.parse(String(row.anchored_post_ids))
-      : [],
+    signatureTerms: row.signature_terms ? JSON.parse(String(row.signature_terms)) : [],
+    anchoredPostIds: row.anchored_post_ids ? JSON.parse(String(row.anchored_post_ids)) : [],
     description: row.description ? String(row.description) : null,
     lastRebuiltAt: Number(row.last_rebuilt_at ?? Date.now()),
   };

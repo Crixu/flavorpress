@@ -78,10 +78,7 @@ export function WaitingQueue({ rows }: { rows: WaitingRow[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowKey(rows)]);
 
-  const sorted = useMemo(
-    () => [...rows].sort((a, b) => a.backoffUntil - b.backoffUntil),
-    [rows],
-  );
+  const sorted = useMemo(() => [...rows].sort((a, b) => a.backoffUntil - b.backoffUntil), [rows]);
 
   return (
     <section className="overflow-hidden rounded-xl border border-amber-200 bg-amber-50/40">
@@ -108,9 +105,7 @@ export function WaitingQueue({ rows }: { rows: WaitingRow[] }) {
               className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs"
             >
               <div className="min-w-0">
-                <div className="font-medium text-stone-900 truncate">
-                  {row.display}
-                </div>
+                <div className="font-medium text-stone-900 truncate">{row.display}</div>
                 <div className="truncate text-[11px] text-stone-500">
                   {row.host}
                   {row.lastError ? (
@@ -120,11 +115,7 @@ export function WaitingQueue({ rows }: { rows: WaitingRow[] }) {
               </div>
               <div className="flex items-center gap-2 whitespace-nowrap">
                 <span
-                  className={`tabular-nums ${
-                    ready
-                      ? "text-emerald-700"
-                      : "text-amber-800"
-                  }`}
+                  className={`tabular-nums ${ready ? "text-emerald-700" : "text-amber-800"}`}
                   aria-live="polite"
                 >
                   {ready ? "retrying…" : `retry in ${formatRemaining(remainingMs)}`}

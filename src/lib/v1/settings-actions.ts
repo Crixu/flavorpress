@@ -2,12 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import {
-  setExtensionEnabled,
-  setSetting,
-  SETTING_KEYS,
-  type SettingKey,
-} from "./settings";
+import { setExtensionEnabled, setSetting, SETTING_KEYS, type SettingKey } from "./settings";
 import { findExtensionMetadata } from "@/extensions/registry";
 
 const ANTHROPIC_KEY_PATTERN = /^sk-ant-[a-zA-Z0-9_-]{10,}$/;

@@ -9,10 +9,7 @@ import "server-only";
  * then add it to this array.
  */
 
-import type {
-  InitialAnnotationsByExtension,
-  ServerExtensionEntry,
-} from "./types";
+import type { InitialAnnotationsByExtension, ServerExtensionEntry } from "./types";
 import { factCheckServerEntry } from "./fact-check/server";
 import { relatedImagesServerEntry } from "./related-images/server";
 import { getDisabledExtensionIds } from "@/lib/v1/settings";
@@ -28,9 +25,7 @@ export const SERVER_EXTENSIONS: ServerExtensionEntry[] = [
  * the user has disabled in /settings are skipped entirely so the editor
  * never hydrates highlights or panels for them.
  */
-export async function loadAllAnnotations(
-  draftId: string,
-): Promise<InitialAnnotationsByExtension> {
+export async function loadAllAnnotations(draftId: string): Promise<InitialAnnotationsByExtension> {
   const disabled = await getDisabledExtensionIds();
   const active = SERVER_EXTENSIONS.filter((ext) => !disabled.has(ext.id));
   const results = await Promise.all(

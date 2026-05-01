@@ -37,9 +37,7 @@ export async function generateSourceTitle(url: string): Promise<string> {
   const host = hostFromUrl(url);
   const xml = await tryFetchXml(url);
   const signals = xml ? extractFeedSignals(xml) : null;
-  const fallback =
-    signals?.channelTitle?.trim() ||
-    host;
+  const fallback = signals?.channelTitle?.trim() || host;
 
   if (!signals) return fallback;
 
@@ -60,13 +58,20 @@ HOST: ${host}
 FEED TITLE: ${signals.channelTitle ?? "(none)"}
 FEED DESCRIPTION: ${signals.channelDescription ?? "(none)"}
 SAMPLE ITEM TITLES:
-${signals.itemTitles.slice(0, 5).map((t) => `- ${t}`).join("\n") || "(none)"}
+${
+  signals.itemTitles
+    .slice(0, 5)
+    .map((t) => `- ${t}`)
+    .join("\n") || "(none)"
+}
 
 Return the label.`,
         },
       ],
     });
-    const text = extractText(message).trim().replace(/^["']|["']$/g, "");
+    const text = extractText(message)
+      .trim()
+      .replace(/^["']|["']$/g, "");
     if (!text) return fallback;
     if (text.length > 80) return text.slice(0, 80).trim();
     return text;
@@ -82,10 +87,8 @@ async function tryFetchXml(url: string): Promise<string | null> {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent":
-          "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)",
-        Accept:
-          "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+        "User-Agent": "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)",
+        Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
       },
       redirect: "follow",
     });
@@ -111,12 +114,9 @@ function extractFeedSignals(xml: string): FeedSignals {
     matchFirst(xml, /<feed\b[^>]*>([\s\S]*?)<\/feed>/i) ??
     xml;
 
-  const channelTitle =
-    getTopLevelTag(channelScope, "title") ?? null;
+  const channelTitle = getTopLevelTag(channelScope, "title") ?? null;
   const channelDescription =
-    getTopLevelTag(channelScope, "description") ??
-    getTopLevelTag(channelScope, "subtitle") ??
-    null;
+    getTopLevelTag(channelScope, "description") ?? getTopLevelTag(channelScope, "subtitle") ?? null;
 
   const itemBodies =
     matchAll(xml, /<item\b[^>]*>([\s\S]*?)<\/item>/gi) ??

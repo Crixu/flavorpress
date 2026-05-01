@@ -16,11 +16,7 @@ interface Props {
   enabledExtensionIds: string[];
 }
 
-export function ExtensionsPanels({
-  draftId,
-  initialAnnotationsByExt,
-  enabledExtensionIds,
-}: Props) {
+export function ExtensionsPanels({ draftId, initialAnnotationsByExt, enabledExtensionIds }: Props) {
   for (const [extId, payload] of Object.entries(initialAnnotationsByExt)) {
     hydrateSlice(draftId, extId, payload.annotations, payload.ranAt);
   }

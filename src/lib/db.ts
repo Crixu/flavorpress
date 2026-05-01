@@ -18,8 +18,7 @@ if (!process.env.LIBSQL_URL && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const url =
-  process.env.LIBSQL_URL ?? `file:${path.join(dataDir, "flavorpress.db")}`;
+const url = process.env.LIBSQL_URL ?? `file:${path.join(dataDir, "flavorpress.db")}`;
 const authToken = process.env.LIBSQL_AUTH_TOKEN;
 
 export const db: Client = createClient({ url, authToken });
@@ -331,9 +330,15 @@ export async function ensureSchema(): Promise<void> {
       // Per-draft run marker for the related-images extension. A run that
       // yielded zero hits still has a row here, so the panel can render
       // "searched Xm ago" instead of looking like it was never run.
+      // license_filter is the comma-separated, alphabetically sorted set
+      // of license codes the search ran under; the loader uses it to
+      // invalidate `ranAt` when the user later narrows or widens the
+      // filter. Otherwise a filter-prune leaves the panel claiming a
+      // search ran with the new filter when none did.
       `CREATE TABLE IF NOT EXISTS related_image_runs (
         draft_id TEXT PRIMARY KEY,
-        searched_at INTEGER NOT NULL
+        searched_at INTEGER NOT NULL,
+        license_filter TEXT
       )`,
 
       // App-level settings the user can edit from /settings instead of .env.
@@ -368,11 +373,8 @@ async function migrateLegacyTables(): Promise<void> {
     const pragma = await db.execute("PRAGMA table_info(voice_profiles)");
     if (pragma.rows.length > 0) {
       // Find the primary key column.
-      const pkCols = pragma.rows
-        .filter((r) => Number(r.pk) > 0)
-        .map((r) => String(r.name));
+      const pkCols = pragma.rows.filter((r) => Number(r.pk) > 0).map((r) => String(r.name));
       if (!pkCols.includes("outlet_id")) {
-        // eslint-disable-next-line no-console
         console.info(
           "[migrate] voice_profiles: dropping legacy table (was keyed on user_id; rebuilding under outlet_id)",
         );
@@ -380,11 +382,8 @@ async function migrateLegacyTables(): Promise<void> {
       } else {
         const cols = pragma.rows.map((r) => String(r.name));
         if (!cols.includes("description")) {
-          // eslint-disable-next-line no-console
           console.info("[migrate] voice_profiles: adding description column");
-          await db.execute(
-            "ALTER TABLE voice_profiles ADD COLUMN description TEXT",
-          );
+          await db.execute("ALTER TABLE voice_profiles ADD COLUMN description TEXT");
         }
       }
     }
@@ -398,11 +397,8 @@ async function migrateLegacyTables(): Promise<void> {
     if (pragma.rows.length > 0) {
       const cols = pragma.rows.map((r) => String(r.name));
       if (!cols.includes("outlet_id")) {
-        // eslint-disable-next-line no-console
         console.info("[migrate] drafts: adding outlet_id column");
-        await db.execute(
-          "ALTER TABLE drafts ADD COLUMN outlet_id TEXT NOT NULL DEFAULT ''",
-        );
+        await db.execute("ALTER TABLE drafts ADD COLUMN outlet_id TEXT NOT NULL DEFAULT ''");
       }
       if (!cols.includes("mode")) {
         // eslint-disable-next-line no-console
@@ -427,33 +423,41 @@ async function migrateLegacyTables(): Promise<void> {
     if (pragma.rows.length > 0) {
       const cols = pragma.rows.map((r) => String(r.name));
       if (!cols.includes("folder_id")) {
-        // eslint-disable-next-line no-console
         console.info("[migrate] sources: adding folder_id column");
         await db.execute("ALTER TABLE sources ADD COLUMN folder_id TEXT");
       }
       if (!cols.includes("last_etag")) {
-        // eslint-disable-next-line no-console
         console.info("[migrate] sources: adding last_etag column");
         await db.execute("ALTER TABLE sources ADD COLUMN last_etag TEXT");
       }
       if (!cols.includes("last_modified")) {
-        // eslint-disable-next-line no-console
         console.info("[migrate] sources: adding last_modified column");
         await db.execute("ALTER TABLE sources ADD COLUMN last_modified TEXT");
       }
       if (!cols.includes("backoff_until")) {
-        // eslint-disable-next-line no-console
         console.info("[migrate] sources: adding backoff_until column");
-        await db.execute(
-          "ALTER TABLE sources ADD COLUMN backoff_until INTEGER",
-        );
+        await db.execute("ALTER TABLE sources ADD COLUMN backoff_until INTEGER");
       }
       if (!cols.includes("paused_until")) {
-        // eslint-disable-next-line no-console
         console.info("[migrate] sources: adding paused_until column");
-        await db.execute(
-          "ALTER TABLE sources ADD COLUMN paused_until INTEGER",
-        );
+        await db.execute("ALTER TABLE sources ADD COLUMN paused_until INTEGER");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // related_image_runs: license_filter column added so the loader can
+  // tell when the cached run is for a different filter than the user's
+  // current selection.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(related_image_runs)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("license_filter")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] related_image_runs: adding license_filter column");
+        await db.execute("ALTER TABLE related_image_runs ADD COLUMN license_filter TEXT");
       }
     }
   } catch {

@@ -95,18 +95,11 @@ export default async function DraftsPage() {
   return (
     <div className="space-y-6">
       <header>
-        <div className="text-[11px] uppercase tracking-wider text-stone-500">
-          Unsent drafts
-        </div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Drafts · {drafts.length}
-        </h1>
-        <p
-          className="mt-1 text-sm"
-          style={{ color: "var(--fg-muted)" }}
-        >
-          Drafts created from clusters that haven't been pushed to WordPress
-          yet. Open one to keep editing or push it.
+        <div className="text-[11px] uppercase tracking-wider text-stone-500">Unsent drafts</div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Drafts · {drafts.length}</h1>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          Drafts created from clusters that haven't been pushed to WordPress yet. Open one to keep
+          editing or push it.
         </p>
       </header>
 
@@ -116,11 +109,7 @@ export default async function DraftsPage() {
           style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
         >
           No unsent drafts.{" "}
-          <Link
-            href="/"
-            className="font-medium hover:underline"
-            style={{ color: "var(--indigo)" }}
-          >
+          <Link href="/" className="font-medium hover:underline" style={{ color: "var(--indigo)" }}>
             Open Today →
           </Link>{" "}
           to draft from a cluster.
@@ -134,10 +123,7 @@ export default async function DraftsPage() {
                 key={d.id}
                 className="flex items-start gap-3 px-5 py-4 transition hover:bg-stone-50"
               >
-                <Link
-                  href={`/editor/${d.id}`}
-                  className="flex flex-1 items-start gap-4 min-w-0"
-                >
+                <Link href={`/editor/${d.id}`} className="flex flex-1 items-start gap-4 min-w-0">
                   <div className="flex-1 min-w-0">
                     <div className="line-clamp-2 text-sm font-medium text-stone-900">
                       {d.headline}
@@ -147,16 +133,13 @@ export default async function DraftsPage() {
                       <span className="text-stone-300">·</span>
                       <span>
                         {d.outlet_display_name ??
-                          (d.outlet_base_url
-                            ? hostFromUrl(d.outlet_base_url)
-                            : "no outlet")}
+                          (d.outlet_base_url ? hostFromUrl(d.outlet_base_url) : "no outlet")}
                       </span>
                       {d.source_count !== null ? (
                         <>
                           <span className="text-stone-300">·</span>
                           <span>
-                            {d.source_count}{" "}
-                            {d.source_count === 1 ? "source" : "sources"}
+                            {d.source_count} {d.source_count === 1 ? "source" : "sources"}
                           </span>
                         </>
                       ) : null}

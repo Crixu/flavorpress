@@ -25,11 +25,7 @@
 import { db, ensureSchema } from "../db";
 import { getBus } from "./event-bus";
 import { traceLogger } from "./trace";
-import type {
-  ClusterThresholdCrossedPayload,
-  ItemIngestedPayload,
-  Item,
-} from "./types";
+import type { ClusterThresholdCrossedPayload, ItemIngestedPayload, Item } from "./types";
 import { rowToItem, type ItemRow } from "./source-connector";
 
 export const CLUSTER_WINDOW_MS = 72 * 60 * 60 * 1000;
@@ -45,10 +41,10 @@ export const CLUSTER_WINDOW_MS = 72 * 60 * 60 * 1000;
 const CLUSTER_TRUST_FIRE_SUM = 1.0;
 
 const TRIGRAM_THRESHOLD = 0.4; // lowered from 0.6; real news rewrites diverge
-                               // more than the strict threshold tolerated
+// more than the strict threshold tolerated
 const ENTITY_OVERLAP_THRESHOLD = 2; // of top 5; lowered from 3 for the same
-                                    // reason. The 2+ distinct-domain guard
-                                    // keeps the cluster fire bar honest.
+// reason. The 2+ distinct-domain guard
+// keeps the cluster fire bar honest.
 
 export async function handleItemIngested(
   payload: ItemIngestedPayload,
@@ -78,9 +74,7 @@ export async function handleItemIngested(
           WHERE user_id = ? AND published_at >= ? AND published_at <= ? AND id != ?`,
     args: [item.userId, minMs, maxMs, item.id],
   });
-  const windowItems = windowR.rows.map((r) =>
-    rowToItem(r as unknown as ItemRow),
-  );
+  const windowItems = windowR.rows.map((r) => rowToItem(r as unknown as ItemRow));
 
   // Layer 1: exact canonical URL match
   for (const w of windowItems) {
@@ -182,11 +176,7 @@ async function maybeFireCluster(
   const sourceCount = Number(row.source_count);
   const distinctDomains = Number(row.distinct_domains);
   const trustSum = Number(row.trust_sum);
-  if (
-    row.state === "forming" &&
-    trustSum >= CLUSTER_TRUST_FIRE_SUM &&
-    distinctDomains >= 2
-  ) {
+  if (row.state === "forming" && trustSum >= CLUSTER_TRUST_FIRE_SUM && distinctDomains >= 2) {
     await db.execute({
       sql: `UPDATE clusters SET state = 'fired', fired_at = ? WHERE id = ?`,
       args: [Date.now(), clusterId],
@@ -215,17 +205,69 @@ async function maybeFireCluster(
 // "While", "According" from the top-5 entity slot, which was breaking
 // Layer 2 overlap matching.
 const ENTITY_STOPWORDS = new Set([
-  "The", "A", "An", "This", "That", "These", "Those",
-  "It", "Its", "He", "She", "They", "We", "You", "I",
-  "While", "When", "Where", "What", "Why", "How", "Who", "Which",
-  "And", "But", "Or", "So", "Yet", "Nor", "If", "Then",
-  "According", "Despite", "However", "Although", "Because", "Since",
-  "After", "Before", "During", "Until", "Through",
-  "Today", "Yesterday", "Tomorrow", "Now", "Later", "Soon",
-  "First", "Second", "Third", "Last", "Next",
-  "New", "Old", "Many", "Some", "Most", "All", "Any", "Each",
+  "The",
+  "A",
+  "An",
+  "This",
+  "That",
+  "These",
+  "Those",
+  "It",
+  "Its",
+  "He",
+  "She",
+  "They",
+  "We",
+  "You",
+  "I",
+  "While",
+  "When",
+  "Where",
+  "What",
+  "Why",
+  "How",
+  "Who",
+  "Which",
+  "And",
+  "But",
+  "Or",
+  "So",
+  "Yet",
+  "Nor",
+  "If",
+  "Then",
+  "According",
+  "Despite",
+  "However",
+  "Although",
+  "Because",
+  "Since",
+  "After",
+  "Before",
+  "During",
+  "Until",
+  "Through",
+  "Today",
+  "Yesterday",
+  "Tomorrow",
+  "Now",
+  "Later",
+  "Soon",
+  "First",
+  "Second",
+  "Third",
+  "Last",
+  "Next",
+  "New",
+  "Old",
+  "Many",
+  "Some",
+  "Most",
+  "All",
+  "Any",
+  "Each",
   "Apple", // generic; appears in nearly every Apple-news lede so it
-           // dominates entity sets. Re-allow if/when we move to real NER.
+  // dominates entity sets. Re-allow if/when we move to real NER.
 ]);
 
 /**
@@ -235,8 +277,7 @@ const ENTITY_STOPWORDS = new Set([
  */
 export function extractEntities(title: string, lede: string): string[] {
   const text = `${title}. ${lede}`;
-  const matches =
-    text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b/g) ?? [];
+  const matches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b/g) ?? [];
   // Top 5 by frequency, after filtering stopwords (single-token only —
   // multi-token phrases like "Tim Cook" or "John Ternus" stay even if
   // their first token would otherwise be a stopword).

@@ -9,20 +9,13 @@ interface Props {
   locked?: boolean;
 }
 
-export function HeadlineSelector({
-  draftId,
-  headline,
-  alternates,
-  locked = false,
-}: Props) {
+export function HeadlineSelector({ draftId, headline, alternates, locked = false }: Props) {
   const total = alternates.length + 1;
   const canPickAlternate = alternates.length > 0 && !locked;
 
   return (
     <div>
-      <div className="fp-eyebrow">
-        Draft · 1 of {total}
-      </div>
+      <div className="fp-eyebrow">Draft · 1 of {total}</div>
       <h1
         className="mt-3 fp-h1-serif"
         style={{
@@ -35,9 +28,7 @@ export function HeadlineSelector({
       </h1>
       {canPickAlternate ? (
         <div className="mt-4">
-          <div className="fp-eyebrow mb-1.5">
-            Pick a different headline
-          </div>
+          <div className="fp-eyebrow mb-1.5">Pick a different headline</div>
           <div className="flex flex-wrap gap-2 text-[11px]">
             {alternates.map((alt) => (
               <form key={alt} action={selectDraftHeadlineAction}>

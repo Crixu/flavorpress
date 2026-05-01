@@ -82,8 +82,7 @@ export function HelpFlyout() {
   const searchParams = useSearchParams();
   const helpId = searchParams?.get("help") ?? null;
   const isIndex = helpId === "index";
-  const entry: GlossaryEntry | null =
-    helpId && !isIndex ? GLOSSARY[helpId] ?? null : null;
+  const entry: GlossaryEntry | null = helpId && !isIndex ? (GLOSSARY[helpId] ?? null) : null;
   const isOpen = isIndex || entry !== null;
 
   const close = useCallback(() => {
@@ -110,12 +109,7 @@ export function HelpFlyout() {
 
   return (
     <div className="fp-help-overlay" role="dialog" aria-labelledby="fp-help-title">
-      <button
-        type="button"
-        className="fp-help-backdrop"
-        aria-label="Close help"
-        onClick={close}
-      />
+      <button type="button" className="fp-help-backdrop" aria-label="Close help" onClick={close} />
       <aside className="fp-help-panel">
         <header className="fp-help-header">
           <div className="flex-1 min-w-0">
@@ -123,10 +117,7 @@ export function HelpFlyout() {
             <h2 id="fp-help-title" className="fp-h1-serif text-2xl font-semibold leading-tight">
               {isIndex ? "Every term, defined." : entry!.term}
             </h2>
-            <p
-              className="mt-1 text-[13px] leading-relaxed"
-              style={{ color: "var(--fg-muted)" }}
-            >
+            <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
               {isIndex
                 ? "What every signal, score, and capability means in FlavorPress. Tap any entry."
                 : entry!.short}
@@ -146,85 +137,75 @@ export function HelpFlyout() {
           <div className="fp-help-body">
             <div className="grid gap-2">
               {listEntries().map((e) => (
-                <RelatedLink
-                  key={e.id}
-                  id={e.id}
-                  term={e.term}
-                  short={e.short}
-                  variant="row"
-                />
+                <RelatedLink key={e.id} id={e.id} term={e.term} short={e.short} variant="row" />
               ))}
             </div>
           </div>
         ) : (
-        <div className="fp-help-body">
-          {entry!.body.map((p, i) => (
-            <p key={i} className="text-sm leading-relaxed">
-              {p}
-            </p>
-          ))}
-
-          {entry!.formula ? (
-            <div className="mt-2">
-              <div className="fp-eyebrow mb-1.5">Formula</div>
-              <pre
-                className="whitespace-pre-wrap rounded-md p-3 text-xs leading-relaxed"
-                style={{
-                  background: "var(--bg-subtle)",
-                  border: "1px solid var(--border)",
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, monospace",
-                }}
-              >
-                {entry!.formula}
-              </pre>
-            </div>
-          ) : null}
-
-          {entry!.example ? (
-            <div className="mt-2">
-              <div className="fp-eyebrow mb-1.5">Example</div>
-              <p
-                className="rounded-md p-3 text-[13px] leading-relaxed"
-                style={{
-                  background: "var(--indigo-tint)",
-                  border:
-                    "1px solid color-mix(in srgb, var(--indigo) 25%, var(--border))",
-                }}
-              >
-                {entry!.example}
+          <div className="fp-help-body">
+            {entry!.body.map((p, i) => (
+              <p key={i} className="text-sm leading-relaxed">
+                {p}
               </p>
-            </div>
-          ) : null}
+            ))}
 
-          {entry!.appearsIn && entry!.appearsIn.length > 0 ? (
-            <div className="mt-2">
-              <div className="fp-eyebrow mb-1.5">Appears in</div>
-              <div className="flex flex-wrap gap-1.5">
-                {entry!.appearsIn.map((a) => (
-                  <span key={a} className="fp-chip">
-                    {a}
-                  </span>
-                ))}
+            {entry!.formula ? (
+              <div className="mt-2">
+                <div className="fp-eyebrow mb-1.5">Formula</div>
+                <pre
+                  className="whitespace-pre-wrap rounded-md p-3 text-xs leading-relaxed"
+                  style={{
+                    background: "var(--bg-subtle)",
+                    border: "1px solid var(--border)",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  }}
+                >
+                  {entry!.formula}
+                </pre>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {entry!.related && entry!.related.length > 0 ? (
-            <div className="mt-3">
-              <div className="fp-eyebrow mb-1.5">Related</div>
-              <div className="flex flex-wrap gap-1.5">
-                {entry!.related.map((rid) => {
-                  const r = GLOSSARY[rid];
-                  if (!r) return null;
-                  return (
-                    <RelatedLink key={rid} id={rid} term={r.term} />
-                  );
-                })}
+            {entry!.example ? (
+              <div className="mt-2">
+                <div className="fp-eyebrow mb-1.5">Example</div>
+                <p
+                  className="rounded-md p-3 text-[13px] leading-relaxed"
+                  style={{
+                    background: "var(--indigo-tint)",
+                    border: "1px solid color-mix(in srgb, var(--indigo) 25%, var(--border))",
+                  }}
+                >
+                  {entry!.example}
+                </p>
               </div>
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+
+            {entry!.appearsIn && entry!.appearsIn.length > 0 ? (
+              <div className="mt-2">
+                <div className="fp-eyebrow mb-1.5">Appears in</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {entry!.appearsIn.map((a) => (
+                    <span key={a} className="fp-chip">
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {entry!.related && entry!.related.length > 0 ? (
+              <div className="mt-3">
+                <div className="fp-eyebrow mb-1.5">Related</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {entry!.related.map((rid) => {
+                    const r = GLOSSARY[rid];
+                    if (!r) return null;
+                    return <RelatedLink key={rid} id={rid} term={r.term} />;
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
         )}
 
         <footer className="fp-help-footer">
@@ -289,15 +270,26 @@ export function HelpFlyout() {
           justify-content: flex-end;
         }
         @keyframes fp-help-fadein {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
         }
         @keyframes fp-help-slidein {
-          from { transform: translateX(20px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
+          from {
+            transform: translateX(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
         }
         @media (prefers-reduced-motion: reduce) {
-          .fp-help-overlay, .fp-help-panel {
+          .fp-help-overlay,
+          .fp-help-panel {
             animation-duration: 0ms;
           }
         }
@@ -335,10 +327,7 @@ function RelatedLink({
       >
         <div className="text-sm font-semibold">{term}</div>
         {short ? (
-          <div
-            className="mt-0.5 text-[12px] leading-relaxed"
-            style={{ color: "var(--fg-muted)" }}
-          >
+          <div className="mt-0.5 text-[12px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
             {short}
           </div>
         ) : null}

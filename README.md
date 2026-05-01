@@ -62,15 +62,15 @@ You should see 7 capabilities registered, 3 sources created, 1 cluster fired (en
 
 `.env` keys (only `ANTHROPIC_API_KEY` is required for the streaming draft generator; everything else is optional):
 
-| Key | Required | Purpose |
-| --- | --- | --- |
-| `ANTHROPIC_API_KEY` | yes | Claude calls for the draft generator. Without it, the generator returns a deterministic stub so the loop still closes for local dev. |
-| `ANTHROPIC_DRAFT_MODEL` | no | Model name. Defaults to `claude-haiku-4-5-20251001`. |
-| `LIBSQL_URL` | no | Set for hosted Turso. Leave unset for local SQLite at `.data/flavorpress.db`. |
-| `LIBSQL_AUTH_TOKEN` | no | Required if `LIBSQL_URL` is set. |
-| `INBOUND_SECRET` | no | Webhook secret for `/api/inbound` (newsletter forwarding, v1.1). |
-| `FLAVORPRESS_TIER` | no | `oss` (default) or `saas`. Gates capability registration: SaaS-only manifests refuse to register on the OSS tier. |
-| `OPENAI_API_KEY` | no | Used for `text-embedding-3-small` once cluster engine layer 3 ships. v1.0 layers 1 and 2 only. |
+| Key                     | Required | Purpose                                                                                                                              |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`     | yes      | Claude calls for the draft generator. Without it, the generator returns a deterministic stub so the loop still closes for local dev. |
+| `ANTHROPIC_DRAFT_MODEL` | no       | Model name. Defaults to `claude-haiku-4-5-20251001`.                                                                                 |
+| `LIBSQL_URL`            | no       | Set for hosted Turso. Leave unset for local SQLite at `.data/flavorpress.db`.                                                        |
+| `LIBSQL_AUTH_TOKEN`     | no       | Required if `LIBSQL_URL` is set.                                                                                                     |
+| `INBOUND_SECRET`        | no       | Webhook secret for `/api/inbound` (newsletter forwarding, v1.1).                                                                     |
+| `FLAVORPRESS_TIER`      | no       | `oss` (default) or `saas`. Gates capability registration: SaaS-only manifests refuse to register on the OSS tier.                    |
+| `OPENAI_API_KEY`        | no       | Used for `text-embedding-3-small` once cluster engine layer 3 ships. v1.0 layers 1 and 2 only.                                       |
 
 ## How to use it
 

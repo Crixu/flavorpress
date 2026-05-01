@@ -12,16 +12,8 @@
  */
 
 import { useEffect, useRef } from "react";
-import type {
-  ExtensionAnnotation,
-  InitialAnnotationsByExtension,
-} from "./types";
-import {
-  hydrateSlice,
-  setActive,
-  useActiveSelection,
-  useAllAnnotations,
-} from "./store";
+import type { ExtensionAnnotation, InitialAnnotationsByExtension } from "./types";
+import { hydrateSlice, setActive, useActiveSelection, useAllAnnotations } from "./store";
 
 interface Props {
   draftId: string;
@@ -69,15 +61,13 @@ export function ExtensionsArticle({
   useEffect(() => {
     const root = articleRef.current;
     if (!root) return;
-    root
-      .querySelectorAll<HTMLElement>("mark[data-fp-ext]")
-      .forEach((m) => {
-        const isActive =
-          active !== null &&
-          m.dataset.fpExt === active.extensionId &&
-          m.dataset.fpAnn === active.annotationId;
-        m.dataset.fpActive = isActive ? "1" : "0";
-      });
+    root.querySelectorAll<HTMLElement>("mark[data-fp-ext]").forEach((m) => {
+      const isActive =
+        active !== null &&
+        m.dataset.fpExt === active.extensionId &&
+        m.dataset.fpAnn === active.annotationId;
+      m.dataset.fpActive = isActive ? "1" : "0";
+    });
   }, [active]);
 
   // Click on a highlight: select it and scroll the matching comment
@@ -86,9 +76,7 @@ export function ExtensionsArticle({
     const root = articleRef.current;
     if (!root) return;
     function onClick(e: Event) {
-      const target = (e.target as HTMLElement).closest(
-        "mark[data-fp-ext]",
-      ) as HTMLElement | null;
+      const target = (e.target as HTMLElement).closest("mark[data-fp-ext]") as HTMLElement | null;
       if (!target) return;
       const extensionId = target.dataset.fpExt;
       const annotationId = target.dataset.fpAnn;
@@ -97,8 +85,7 @@ export function ExtensionsArticle({
       const card = document.querySelector(
         `[data-fp-comment="${cssEscape(extensionId)}:${cssEscape(annotationId)}"]`,
       ) as HTMLElement | null;
-      if (card)
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
     }
     root.addEventListener("click", onClick);
     return () => {
@@ -143,10 +130,7 @@ function wrapFirstOccurrence(
   const i = stream.text.toLowerCase().indexOf(needle);
   if (i === -1) return false;
   const start = findTextPosition(stream.nodes, i);
-  const end = findTextPosition(
-    stream.nodes,
-    i + annotation.spanText.length,
-  );
+  const end = findTextPosition(stream.nodes, i + annotation.spanText.length);
   if (!start || !end) return false;
   const range = document.createRange();
   range.setStart(start.node, start.offset);
@@ -173,11 +157,7 @@ function collectTextStream(root: HTMLElement): {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode() as Text | null;
   while (node) {
-    if (
-      node.parentElement?.closest(
-        "mark[data-fp-ext], script, style, noscript",
-      )
-    ) {
+    if (node.parentElement?.closest("mark[data-fp-ext], script, style, noscript")) {
       node = walker.nextNode() as Text | null;
       continue;
     }
@@ -203,10 +183,7 @@ function findTextPosition(
   return null;
 }
 
-function createAnnotationMark(
-  extensionId: string,
-  annotation: ExtensionAnnotation,
-): HTMLElement {
+function createAnnotationMark(extensionId: string, annotation: ExtensionAnnotation): HTMLElement {
   const mark = document.createElement("mark");
   mark.dataset.fpExt = extensionId;
   mark.dataset.fpAnn = annotation.id;
