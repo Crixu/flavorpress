@@ -16,6 +16,7 @@ import {
   clearSettingAction,
   saveSettingAction,
 } from "@/lib/v1/settings-actions";
+import { resolveAnthropicAuth, type AuthMode } from "@/lib/anthropic";
 import { ensureSchema } from "@/lib/db";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 
@@ -32,7 +33,15 @@ interface PageProps {
 export default async function SettingsPage({ searchParams }: PageProps) {
   await ensureSchema();
   const sp = await searchParams;
-  const snapshot = await loadSettingsSnapshot();
+  const [snapshot, auth] = await Promise.all([
+    loadSettingsSnapshot(),
+    resolveAnthropicAuth().catch(
+      () =>
+        ({ mode: "none", apiKey: null, claudePath: null }) as Awaited<
+          ReturnType<typeof resolveAnthropicAuth>
+        >,
+    ),
+  ]);
 
   return (
     <div className="space-y-8" style={{ maxWidth: 720 }}>
@@ -47,6 +56,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           to the environment variable.
         </p>
       </header>
+
+      <AuthModeRow mode={auth.mode} hasApiKey={auth.apiKey !== null} />
 
       {sp.saved ? (
         <Banner kind="success">✓ Saved {labelFor(sp.saved)}.</Banner>
@@ -67,7 +78,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
 
       <SettingForm
         title="Anthropic API key"
-        hint="Required for draft generation. Without a key, drafts fall back to a deterministic stub so the loop still closes for local dev."
+        hint="Used for drafting when configured, and required for fact-check. Without a key, drafting can use your local Claude Code login; if neither auth path is available, drafts fall back to a deterministic stub for local dev."
         settingKey={SETTING_KEYS.anthropicApiKey}
         envVar="ANTHROPIC_API_KEY"
         source={snapshot.anthropicApiKey.source}
@@ -94,6 +105,43 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         }
       />
     </div>
+  );
+}
+
+function AuthModeRow({
+  mode,
+  hasApiKey,
+}: {
+  mode: AuthMode;
+  hasApiKey: boolean;
+}) {
+  const config =
+    mode === "api"
+      ? {
+          chip: { label: "API key", cls: "fp-chip fp-chip-emerald" },
+          line: "FlavorPress is using your Anthropic API key. All features (drafting, fact-check) work.",
+        }
+      : mode === "cli"
+        ? {
+            chip: { label: "Claude Code login", cls: "fp-chip fp-chip-emerald" },
+            line: hasApiKey
+              ? "FlavorPress is riding your local Claude Code login for drafting. Fact-check uses the API key you also have configured below."
+              : "FlavorPress is riding your local Claude Code login. Drafting works without an API key. Fact-check still requires a key (it uses Anthropic's web_search tool); add one below to enable it.",
+          }
+        : {
+            chip: { label: "Not connected", cls: "fp-chip fp-chip-rose" },
+            line: "No Anthropic auth configured. Paste an API key below, or install and sign in to Claude Code to use the local-login path.",
+          };
+  return (
+    <section className="fp-card p-5 space-y-2">
+      <div className="flex items-center gap-2 text-sm">
+        <span style={{ color: "var(--fg-muted)" }}>Active auth:</span>
+        <span className={config.chip.cls}>{config.chip.label}</span>
+      </div>
+      <p className="text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+        {config.line}
+      </p>
+    </section>
   );
 }
 

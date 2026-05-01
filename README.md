@@ -64,8 +64,9 @@ You should see 7 capabilities registered, 3 sources created, 1 cluster fired (en
 
 | Key | Required | Purpose |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | yes | Claude calls for the draft generator. Without it, the generator returns a deterministic stub so the loop still closes for local dev. |
+| `ANTHROPIC_API_KEY` | yes\* | Claude calls for the draft generator. Without it, the generator returns a deterministic stub so the loop still closes for local dev. \*Optional if you have Claude Code installed and logged in (see below). |
 | `ANTHROPIC_DRAFT_MODEL` | no | Model name. Defaults to `claude-haiku-4-5-20251001`. |
+| `FLAVORPRESS_LOCAL_CLAUDE` | no | Set to `1` to force the local Claude Code login path. When unset, FlavorPress auto-detects: if no API key is configured and `claude` is on PATH, it rides your Claude Code login via `@anthropic-ai/claude-agent-sdk` (same approach Conductor uses). Not supported on Vercel; the user's local Claude install is unreachable from a serverless function. The fact-check extension still requires an API key (it uses Anthropic's `web_search` server tool, which the Claude Code login does not expose). |
 | `LIBSQL_URL` | no | Set for hosted Turso. Leave unset for local SQLite at `.data/flavorpress.db`. |
 | `LIBSQL_AUTH_TOKEN` | no | Required if `LIBSQL_URL` is set. |
 | `INBOUND_SECRET` | no | Webhook secret for `/api/inbound` (newsletter forwarding, v1.1). |

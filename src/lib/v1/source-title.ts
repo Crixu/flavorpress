@@ -13,9 +13,7 @@
  * override the result via the rename action on the source detail page.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
-import { extractText, MODEL } from "../anthropic";
-import { getAnthropicApiKey } from "./settings";
+import { createAnthropicClient, extractText, MODEL } from "../anthropic";
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -43,11 +41,14 @@ export async function generateSourceTitle(url: string): Promise<string> {
 
   if (!signals) return fallback;
 
-  const apiKey = await getAnthropicApiKey();
-  if (!apiKey) return fallback;
-
+  // createAnthropicClient() can throw on misconfigured-CLI states
+  // (FLAVORPRESS_LOCAL_CLAUDE=1 on Vercel, or flag forced without
+  // `claude` installed). For non-critical helpers like this one, any
+  // failure should silently fall back rather than 500 the source-add
+  // flow it runs from.
   try {
-    const client = new Anthropic({ apiKey });
+    const { client } = await createAnthropicClient();
+    if (!client) return fallback;
     const message = await client.messages.create({
       model: MODEL,
       max_tokens: 60,

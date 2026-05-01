@@ -12,14 +12,14 @@
  * architecture-v1.md §11.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { db, ensureSchema } from "../db";
+import { createAnthropicClient, LocalClaudeError } from "../anthropic";
 import { getBus } from "./event-bus";
 import { newTraceId, traceLogger } from "./trace";
 import { fingerprintText, voiceMatchScore } from "./style-sheet";
 import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
-import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
+import { getAnthropicDraftModel } from "./settings";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import type { DraftRenderedPayload, Item, VoiceProfile } from "./types";
 const VOICE_MATCH_FLOOR = 75; // accept threshold (0-100)
@@ -268,17 +268,17 @@ interface StreamResult {
 }
 
 async function streamOnce(args: StreamArgs): Promise<StreamResult> {
-  const apiKey = await getAnthropicApiKey();
-  if (!apiKey) {
-    // No key configured. Fall back to a deterministic stub so the loop
-    // closes for local dev without spending tokens. The pitch demo can
-    // hit this path when no key is set in /settings or .env.
-    await args.log.warn("draft.generate.stream", "no API key; using stub");
+  const { client } = await createAnthropicClient();
+  if (!client) {
+    // No auth configured (no API key, no `claude` on PATH). Fall back
+    // to a deterministic stub so the loop closes for local dev without
+    // spending tokens. The pitch demo can hit this path when no key
+    // is set in /settings or .env.
+    await args.log.warn("draft.generate.stream", "no Anthropic auth; using stub");
     return stubResult(args.wordCount);
   }
 
   const model = await getAnthropicDraftModel();
-  const client = new Anthropic({ apiKey });
   // Body tokens ~ words / 0.75; add headroom for headlines, alternates, quotes,
   // and the JSON envelope itself. Floor at 1500 to keep small drafts honest.
   const maxTokens = Math.max(1500, Math.round(args.wordCount / 0.75) + 600);
@@ -294,34 +294,51 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
   let partialDelta: number | null = null;
   let streamingVoiceCheckFired = false;
 
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      collected += event.delta.text;
+  try {
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        collected += event.delta.text;
 
-      // Mid-flight voice check: once we have ~200 tokens of body, run
-      // Burrows' Delta on partial output. If the partial fingerprint is
-      // too far from the user's profile, cancel and signal regeneration.
-      if (
-        !canceled &&
-        !args.noVoiceCancel &&
-        args.voiceFingerprint &&
-        !streamingVoiceCheckFired &&
-        approximateTokenCount(collected) >= MIN_TOKENS_FOR_VOICE_CHECK
-      ) {
-        streamingVoiceCheckFired = true;
-        const partial = fingerprintText(collected);
-        const score = voiceMatchScore(partial, args.voiceFingerprint);
-        partialDelta = (100 - score) / 100;
-        if (score < STREAMING_VOICE_FLOOR * 100) {
-          await args.log.info("draft.generate.stream", "voice floor breached", {
-            partialScore: score,
-          });
-          canceled = true;
-          stream.controller.abort();
-          break;
+        // Mid-flight voice check: once we have ~200 tokens of body, run
+        // Burrows' Delta on partial output. If the partial fingerprint is
+        // too far from the user's profile, cancel and signal regeneration.
+        if (
+          !canceled &&
+          !args.noVoiceCancel &&
+          args.voiceFingerprint &&
+          !streamingVoiceCheckFired &&
+          approximateTokenCount(collected) >= MIN_TOKENS_FOR_VOICE_CHECK
+        ) {
+          streamingVoiceCheckFired = true;
+          const partial = fingerprintText(collected);
+          const score = voiceMatchScore(partial, args.voiceFingerprint);
+          partialDelta = (100 - score) / 100;
+          if (score < STREAMING_VOICE_FLOOR * 100) {
+            await args.log.info("draft.generate.stream", "voice floor breached", {
+              partialScore: score,
+            });
+            canceled = true;
+            stream.controller.abort();
+            break;
+          }
         }
       }
     }
+  } catch (err) {
+    // Local Claude Code login expired or signed out: behave like
+    // "no auth configured" and return the stub, matching the
+    // upstream null-client branch above. Any other failure
+    // (rate_limit, billing, server_error, generic) propagates so
+    // the caller surfaces a real error instead of a silent stub.
+    if (err instanceof LocalClaudeError && err.kind === "auth") {
+      await args.log.warn(
+        "draft.generate.stream",
+        "claude code login unauthenticated; using stub",
+        { subtype: err.subtype },
+      );
+      return stubResult(args.wordCount);
+    }
+    throw err;
   }
 
   if (canceled) {
