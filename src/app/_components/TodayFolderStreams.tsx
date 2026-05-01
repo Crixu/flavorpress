@@ -65,22 +65,22 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [expandedStreams, setExpandedStreams] = useState<Set<string>>(new Set());
 
-  // Filter out optimistically-dismissed clusters and lanes that have lost
-  // every cluster as a result. We re-derive on every render so the moment
-  // setDismissedIds + a view transition fire, the next paint reflects it.
+  // Filter out optimistically-dismissed clusters but keep the lane visible
+  // even when it goes empty: every folder is a reading lane the user
+  // declared, so they should always see it. We re-derive on every render
+  // so the moment setDismissedIds + a view transition fire, the next paint
+  // reflects it.
   const visibleStreams = useMemo(() => {
-    const result: TodayFolderStream[] = [];
-    for (const stream of streams) {
-      const remaining = stream.clusters.filter((c) => !dismissedIds.has(c.cluster.id));
-      if (remaining.length === 0) continue;
-      result.push({ ...stream, clusters: remaining });
-    }
-    return result;
+    return streams.map((stream) => ({
+      ...stream,
+      clusters: stream.clusters.filter((c) => !dismissedIds.has(c.cluster.id)),
+    }));
   }, [streams, dismissedIds]);
 
   // Lane-level view-transition-name keeps the section in place during a
   // dismiss; cards animate within while the surrounding lane stays anchored.
-  const compact = visibleStreams.length > 2;
+  // Compact mode kicks in based on lanes with content, not empty placeholders.
+  const compact = visibleStreams.filter((s) => s.clusters.length > 0).length > 2;
 
   // Optimistic dismiss + rollback. The card hides immediately so the user
   // sees feedback while the server action runs; if the action throws (DB
@@ -111,7 +111,8 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
     <div className="space-y-6">
       {visibleStreams.map((stream) => {
         const expanded = expandedStreams.has(stream.id);
-        const heroPreview = stream.clusters[0]!;
+        const isEmpty = stream.clusters.length === 0;
+        const heroPreview = stream.clusters[0];
         const peekPreviews = expanded
           ? stream.clusters.slice(1)
           : stream.clusters.slice(1, 1 + PEEK_COUNT);
@@ -125,16 +126,20 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
           >
             <FolderStreamHeader stream={stream} compact={compact} />
             <div className="space-y-3">
-              <ClusterCard
-                key={heroPreview.cluster.id}
-                preview={heroPreview}
-                rank={1}
-                isTop
-                outlets={outlets}
-                defaultOutletId={defaultOutletId}
-                onDismiss={dismissOptimistically}
-                onDismissFailed={restoreAfterFailure}
-              />
+              {isEmpty ? (
+                <EmptyStreamRow folderName={stream.name} />
+              ) : (
+                <ClusterCard
+                  key={heroPreview!.cluster.id}
+                  preview={heroPreview!}
+                  rank={1}
+                  isTop
+                  outlets={outlets}
+                  defaultOutletId={defaultOutletId}
+                  onDismiss={dismissOptimistically}
+                  onDismissFailed={restoreAfterFailure}
+                />
+              )}
               {peekPreviews.map((preview, idx) => (
                 <PeekRow
                   key={preview.cluster.id}
@@ -295,6 +300,20 @@ function FolderStreamHeader({ stream, compact }: { stream: TodayFolderStream; co
           Refresh
         </button>
       </div>
+    </div>
+  );
+}
+
+function EmptyStreamRow({ folderName }: { folderName: string }) {
+  return (
+    <div
+      className="fp-card flex items-center justify-between gap-3 px-4 py-3 text-sm"
+      style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+    >
+      <span>No fired clusters in {folderName} yet.</span>
+      <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
+        Refresh to fetch new items.
+      </span>
     </div>
   );
 }
