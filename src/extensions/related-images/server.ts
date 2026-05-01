@@ -19,11 +19,7 @@ import "server-only";
  */
 
 import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
-import {
-  getSetting,
-  setSetting,
-  SETTING_KEYS,
-} from "@/lib/v1/settings";
+import { getSetting, setSetting, SETTING_KEYS } from "@/lib/v1/settings";
 import type { ServerExtensionEntry } from "../types";
 import {
   DEFAULT_LICENSE_FILTER,
@@ -73,16 +69,13 @@ export async function getLicenseFilter(): Promise<LicenseCode[]> {
 }
 
 export async function setLicenseFilter(codes: LicenseCode[]): Promise<LicenseCode[]> {
-  const cleaned = Array.from(new Set(codes)).filter(
-    (x): x is LicenseCode => (LICENSE_CODES as readonly string[]).includes(x),
+  const cleaned = Array.from(new Set(codes)).filter((x): x is LicenseCode =>
+    (LICENSE_CODES as readonly string[]).includes(x),
   );
   // An empty filter would match nothing; treat it as "fall back to default"
   // so the user can't accidentally lock themselves out of search results.
   const effective = cleaned.length > 0 ? cleaned : [...DEFAULT_LICENSE_FILTER];
-  await setSetting(
-    SETTING_KEYS.relatedImagesLicenseFilter,
-    JSON.stringify(effective),
-  );
+  await setSetting(SETTING_KEYS.relatedImagesLicenseFilter, JSON.stringify(effective));
   // Prune cached results whose license is no longer permitted. Without
   // this, narrowing the filter would leave stale rows in the panel that
   // the chips claim are excluded; the reuse guidance the panel renders
@@ -242,9 +235,7 @@ export async function loadRelatedImages(
   // panel would look unsearched after reload even though Openverse was
   // queried.
   const ranAt =
-    runRow.rows.length > 0
-      ? Number(runRow.rows[0]!.searched_at)
-      : (results[0]?.searchedAt ?? null);
+    runRow.rows.length > 0 ? Number(runRow.rows[0]!.searched_at) : (results[0]?.searchedAt ?? null);
   return { results, ranAt };
 }
 
@@ -294,18 +285,12 @@ function buildQuery(headline: string, bodyText: string): string {
 
 function normalizeHit(
   hit: OpenverseHit,
-):
-  | (Omit<RelatedImageResult, "id" | "draftId" | "resultIndex" | "searchedAt">)
-  | null {
+): Omit<RelatedImageResult, "id" | "draftId" | "resultIndex" | "searchedAt"> | null {
   const imageUrl = typeof hit.url === "string" ? hit.url : null;
   const thumbnailUrl =
-    typeof hit.thumbnail === "string" && hit.thumbnail.length > 0
-      ? hit.thumbnail
-      : imageUrl;
-  const sourceUrl =
-    typeof hit.foreign_landing_url === "string" ? hit.foreign_landing_url : null;
-  const licenseRaw =
-    typeof hit.license === "string" ? hit.license.trim().toLowerCase() : "";
+    typeof hit.thumbnail === "string" && hit.thumbnail.length > 0 ? hit.thumbnail : imageUrl;
+  const sourceUrl = typeof hit.foreign_landing_url === "string" ? hit.foreign_landing_url : null;
+  const licenseRaw = typeof hit.license === "string" ? hit.license.trim().toLowerCase() : "";
   if (!imageUrl || !thumbnailUrl || !sourceUrl) return null;
   if (!(LICENSE_CODES as readonly string[]).includes(licenseRaw)) return null;
   return {
@@ -320,8 +305,7 @@ function normalizeHit(
     creator: typeof hit.creator === "string" ? hit.creator : null,
     creatorUrl: typeof hit.creator_url === "string" ? hit.creator_url : null,
     licenseCode: licenseRaw as LicenseCode,
-    licenseVersion:
-      typeof hit.license_version === "string" ? hit.license_version : null,
+    licenseVersion: typeof hit.license_version === "string" ? hit.license_version : null,
     licenseUrl: typeof hit.license_url === "string" ? hit.license_url : null,
     width: typeof hit.width === "number" ? hit.width : null,
     height: typeof hit.height === "number" ? hit.height : null,

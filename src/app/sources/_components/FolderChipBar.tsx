@@ -54,16 +54,13 @@ export function FolderChipBar({
 }: Props) {
   const activeFolder =
     currentFolder && currentFolder !== "ungrouped"
-      ? folders.find((f) => f.id === currentFolder) ?? null
+      ? (folders.find((f) => f.id === currentFolder) ?? null)
       : null;
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="text-[11px] uppercase tracking-wider"
-          style={{ color: "var(--fg-muted)" }}
-        >
+        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--fg-muted)" }}>
           Folder
         </span>
         <Link
@@ -97,14 +94,9 @@ export function FolderChipBar({
         <NewFolderChip />
       </div>
 
-      {currentFolder === "ungrouped" ? (
-        <UngroupedManagePanel count={ungroupedCount} />
-      ) : null}
+      {currentFolder === "ungrouped" ? <UngroupedManagePanel count={ungroupedCount} /> : null}
       {activeFolder ? (
-        <FolderManagePanel
-          folder={activeFolder}
-          count={folderCounts[activeFolder.id] ?? 0}
-        />
+        <FolderManagePanel folder={activeFolder} count={folderCounts[activeFolder.id] ?? 0} />
       ) : null}
     </div>
   );
@@ -155,13 +147,7 @@ function NewFolderChip() {
   );
 }
 
-function FolderManagePanel({
-  folder,
-  count,
-}: {
-  folder: FolderRow;
-  count: number;
-}) {
+function FolderManagePanel({ folder, count }: { folder: FolderRow; count: number }) {
   const [renamePending, startRenameTransition] = useTransition();
 
   function commitRename(value: string) {
@@ -202,9 +188,7 @@ function FolderManagePanel({
         <PollFolderButton
           folderId={folder.id}
           disabled={count === 0}
-          title={
-            count === 0 ? "Empty folder" : "Poll all sources in this folder"
-          }
+          title={count === 0 ? "Empty folder" : "Poll all sources in this folder"}
           label="↻ Poll folder"
         />
         <RemoveFolderControl folder={folder} count={count} />
@@ -213,13 +197,7 @@ function FolderManagePanel({
   );
 }
 
-function RemoveFolderControl({
-  folder,
-  count,
-}: {
-  folder: FolderRow;
-  count: number;
-}) {
+function RemoveFolderControl({ folder, count }: { folder: FolderRow; count: number }) {
   const [confirming, setConfirming] = useState(false);
 
   if (count === 0) {
@@ -351,11 +329,7 @@ function UngroupedManagePanel({ count }: { count: number }) {
         <PollFolderButton
           folderId=""
           disabled={count === 0}
-          title={
-            count === 0
-              ? "No ungrouped sources"
-              : "Poll every ungrouped source"
-          }
+          title={count === 0 ? "No ungrouped sources" : "Poll every ungrouped source"}
           label="↻ Poll Ungrouped"
         />
       </span>

@@ -33,10 +33,7 @@ export async function getSetting(key: SettingKey): Promise<string | null> {
   return s.length > 0 ? s : null;
 }
 
-export async function setSetting(
-  key: SettingKey,
-  value: string | null,
-): Promise<void> {
+export async function setSetting(key: SettingKey, value: string | null): Promise<void> {
   await ensureSchema();
   if (value === null || value.trim() === "") {
     await db.execute({
@@ -93,10 +90,7 @@ export async function getDisabledExtensionIds(): Promise<Set<string>> {
   }
 }
 
-export async function setExtensionEnabled(
-  extensionId: string,
-  enabled: boolean,
-): Promise<void> {
+export async function setExtensionEnabled(extensionId: string, enabled: boolean): Promise<void> {
   const current = await getDisabledExtensionIds();
   if (enabled) current.delete(extensionId);
   else current.add(extensionId);
@@ -104,10 +98,7 @@ export async function setExtensionEnabled(
     await setSetting(SETTING_KEYS.disabledExtensions, null);
     return;
   }
-  await setSetting(
-    SETTING_KEYS.disabledExtensions,
-    JSON.stringify([...current].sort()),
-  );
+  await setSetting(SETTING_KEYS.disabledExtensions, JSON.stringify([...current].sort()));
 }
 
 function previewSecret(value: string): string {
@@ -126,17 +117,12 @@ export async function loadSettingsSnapshot(): Promise<SettingsSnapshot> {
   const envApiKey = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY);
   const apiKeyValue = normalizeAnthropicKey(dbApiKey) ?? envApiKey;
 
-  const modelValue =
-    dbModel ?? process.env.ANTHROPIC_DRAFT_MODEL ?? DEFAULT_DRAFT_MODEL;
+  const modelValue = dbModel ?? process.env.ANTHROPIC_DRAFT_MODEL ?? DEFAULT_DRAFT_MODEL;
 
   return {
     anthropicApiKey: {
       hasValue: apiKeyValue !== null,
-      source: dbApiKey
-        ? "db"
-        : envApiKey
-          ? "env"
-          : "none",
+      source: dbApiKey ? "db" : envApiKey ? "env" : "none",
       preview: apiKeyValue ? previewSecret(apiKeyValue) : null,
     },
     anthropicDraftModel: {

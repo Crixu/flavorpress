@@ -56,14 +56,7 @@ async function main() {
       sql: `INSERT INTO sources
             (id, user_id, kind, url, display_name, trust_score, poll_interval_seconds, active, created_at)
             VALUES (?, ?, 'rss', ?, ?, ?, 300, 1, ?)`,
-      args: [
-        id,
-        userId,
-        `https://${domains[i]}/feed`,
-        `${domains[i]} feed`,
-        0.85,
-        Date.now(),
-      ],
+      args: [id, userId, `https://${domains[i]}/feed`, `${domains[i]} feed`, 0.85, Date.now()],
     });
   }
 
@@ -76,8 +69,7 @@ async function main() {
   const clusterEngine = registry.get("cluster-engine");
   if (!clusterEngine) throw new Error("cluster-engine not registered");
 
-  const sharedTitle =
-    "EU origin tariff hits specialty importers; SKU dispute splits the wire";
+  const sharedTitle = "EU origin tariff hits specialty importers; SKU dispute splits the wire";
   const sharedLede =
     "The European Commission's enforcement notice this morning extends origin certification to all green coffee imports starting July 1.";
 
@@ -107,13 +99,7 @@ async function main() {
         JSON.stringify(["Some Author"]),
         Date.now(),
         Date.now(),
-        JSON.stringify([
-          "European Commission",
-          "EU",
-          "July",
-          "Specialty",
-          "Yemen",
-        ]),
+        JSON.stringify(["European Commission", "EU", "July", "Specialty", "Yemen"]),
       ],
     });
     await getBus().emit<ItemIngestedPayload>(
@@ -136,13 +122,9 @@ async function main() {
     sql: `SELECT * FROM clusters WHERE user_id = ?`,
     args: [userId],
   });
-  console.log(
-    `✓ ${clusterRows.rows.length} cluster(s) formed for user ${userId}`,
-  );
+  console.log(`✓ ${clusterRows.rows.length} cluster(s) formed for user ${userId}`);
   for (const row of clusterRows.rows) {
-    console.log(
-      `  cluster ${row.id} state=${row.state} sources=${row.source_count}`,
-    );
+    console.log(`  cluster ${row.id} state=${row.state} sources=${row.source_count}`);
   }
 
   if (clusterRows.rows.length === 0) {

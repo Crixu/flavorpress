@@ -43,12 +43,7 @@ export const LICENSE_DESCRIPTIONS: Record<LicenseCode, string> = {
   "by-nc-nd": "Non-commercial, no derivatives",
 };
 
-export const DEFAULT_LICENSE_FILTER: readonly LicenseCode[] = [
-  "cc0",
-  "pdm",
-  "by",
-  "by-sa",
-];
+export const DEFAULT_LICENSE_FILTER: readonly LicenseCode[] = ["cc0", "pdm", "by", "by-sa"];
 
 export interface RelatedImageResult {
   id: string;

@@ -14,21 +14,9 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
 import { extractText, extractJson } from "@/lib/anthropic";
-import {
-  getAnthropicApiKey,
-  getAnthropicDraftModel,
-} from "@/lib/v1/settings";
-import type {
-  ExtensionAnnotation,
-  ServerExtensionEntry,
-} from "../types";
-import {
-  FACT_CHECK_ID,
-  MAX_CLAIMS,
-  VERDICTS,
-  type FactCheckClaim,
-  type Verdict,
-} from "./types";
+import { getAnthropicApiKey, getAnthropicDraftModel } from "@/lib/v1/settings";
+import type { ExtensionAnnotation, ServerExtensionEntry } from "../types";
+import { FACT_CHECK_ID, MAX_CLAIMS, VERDICTS, type FactCheckClaim, type Verdict } from "./types";
 
 interface ModelClaim {
   claim_text?: unknown;
@@ -69,9 +57,7 @@ export async function runFactCheck(
 
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
-    throw new Error(
-      "No Anthropic API key configured. Add one on /settings, then retry.",
-    );
+    throw new Error("No Anthropic API key configured. Add one on /settings, then retry.");
   }
   const model = await getAnthropicDraftModel();
   const client = new Anthropic({ apiKey });
@@ -107,14 +93,11 @@ export async function runFactCheck(
   const visitedUrlKeys = collectVisitedUrlKeys(message);
   while (message.stop_reason === "pause_turn") {
     if (++pauseRounds > MAX_PAUSE_ROUNDS) {
-      throw new Error(
-        "Fact-checker stalled in pause_turn loop; aborting after 5 continuations.",
-      );
+      throw new Error("Fact-checker stalled in pause_turn loop; aborting after 5 continuations.");
     }
     messages.push({
       role: "assistant",
-      content:
-        message.content as unknown as Anthropic.Messages.ContentBlockParam[],
+      content: message.content as unknown as Anthropic.Messages.ContentBlockParam[],
     });
     message = await client.messages.create({
       model,
@@ -136,11 +119,7 @@ export async function runFactCheck(
     );
   }
 
-  const accepted = filterAcceptedClaims(
-    parsed.claims ?? [],
-    bodyText,
-    visitedUrlKeys,
-  );
+  const accepted = filterAcceptedClaims(parsed.claims ?? [], bodyText, visitedUrlKeys);
   const ranAt = Date.now();
 
   await db.execute({
@@ -193,9 +172,7 @@ async function persistFactCheckRun(
   claims: FactCheckClaim[],
   ranAt: number,
 ): Promise<void> {
-  const flagged = claims
-    .filter((c) => c.verdict === "disputed")
-    .map((c) => c.id);
+  const flagged = claims.filter((c) => c.verdict === "disputed").map((c) => c.id);
   const passed = flagged.length === 0 ? 1 : 0;
   const runId = `${draftId}::${FACT_CHECK_ID}::${RUN_KEY}`;
   await db.execute({
@@ -203,22 +180,11 @@ async function persistFactCheckRun(
           (id, draft_id, capability_id, idempotency_key, passed,
            flagged_claim_ids, raw_response, computed_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      runId,
-      draftId,
-      FACT_CHECK_ID,
-      RUN_KEY,
-      passed,
-      JSON.stringify(flagged),
-      null,
-      ranAt,
-    ],
+    args: [runId, draftId, FACT_CHECK_ID, RUN_KEY, passed, JSON.stringify(flagged), null, ranAt],
   });
 }
 
-export async function loadFactCheckRunAt(
-  draftId: string,
-): Promise<number | null> {
+export async function loadFactCheckRunAt(draftId: string): Promise<number | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT computed_at FROM fact_check_results
@@ -229,9 +195,7 @@ export async function loadFactCheckRunAt(
   return Number(r.rows[0]!.computed_at);
 }
 
-export async function loadFactCheckClaims(
-  draftId: string,
-): Promise<FactCheckClaim[]> {
+export async function loadFactCheckClaims(draftId: string): Promise<FactCheckClaim[]> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT id, draft_id, claim_index, claim_text, verdict, comment,
@@ -273,11 +237,7 @@ export function claimToAnnotation(c: FactCheckClaim): ExtensionAnnotation {
     index: c.claimIndex,
     spanText: c.claimText,
     tone:
-      c.verdict === "supported"
-        ? "positive"
-        : c.verdict === "disputed"
-          ? "negative"
-          : "neutral",
+      c.verdict === "supported" ? "positive" : c.verdict === "disputed" ? "negative" : "neutral",
     title: `Claim ${c.claimIndex} · ${capitalize(c.verdict)}`,
     body: c.comment,
     linkUrl: c.sourceUrl,
@@ -307,18 +267,14 @@ function filterAcceptedClaims(
   bodyText: string,
   visitedUrlKeys: Set<string>,
 ): Array<Omit<FactCheckClaim, "id" | "draftId" | "createdAt">> {
-  const accepted: Array<
-    Omit<FactCheckClaim, "id" | "draftId" | "createdAt">
-  > = [];
+  const accepted: Array<Omit<FactCheckClaim, "id" | "draftId" | "createdAt">> = [];
   const haystack = bodyText.toLowerCase();
   const seen = new Set<string>();
 
   for (const c of raw) {
     if (accepted.length >= MAX_CLAIMS) break;
-    const claimText =
-      typeof c.claim_text === "string" ? c.claim_text.trim() : "";
-    const verdictRaw =
-      typeof c.verdict === "string" ? c.verdict.trim().toLowerCase() : "";
+    const claimText = typeof c.claim_text === "string" ? c.claim_text.trim() : "";
+    const verdictRaw = typeof c.verdict === "string" ? c.verdict.trim().toLowerCase() : "";
     const comment = typeof c.comment === "string" ? c.comment.trim() : "";
     if (!claimText || !comment) continue;
     if (!VERDICTS.includes(verdictRaw as Verdict)) continue;
@@ -336,10 +292,7 @@ function filterAcceptedClaims(
     // keys harvested from web_search_tool_result blocks; treat any
     // unvalidated URL as missing rather than as a real source.
     const key = sourceUrlRaw ? canonicalUrlKey(sourceUrlRaw) : null;
-    const sourceUrl =
-      sourceUrlRaw && key !== null && visitedUrlKeys.has(key)
-        ? sourceUrlRaw
-        : null;
+    const sourceUrl = sourceUrlRaw && key !== null && visitedUrlKeys.has(key) ? sourceUrlRaw : null;
     const sourceTitle =
       typeof c.source_title === "string" && c.source_title.trim().length > 0
         ? c.source_title.trim().slice(0, 240)
@@ -370,9 +323,7 @@ function filterAcceptedClaims(
  * visited. Used to validate the URLs the model writes into its JSON
  * answer; anything outside this set is treated as a hallucination.
  */
-function collectVisitedUrlKeys(
-  message: Anthropic.Messages.Message,
-): Set<string> {
+function collectVisitedUrlKeys(message: Anthropic.Messages.Message): Set<string> {
   const out = new Set<string>();
   const blocks = message.content as ReadonlyArray<unknown>;
   for (const block of blocks) {
@@ -503,18 +454,15 @@ const NAMED_ENTITIES: Record<string, string> = {
 
 function decodeHtmlEntities(s: string): string {
   // Numeric entities first: &#123; (decimal) and &#x7B; / &#X7B; (hex).
-  const numericDecoded = s.replace(
-    /&#([xX])?([0-9a-fA-F]+);/g,
-    (match, hexFlag, code) => {
-      const n = Number.parseInt(code, hexFlag ? 16 : 10);
-      if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return match;
-      try {
-        return String.fromCodePoint(n);
-      } catch {
-        return match;
-      }
-    },
-  );
+  const numericDecoded = s.replace(/&#([xX])?([0-9a-fA-F]+);/g, (match, hexFlag, code) => {
+    const n = Number.parseInt(code, hexFlag ? 16 : 10);
+    if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return match;
+    try {
+      return String.fromCodePoint(n);
+    } catch {
+      return match;
+    }
+  });
   // Named entities; unknowns are left in place.
   return numericDecoded.replace(
     /&([a-zA-Z][a-zA-Z0-9]+);/g,

@@ -36,23 +36,16 @@ type LengthChoice = (typeof PRESET_LENGTHS)[number] | "custom";
 const MIN_WORDS = 100;
 const MAX_WORDS = 1500;
 
-export function ClusterActions({
-  clusterId,
-  outlets,
-  defaultOutletId,
-  draftsByOutlet,
-}: Props) {
+export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOutlet }: Props) {
   const [pending, startTransition] = useTransition();
   const [lengthChoice, setLengthChoice] = useState<LengthChoice>(600);
   const [customWords, setCustomWords] = useState<string>("800");
   const initialOutletId =
     defaultOutletId && outlets.some((o) => o.id === defaultOutletId)
       ? defaultOutletId
-      : outlets[0]?.id ?? null;
-  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(
-    initialOutletId,
-  );
-  const draft = selectedOutletId ? draftsByOutlet[selectedOutletId] ?? null : null;
+      : (outlets[0]?.id ?? null);
+  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(initialOutletId);
+  const draft = selectedOutletId ? (draftsByOutlet[selectedOutletId] ?? null) : null;
   const showPicker = outlets.length >= 2;
 
   function resolveWordCount(): number | null {
@@ -80,8 +73,7 @@ export function ClusterActions({
     return <Drafting variant={draft ? "regenerating" : "drafting"} />;
   }
 
-  const customInvalid =
-    lengthChoice === "custom" && resolveWordCount() === null;
+  const customInvalid = lengthChoice === "custom" && resolveWordCount() === null;
 
   const outletPicker = showPicker ? (
     <OutletPicker
@@ -107,15 +99,11 @@ export function ClusterActions({
       <div className="flex flex-col gap-3">
         {outletPicker}
         <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href={`/editor/${draft.id}`}
-            className="fp-btn fp-btn-primary fp-press"
-          >
+          <Link href={`/editor/${draft.id}`} className="fp-btn fp-btn-primary fp-press">
             Open draft →
           </Link>
           <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-            voice-match{" "}
-            <span className="font-medium tabular">{draft.voiceMatch}</span>
+            voice-match <span className="font-medium tabular">{draft.voiceMatch}</span>
             {draft.wpEditLink ? (
               <>
                 {" · "}
@@ -178,10 +166,7 @@ function OutletPicker({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span
-        className="text-[11px] uppercase tracking-wider"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--fg-muted)" }}>
         Draft to
       </span>
       <div
@@ -243,10 +228,7 @@ function LengthPicker({
 }: LengthPickerProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span
-        className="text-[11px] uppercase tracking-wide"
-        style={{ color: "var(--fg-subtle)" }}
-      >
+      <span className="text-[11px] uppercase tracking-wide" style={{ color: "var(--fg-subtle)" }}>
         Length
       </span>
       <div
@@ -381,10 +363,7 @@ function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
     return () => window.clearInterval(tick);
   }, []);
 
-  const headline =
-    variant === "regenerating"
-      ? "Regenerating draft"
-      : "Drafting your story";
+  const headline = variant === "regenerating" ? "Regenerating draft" : "Drafting your story";
 
   return (
     <div
@@ -407,10 +386,7 @@ function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
             {STAGES[stageIdx]!.label}: {STAGES[stageIdx]!.detail}
           </div>
         </div>
-        <div
-          className="text-xs tabular shrink-0"
-          style={{ color: "var(--fg-subtle)" }}
-        >
+        <div className="text-xs tabular shrink-0" style={{ color: "var(--fg-subtle)" }}>
           {(elapsed / 1000).toFixed(1)}s
         </div>
       </div>
@@ -423,8 +399,7 @@ function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
           className="absolute inset-y-0 fp-bar-indeterminate rounded-full"
           style={{
             width: "38%",
-            background:
-              "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 100%)",
+            background: "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 100%)",
           }}
         />
       </div>
@@ -433,22 +408,11 @@ function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
         {STAGES.slice(0, -1).map((s, i) => {
           const isDone = i < stageIdx;
           const isActive = i === stageIdx;
-          const color = isDone
-            ? "var(--emerald)"
-            : isActive
-            ? "var(--indigo)"
-            : "var(--fg-subtle)";
+          const color = isDone ? "var(--emerald)" : isActive ? "var(--indigo)" : "var(--fg-subtle)";
           return (
-            <li
-              key={s.label}
-              className="flex items-center gap-1.5 text-[11px]"
-              style={{ color }}
-            >
+            <li key={s.label} className="flex items-center gap-1.5 text-[11px]" style={{ color }}>
               <StageGlyph state={isDone ? "done" : isActive ? "active" : "pending"} />
-              <span
-                className={isActive ? "font-medium" : ""}
-                style={{ letterSpacing: "0.01em" }}
-              >
+              <span className={isActive ? "font-medium" : ""} style={{ letterSpacing: "0.01em" }}>
                 {s.label}
               </span>
             </li>
@@ -478,7 +442,17 @@ function PulsingDot() {
 function StageGlyph({ state }: { state: "done" | "active" | "pending" }) {
   if (state === "done") {
     return (
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <svg
+        width="11"
+        height="11"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
         <polyline points="20 6 9 17 4 12" />
       </svg>
     );

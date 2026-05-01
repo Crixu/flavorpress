@@ -17,13 +17,10 @@ interface State {
 }
 
 export function PublishToWpForm({ draftId, className, pendingLabel, children }: Props) {
-  const [state, formAction] = useActionState<State | null, FormData>(
-    async (_prev, formData) => {
-      const result = await publishDraftToWPAction(formData);
-      return { editLink: result.editLink, nonce: Date.now() };
-    },
-    null,
-  );
+  const [state, formAction] = useActionState<State | null, FormData>(async (_prev, formData) => {
+    const result = await publishDraftToWPAction(formData);
+    return { editLink: result.editLink, nonce: Date.now() };
+  }, null);
 
   useEffect(() => {
     if (state?.editLink) {
