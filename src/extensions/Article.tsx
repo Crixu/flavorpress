@@ -7,9 +7,8 @@
  * so click handling can scroll the matching Panel comment card into
  * view via `[data-fp-comment="<extId>:<annId>"]`.
  *
- * Highlight wrapping is intentionally limited to single-text-node
- * matches. Cross-element matches are skipped; extensions are asked to
- * pick span text that doesn't cross inline elements.
+ * Highlight wrapping walks the article as one text stream, then uses a
+ * DOM Range so claims can cross inline elements such as links.
  */
 
 import { useEffect, useRef } from "react";
@@ -133,37 +132,80 @@ function wrapFirstOccurrence(
 ): boolean {
   const needle = annotation.spanText.toLowerCase();
   if (!needle) return false;
+  const stream = collectTextStream(root);
+  const i = stream.text.toLowerCase().indexOf(needle);
+  if (i === -1) return false;
+  const start = findTextPosition(stream.nodes, i);
+  const end = findTextPosition(
+    stream.nodes,
+    i + annotation.spanText.length,
+  );
+  if (!start || !end) return false;
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  if (range.collapsed) return false;
+  const mark = createAnnotationMark(extensionId, annotation);
+  mark.appendChild(range.extractContents());
+  range.insertNode(mark);
+  return true;
+}
+
+interface TextNodeSpan {
+  node: Text;
+  start: number;
+  end: number;
+}
+
+function collectTextStream(root: HTMLElement): {
+  text: string;
+  nodes: TextNodeSpan[];
+} {
+  const nodes: TextNodeSpan[] = [];
+  let text = "";
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode() as Text | null;
   while (node) {
-    if (node.parentElement?.closest("mark[data-fp-ext]")) {
+    if (
+      node.parentElement?.closest(
+        "mark[data-fp-ext], script, style, noscript",
+      )
+    ) {
       node = walker.nextNode() as Text | null;
       continue;
     }
-    const text = node.nodeValue ?? "";
-    const i = text.toLowerCase().indexOf(needle);
-    if (i !== -1) {
-      const parent = node.parentNode;
-      if (!parent) return false;
-      const before = text.slice(0, i);
-      const match = text.slice(i, i + annotation.spanText.length);
-      const after = text.slice(i + annotation.spanText.length);
-      if (before)
-        parent.insertBefore(document.createTextNode(before), node);
-      const mark = document.createElement("mark");
-      mark.dataset.fpExt = extensionId;
-      mark.dataset.fpAnn = annotation.id;
-      mark.dataset.fpTone = annotation.tone;
-      mark.dataset.fpActive = "0";
-      mark.appendChild(document.createTextNode(match));
-      parent.insertBefore(mark, node);
-      if (after) parent.insertBefore(document.createTextNode(after), node);
-      parent.removeChild(node);
-      return true;
+    const value = node.nodeValue ?? "";
+    if (value.length > 0) {
+      nodes.push({ node, start: text.length, end: text.length + value.length });
+      text += value;
     }
     node = walker.nextNode() as Text | null;
   }
-  return false;
+  return { text, nodes };
+}
+
+function findTextPosition(
+  nodes: TextNodeSpan[],
+  position: number,
+): { node: Text; offset: number } | null {
+  for (const n of nodes) {
+    if (position >= n.start && position <= n.end) {
+      return { node: n.node, offset: position - n.start };
+    }
+  }
+  return null;
+}
+
+function createAnnotationMark(
+  extensionId: string,
+  annotation: ExtensionAnnotation,
+): HTMLElement {
+  const mark = document.createElement("mark");
+  mark.dataset.fpExt = extensionId;
+  mark.dataset.fpAnn = annotation.id;
+  mark.dataset.fpTone = annotation.tone;
+  mark.dataset.fpActive = "0";
+  return mark;
 }
 
 function cssEscape(value: string): string {
