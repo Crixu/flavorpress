@@ -388,6 +388,11 @@ function OutletCard({
                 Pulling recent posts and extracting the outlet voice profile.
               </PendingMessage>
             </form>
+            {!profile ? (
+              <Link href={`/voice/${outlet.id}`} className="fp-btn fp-btn-ghost">
+                Seed from samples →
+              </Link>
+            ) : null}
             {!outlet.isDefault ? (
               <form action={setDefaultOutletAction}>
                 <input type="hidden" name="outletId" value={outlet.id} />

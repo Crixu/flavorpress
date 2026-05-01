@@ -379,6 +379,39 @@ export async function listRecentPosts(creds: WPCredentials, count = 50): Promise
   return (await res.json()) as WPPost[];
 }
 
+/**
+ * Lower bound on archive size for an honest auto-trained voice. Below this,
+ * the stylometric fingerprint is too noisy to reliably steer drafts; we
+ * route the user to the manual sample-paste fallback instead of writing a
+ * weak profile that would silently produce slop-prone output.
+ */
+export const MIN_VOICE_TRAIN_POSTS = 20;
+
+/**
+ * Cheap published-post count probe. Reads the X-WP-Total header WordPress
+ * returns on every paginated list. If a proxy strips it, the body request
+ * still fetches enough IDs to distinguish a thin archive from one that can
+ * auto-train.
+ */
+export async function getOutletPostCount(creds: WPCredentials): Promise<number> {
+  const res = await fetch(
+    `${root(creds)}/wp-json/wp/v2/posts?per_page=${MIN_VOICE_TRAIN_POSTS}&_fields=id`,
+    {
+      headers: { Authorization: authHeader(creds) },
+    },
+  );
+  if (!res.ok) throw new Error(`WP fetch failed: ${res.status}`);
+  const total = res.headers.get("x-wp-total");
+  if (total !== null) {
+    const n = Number.parseInt(total, 10);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  // Older WP installs and some proxies strip the header. Fall back to the
+  // body length, capped at the training threshold by per_page above.
+  const body = (await res.json()) as unknown[];
+  return Array.isArray(body) ? body.length : 0;
+}
+
 export type WPPostStatus = "draft" | "publish" | "future";
 
 export interface PublishInput {
