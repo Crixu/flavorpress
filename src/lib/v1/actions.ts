@@ -10,6 +10,7 @@ import { after } from "next/server";
 import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
+import { rerollHeadlines } from "./headline-reroll";
 import { generateResearch } from "./researcher-generator";
 import { getRegistry } from "./capability-registry";
 import { extractStyleSheet } from "./style-sheet";
@@ -1175,6 +1176,20 @@ export async function selectDraftHeadlineAction(formData: FormData) {
           WHERE id = ? AND user_id = ?`,
     args: [headline, JSON.stringify(nextAlternates), Date.now(), draftId, SINGLE_USER_ID],
   });
+  revalidatePath(`/editor/${draftId}`);
+}
+
+/**
+ * Regenerate the three headline alternates against the same body and
+ * voice profile. The current primary stays put; the user picks a fresh
+ * alternate via `selectDraftHeadlineAction`.
+ */
+export async function rerollDraftHeadlinesAction(formData: FormData) {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  await rerollHeadlines({ draftId, userId: SINGLE_USER_ID });
   revalidatePath(`/editor/${draftId}`);
 }
 
