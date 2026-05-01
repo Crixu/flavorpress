@@ -55,9 +55,21 @@ export async function runFactCheck(
     throw new Error("Draft is too short to fact-check.");
   }
 
+  // Fact-check uses Anthropic's web_search server tool, which is only
+  // available on the API. The drafting auth path is irrelevant here;
+  // we read the key directly so a misconfigured local-Claude setup
+  // (flag forced on Vercel, flag forced without `claude` installed)
+  // does not block fact-check on a perfectly usable API key. The
+  // resolver throws on those config-error states; we don't want that
+  // throw to roll over a working API path.
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
-    throw new Error("No Anthropic API key configured. Add one on /settings, then retry.");
+    const cliForced = process.env.FLAVORPRESS_LOCAL_CLAUDE === "1";
+    throw new Error(
+      cliForced
+        ? "Fact-check requires an Anthropic API key (it uses Anthropic's web_search server tool, which the local Claude Code login does not expose). Add a key on /settings, then retry."
+        : "No Anthropic API key configured. Add one on /settings, then retry.",
+    );
   }
   const model = await getAnthropicDraftModel();
   const client = new Anthropic({ apiKey });

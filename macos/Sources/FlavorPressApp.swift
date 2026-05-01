@@ -161,6 +161,23 @@ final class EmbeddedServer: ObservableObject {
         // it, server actions hand WP a localhost:3000 callback that won't resolve
         // back to the embedded server's random port.
         env["FLAVORPRESS_ORIGIN"] = "http://127.0.0.1:\(port)"
+        // PATH augmentation for Claude Code auto-detect. Apps launched from
+        // Finder inherit a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), so
+        // anything managed by fnm/nvm/Homebrew/.claude/local is unreachable.
+        // First try inheriting the user's login-shell PATH; that picks up
+        // shell version managers transparently. Fall back to prepending
+        // known install locations if the shell probe fails.
+        let home = NSHomeDirectory()
+        let fallbackPaths = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "\(home)/.claude/local",
+            "\(home)/.npm-global/bin",
+        ]
+        let baselinePath = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let shellPath = inheritedShellPath()
+        env["PATH"] = shellPath
+            ?? (fallbackPaths + [baselinePath]).joined(separator: ":")
         proc.environment = env
 
         let stdout = Pipe()
@@ -356,6 +373,39 @@ func logsDirectory() -> URL {
 
 func revealDataFolder() {
     NSWorkspace.shared.activateFileViewerSelecting([applicationSupportDir()])
+}
+
+/// Best-effort: ask the user's login shell what its PATH is, so the embedded
+/// Node process can find `claude` and other shell-managed binaries (fnm, nvm,
+/// Homebrew). Returns nil on any failure; callers should fall back to a
+/// prepended-known-locations PATH. Capped at 1.5s so a slow shell rc does not
+/// block app launch.
+func inheritedShellPath() -> String? {
+    let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+    guard FileManager.default.isExecutableFile(atPath: shell) else { return nil }
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: shell)
+    proc.arguments = ["-ilc", "printf '%s' \"$PATH\""]
+    let pipe = Pipe()
+    proc.standardOutput = pipe
+    proc.standardError = Pipe()
+    do {
+        try proc.run()
+    } catch {
+        return nil
+    }
+    let deadline = Date().addingTimeInterval(1.5)
+    while proc.isRunning && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    if proc.isRunning {
+        proc.terminate()
+        return nil
+    }
+    guard let data = try? pipe.fileHandleForReading.readToEnd(),
+          let raw = String(data: data, encoding: .utf8) else { return nil }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
 }
 
 func findFreePort() throws -> Int {
