@@ -39,9 +39,7 @@ export class BackoffError extends Error {
   }
 }
 
-export type PoliteResult =
-  | { kind: "ok"; body: string }
-  | { kind: "not-modified" };
+export type PoliteResult = { kind: "ok"; body: string } | { kind: "not-modified" };
 
 interface HostBucket {
   tokens: number;
@@ -57,8 +55,7 @@ interface HostLimit {
 
 const buckets = new Map<string, HostBucket>();
 
-const USER_AGENT =
-  "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)";
+const USER_AGENT = "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)";
 
 /**
  * Per-host limits. Reddit is the strict one; everything else gets a generic
@@ -112,15 +109,7 @@ async function takeToken(host: string): Promise<void> {
 function registrableDomain(hostname: string): string {
   const parts = hostname.split(".");
   if (parts.length <= 2) return hostname;
-  const twoLabel = new Set([
-    "co.uk",
-    "co.jp",
-    "co.kr",
-    "com.au",
-    "com.br",
-    "co.za",
-    "co.in",
-  ]);
+  const twoLabel = new Set(["co.uk", "co.jp", "co.kr", "com.au", "com.br", "co.za", "co.in"]);
   const last2 = parts.slice(-2).join(".");
   if (twoLabel.has(last2)) return parts.slice(-3).join(".");
   return last2;
@@ -161,8 +150,7 @@ export async function politeFetch(source: Source): Promise<PoliteResult> {
 
   const headers: Record<string, string> = {
     "User-Agent": USER_AGENT,
-    Accept:
-      "application/rss+xml, application/atom+xml, application/xml, text/xml",
+    Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
   };
   if (source.lastEtag) headers["If-None-Match"] = source.lastEtag;
   if (source.lastModified) headers["If-Modified-Since"] = source.lastModified;

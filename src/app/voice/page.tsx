@@ -52,15 +52,13 @@ export default async function VoicePage({ searchParams }: PageProps) {
   // If the user just ran a preflight, surface the result inline.
   const checkOutlet = sp.check ? await getOutlet(sp.check) : null;
   const preflight =
-    checkOutlet && checkOutlet.lastError
-      ? decodePreflight(checkOutlet.lastError)
-      : null;
+    checkOutlet && checkOutlet.lastError ? decodePreflight(checkOutlet.lastError) : null;
 
   const profilesR = await db.execute({
     sql: `SELECT * FROM voice_profiles WHERE user_id = ?`,
     args: [SINGLE_USER_ID],
   });
-  const profilesByOutlet = new Map<string, typeof profilesR.rows[0]>();
+  const profilesByOutlet = new Map<string, (typeof profilesR.rows)[0]>();
   for (const row of profilesR.rows) {
     profilesByOutlet.set(String(row.outlet_id), row);
   }
@@ -80,24 +78,20 @@ export default async function VoicePage({ searchParams }: PageProps) {
           One author. Many outlets. Many voices.
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          Each WordPress site you connect becomes an outlet with its own
-          voice profile. Drafts pick which outlet to publish to.
+          Each WordPress site you connect becomes an outlet with its own voice profile. Drafts pick
+          which outlet to publish to.
         </p>
       </header>
 
       {/* Banners */}
       {sp.wp_connected ? (
-        <Banner kind="success">
-          ✓ WordPress connected. Build the voice profile next.
-        </Banner>
+        <Banner kind="success">✓ WordPress connected. Build the voice profile next.</Banner>
       ) : null}
-      {sp.wp_error ? (
-        <Banner kind="error">⚠ {decodeURIComponent(sp.wp_error)}</Banner>
-      ) : null}
+      {sp.wp_error ? <Banner kind="error">⚠ {decodeURIComponent(sp.wp_error)}</Banner> : null}
       {sp.wp_rejected ? (
         <Banner kind="warn">
-          You declined authorization on your WordPress site. No credentials
-          stored. You can try again below.
+          You declined authorization on your WordPress site. No credentials stored. You can try
+          again below.
         </Banner>
       ) : null}
 
@@ -191,10 +185,9 @@ export default async function VoicePage({ searchParams }: PageProps) {
                 <DisableFormWhilePending />
               </form>
               <p className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
-                <strong>Check site</strong> runs a preflight against your site
-                (REST API reachable, Application Passwords enabled, callback
-                scheme compatible) and reports findings before you leave the
-                app. <strong>Authorize</strong> runs the same preflight, then
+                <strong>Check site</strong> runs a preflight against your site (REST API reachable,
+                Application Passwords enabled, callback scheme compatible) and reports findings
+                before you leave the app. <strong>Authorize</strong> runs the same preflight, then
                 redirects to your site if everything passes.
               </p>
               <details className="text-xs" style={{ color: "var(--fg-muted)" }}>
@@ -202,13 +195,12 @@ export default async function VoicePage({ searchParams }: PageProps) {
                   Authorize flow won't redirect back?
                 </summary>
                 <p className="mt-2 leading-relaxed">
-                  WordPress requires the callback to be reachable from the
-                  browser. If you're running FlavorPress at{" "}
+                  WordPress requires the callback to be reachable from the browser. If you're
+                  running FlavorPress at{" "}
                   <code className="rounded bg-[color:var(--bg-subtle)] px-1">
                     http://localhost:3000
                   </code>{" "}
-                  and your WP is HTTPS, some installs block the
-                  http:// callback.{" "}
+                  and your WP is HTTPS, some installs block the http:// callback.{" "}
                   <Link
                     href="/voice?add=1&manual=1"
                     className="text-[color:var(--indigo)] hover:underline"
@@ -260,8 +252,12 @@ function OutletCard({
   profile?: ReturnType<Map<string, unknown>["get"]>;
   authorizeAvailable: boolean;
 }) {
-  const archiveSize = profile ? Number((profile as Record<string, unknown>).archive_index_size ?? 0) : 0;
-  const sentenceMean = profile ? Number((profile as Record<string, unknown>).sentence_length_mean ?? 0) : 0;
+  const archiveSize = profile
+    ? Number((profile as Record<string, unknown>).archive_index_size ?? 0)
+    : 0;
+  const sentenceMean = profile
+    ? Number((profile as Record<string, unknown>).sentence_length_mean ?? 0)
+    : 0;
   const emDash = profile ? Number((profile as Record<string, unknown>).em_dash_density ?? 0) : 0;
   const lastBuilt = profile ? Number((profile as Record<string, unknown>).last_rebuilt_at ?? 0) : 0;
   const banned: string[] = profile
@@ -274,11 +270,7 @@ function OutletCard({
   return (
     <div
       className={`fp-card ${outlet.connected ? "" : "border-dashed"} p-5`}
-      style={
-        outlet.isDefault && outlet.connected
-          ? { borderColor: "var(--indigo)" }
-          : undefined
-      }
+      style={outlet.isDefault && outlet.connected ? { borderColor: "var(--indigo)" } : undefined}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
@@ -356,7 +348,11 @@ function OutletCard({
                   </span>
                 ))}
                 {banned.slice(0, 4).map((t) => (
-                  <span key={t} className="fp-chip fp-chip-rose" style={{ textDecoration: "line-through" }}>
+                  <span
+                    key={t}
+                    className="fp-chip fp-chip-rose"
+                    style={{ textDecoration: "line-through" }}
+                  >
                     {t}
                   </span>
                 ))}
@@ -366,9 +362,12 @@ function OutletCard({
               </div>
             </>
           ) : (
-            <div className="rounded-lg border border-dashed p-3 text-[12px]" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>
-              Voice profile not built yet. Pulls your last 50 posts and extracts a
-              stylometric fingerprint, or seed from a writing sample.
+            <div
+              className="rounded-lg border border-dashed p-3 text-[12px]"
+              style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
+            >
+              Voice profile not built yet. Pulls your last 50 posts and extracts a stylometric
+              fingerprint, or seed from a writing sample.
             </div>
           )}
         </div>
@@ -392,20 +391,14 @@ function OutletCard({
             {!outlet.isDefault ? (
               <form action={setDefaultOutletAction}>
                 <input type="hidden" name="outletId" value={outlet.id} />
-                <SubmitButton
-                  className="fp-btn fp-btn-ghost"
-                  pendingLabel="Setting default"
-                >
+                <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Setting default">
                   Set as default
                 </SubmitButton>
               </form>
             ) : null}
             <form action={disconnectOutletAction}>
               <input type="hidden" name="outletId" value={outlet.id} />
-              <SubmitButton
-                className="fp-btn fp-btn-ghost"
-                pendingLabel="Disconnecting"
-              >
+              <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Disconnecting">
                 Disconnect
               </SubmitButton>
             </form>
@@ -415,10 +408,7 @@ function OutletCard({
             {authorizeAvailable ? (
               <form action={startWPAuthorizeAction}>
                 <input type="hidden" name="baseUrl" value={outlet.baseUrl} />
-                <SubmitButton
-                  className="fp-btn fp-btn-primary"
-                  pendingLabel="Opening WordPress"
-                >
+                <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Opening WordPress">
                   Reconnect →
                 </SubmitButton>
               </form>
@@ -433,10 +423,7 @@ function OutletCard({
             <form action={disconnectOutletAction}>
               <input type="hidden" name="outletId" value={outlet.id} />
               <input type="hidden" name="purge" value="1" />
-              <SubmitButton
-                className="fp-btn fp-btn-danger"
-                pendingLabel="Removing"
-              >
+              <SubmitButton className="fp-btn fp-btn-danger" pendingLabel="Removing">
                 Remove
               </SubmitButton>
             </form>
@@ -457,9 +444,12 @@ function ManualConnect({
   return (
     <div className="mt-5 space-y-3">
       <p className="text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-        Open <code className="rounded bg-[color:var(--bg-subtle)] px-1">/wp-admin/users.php?page=profile</code> on
-        your site. In Application Passwords, name the new password "FlavorPress"
-        and click Add New. Copy the 24-character password and paste it here.
+        Open{" "}
+        <code className="rounded bg-[color:var(--bg-subtle)] px-1">
+          /wp-admin/users.php?page=profile
+        </code>{" "}
+        on your site. In Application Passwords, name the new password "FlavorPress" and click Add
+        New. Copy the 24-character password and paste it here.
       </p>
       <form action={connectOutletManualAction} className="space-y-2">
         <div className="grid gap-2 md:grid-cols-2">
@@ -471,12 +461,7 @@ function ManualConnect({
             placeholder="https://yourblog.com"
             className="fp-input"
           />
-          <input
-            name="username"
-            required
-            placeholder="WordPress username"
-            className="fp-input"
-          />
+          <input name="username" required placeholder="WordPress username" className="fp-input" />
         </div>
         <input
           name="appPassword"
@@ -485,10 +470,7 @@ function ManualConnect({
           className="fp-input font-mono text-xs"
         />
         <div className="flex gap-2">
-          <SubmitButton
-            className="fp-btn fp-btn-primary"
-            pendingLabel="Connecting"
-          >
+          <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Connecting">
             Connect manually
           </SubmitButton>
           {authorizeAvailable ? (
@@ -507,10 +489,7 @@ function ManualConnect({
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      className="rounded-md px-2 py-1.5 text-center"
-      style={{ background: "var(--bg-subtle)" }}
-    >
+    <div className="rounded-md px-2 py-1.5 text-center" style={{ background: "var(--bg-subtle)" }}>
       <div className="text-sm font-medium tabular">{value}</div>
       <div className="text-[10px]" style={{ color: "var(--fg-muted)" }}>
         {label}
@@ -519,10 +498,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function outletInitial(
-  displayName: string | null | undefined,
-  baseUrl: string,
-): string {
+function outletInitial(displayName: string | null | undefined, baseUrl: string): string {
   const source = displayName?.trim() || baseUrl;
   try {
     const host = new URL(baseUrl).host.replace(/^www\./, "");
@@ -532,13 +508,7 @@ function outletInitial(
   }
 }
 
-function FeatureBlock({
-  title,
-  detail,
-}: {
-  title: string;
-  detail: string;
-}) {
+function FeatureBlock({ title, detail }: { title: string; detail: string }) {
   return (
     <div>
       <div className="text-sm font-semibold">{title}</div>
@@ -594,10 +564,7 @@ function PreflightCard({
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <PreflightCheck label="Reachable" ok={result.reachable} />
         <PreflightCheck label="WordPress REST" ok={result.isWordPress} />
-        <PreflightCheck
-          label="App Passwords"
-          ok={result.hasApplicationPasswords}
-        />
+        <PreflightCheck label="App Passwords" ok={result.hasApplicationPasswords} />
         <PreflightCheck
           label="Callback scheme"
           ok={result.callbackSchemeMatch}
@@ -607,10 +574,7 @@ function PreflightCard({
 
       {result.errors.length > 0 ? (
         <div className="mt-4 space-y-1.5">
-          <div
-            className="text-xs uppercase tracking-wider"
-            style={{ color: "var(--rose)" }}
-          >
+          <div className="text-xs uppercase tracking-wider" style={{ color: "var(--rose)" }}>
             Errors
           </div>
           {result.errors.map((e, i) => (
@@ -627,10 +591,7 @@ function PreflightCard({
 
       {result.warnings.length > 0 ? (
         <div className="mt-4 space-y-1.5">
-          <div
-            className="text-xs uppercase tracking-wider"
-            style={{ color: "var(--amber)" }}
-          >
+          <div className="text-xs uppercase tracking-wider" style={{ color: "var(--amber)" }}>
             Warnings
           </div>
           {result.warnings.map((w, i) => (
@@ -650,29 +611,21 @@ function PreflightCard({
           <form action={startWPAuthorizeAction}>
             <input type="hidden" name="baseUrl" value={baseUrl} />
             <input type="hidden" name="skipPreflight" value="1" />
-            <SubmitButton
-              className="fp-btn fp-btn-primary"
-              pendingLabel="Opening WordPress"
-            >
+            <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Opening WordPress">
               Authorize on WordPress →
             </SubmitButton>
           </form>
         ) : null}
         <Link
           href="/voice?add=1&manual=1"
-          className={`fp-btn ${
-            authorizeAvailable ? "fp-btn-ghost" : "fp-btn-primary"
-          }`}
+          className={`fp-btn ${authorizeAvailable ? "fp-btn-ghost" : "fp-btn-primary"}`}
         >
           {authorizeAvailable ? "Use manual paste flow" : "Connect manually"}
         </Link>
         <form action={disconnectOutletAction}>
           <input type="hidden" name="outletId" value={outletId} />
           <input type="hidden" name="purge" value="1" />
-          <SubmitButton
-            className="fp-btn fp-btn-ghost"
-            pendingLabel="Discarding"
-          >
+          <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Discarding">
             Discard
           </SubmitButton>
         </form>
@@ -681,21 +634,9 @@ function PreflightCard({
   );
 }
 
-function PreflightCheck({
-  label,
-  ok,
-  warn,
-}: {
-  label: string;
-  ok: boolean;
-  warn?: boolean;
-}) {
+function PreflightCheck({ label, ok, warn }: { label: string; ok: boolean; warn?: boolean }) {
   const color = ok ? "var(--emerald)" : warn ? "var(--amber)" : "var(--rose)";
-  const bg = ok
-    ? "var(--emerald-tint)"
-    : warn
-    ? "var(--amber-tint)"
-    : "var(--rose-tint)";
+  const bg = ok ? "var(--emerald-tint)" : warn ? "var(--amber-tint)" : "var(--rose-tint)";
   const symbol = ok ? "✓" : warn ? "!" : "✗";
   return (
     <div
@@ -717,10 +658,22 @@ function Banner({
 }) {
   const palette =
     kind === "success"
-      ? { bg: "var(--emerald-tint)", fg: "var(--emerald)", border: "color-mix(in srgb, var(--emerald) 25%, var(--border))" }
+      ? {
+          bg: "var(--emerald-tint)",
+          fg: "var(--emerald)",
+          border: "color-mix(in srgb, var(--emerald) 25%, var(--border))",
+        }
       : kind === "warn"
-      ? { bg: "var(--amber-tint)", fg: "var(--amber)", border: "color-mix(in srgb, var(--amber) 25%, var(--border))" }
-      : { bg: "var(--rose-tint)", fg: "var(--rose)", border: "color-mix(in srgb, var(--rose) 25%, var(--border))" };
+        ? {
+            bg: "var(--amber-tint)",
+            fg: "var(--amber)",
+            border: "color-mix(in srgb, var(--amber) 25%, var(--border))",
+          }
+        : {
+            bg: "var(--rose-tint)",
+            fg: "var(--rose)",
+            border: "color-mix(in srgb, var(--rose) 25%, var(--border))",
+          };
   return (
     <div
       className="rounded-lg px-4 py-3 text-sm"

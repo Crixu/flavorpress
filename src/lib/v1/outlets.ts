@@ -12,13 +12,7 @@
 import { db, ensureSchema, SINGLE_USER_ID } from "../db";
 import type { WPCredentials } from "../wordpress";
 
-export type OutletKind =
-  | "wp-org"
-  | "wp-com"
-  | "jetpack-managed"
-  | "multisite"
-  | "unknown"
-  | null;
+export type OutletKind = "wp-org" | "wp-com" | "jetpack-managed" | "multisite" | "unknown" | null;
 
 export interface Outlet {
   id: string;
@@ -81,10 +75,7 @@ export async function listOutlets(userId = SINGLE_USER_ID): Promise<Outlet[]> {
   return r.rows.map((row) => rowToOutlet(row as unknown as OutletRow));
 }
 
-export async function getOutlet(
-  outletId: string,
-  userId = SINGLE_USER_ID,
-): Promise<Outlet | null> {
+export async function getOutlet(outletId: string, userId = SINGLE_USER_ID): Promise<Outlet | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets WHERE id = ? AND user_id = ?`,
@@ -94,9 +85,7 @@ export async function getOutlet(
   return rowToOutlet(r.rows[0] as unknown as OutletRow);
 }
 
-export async function getDefaultOutlet(
-  userId = SINGLE_USER_ID,
-): Promise<Outlet | null> {
+export async function getDefaultOutlet(userId = SINGLE_USER_ID): Promise<Outlet | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets
@@ -136,13 +125,7 @@ export async function stageOutlet(
   await db.execute({
     sql: `INSERT INTO outlets (id, user_id, base_url, display_name, created_at)
           VALUES (?, ?, ?, ?, ?)`,
-    args: [
-      id,
-      userId,
-      baseUrl,
-      displayName ?? hostFromUrl(baseUrl),
-      Date.now(),
-    ],
+    args: [id, userId, baseUrl, displayName ?? hostFromUrl(baseUrl), Date.now()],
   });
   return id;
 }
@@ -199,10 +182,7 @@ export async function recordOutletError(
   });
 }
 
-export async function setDefaultOutlet(
-  outletId: string,
-  userId = SINGLE_USER_ID,
-): Promise<void> {
+export async function setDefaultOutlet(outletId: string, userId = SINGLE_USER_ID): Promise<void> {
   await ensureSchema();
   await db.batch(
     [
@@ -265,9 +245,7 @@ export async function disconnectOutlet(
  * v1 alpha stores the credential bytes as `username:password` UTF-8.
  * Envelope encryption (KMS-backed DEK) ships in week 2.
  */
-export async function getOutletCredentials(
-  outletId: string,
-): Promise<WPCredentials | null> {
+export async function getOutletCredentials(outletId: string): Promise<WPCredentials | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT base_url, app_password_encrypted FROM outlets WHERE id = ?`,
@@ -308,9 +286,7 @@ function hostFromUrl(s: string): string {
  * IDs of sources assigned to an outlet. Returns null if no assignment
  * rows exist, which means "all sources" default.
  */
-export async function getAssignedSourceIds(
-  outletId: string,
-): Promise<string[] | null> {
+export async function getAssignedSourceIds(outletId: string): Promise<string[] | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT source_id FROM outlet_sources WHERE outlet_id = ?`,
@@ -325,9 +301,7 @@ export async function getAssignedSourceIds(
  * outlet_sources row is implicitly "in scope for all outlets"; surface that
  * in the UI as "All outlets (default)".
  */
-export async function getOutletIdsForSource(
-  sourceId: string,
-): Promise<string[]> {
+export async function getOutletIdsForSource(sourceId: string): Promise<string[]> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT outlet_id FROM outlet_sources WHERE source_id = ?`,
@@ -340,10 +314,7 @@ export async function getOutletIdsForSource(
  * Replace a source's outlet assignment with the given list. If `outletIds`
  * is empty, the source falls back to "All outlets (default)".
  */
-export async function setSourceOutlets(
-  sourceId: string,
-  outletIds: string[],
-): Promise<void> {
+export async function setSourceOutlets(sourceId: string, outletIds: string[]): Promise<void> {
   await ensureSchema();
   await db.execute({
     sql: `DELETE FROM outlet_sources WHERE source_id = ?`,
@@ -367,10 +338,7 @@ export async function setSourceOutlets(
  * sources. If empty, returns ALL the user's source IDs (zero-config default).
  * Use this at draft time and for any per-outlet ranker query.
  */
-export async function resolveOutletSourceIds(
-  userId: string,
-  outletId: string,
-): Promise<string[]> {
+export async function resolveOutletSourceIds(userId: string, outletId: string): Promise<string[]> {
   await ensureSchema();
   const explicit = await getAssignedSourceIds(outletId);
   if (explicit !== null) {
@@ -382,12 +350,7 @@ export async function resolveOutletSourceIds(
               )`,
       args: [userId],
     });
-    return Array.from(
-      new Set([
-        ...explicit,
-        ...unassigned.rows.map((row) => String(row.id)),
-      ]),
-    );
+    return Array.from(new Set([...explicit, ...unassigned.rows.map((row) => String(row.id))]));
   }
   const all = await db.execute({
     sql: `SELECT id FROM sources WHERE user_id = ?`,

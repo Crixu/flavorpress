@@ -28,8 +28,6 @@ export interface OpmlParseResult {
   rawCount: number;
 }
 
-const OUTLINE_RE = /<outline\b([^>]*?)(?:\/>|>)/gi;
-
 export function parseOpml(xml: string): OpmlParseResult {
   if (!xml || !xml.trim()) return { feeds: [], rawCount: 0 };
   let body = xml;
@@ -45,7 +43,7 @@ export function parseOpml(xml: string): OpmlParseResult {
 
   // Tokenize by outline open/close so the depth tracking is correct even
   // when a single outline tag spans multiple lines. We use a manual scan
-  // because OUTLINE_RE only matches openings/self-closings.
+  // because a regex would only match openings/self-closings.
   let i = 0;
   while (i < body.length) {
     const openIdx = body.indexOf("<", i);
@@ -55,7 +53,10 @@ export function parseOpml(xml: string): OpmlParseResult {
       // Closing tag.
       const tagEnd = body.indexOf(">", tagStart);
       if (tagEnd === -1) break;
-      const name = body.slice(tagStart + 1, tagEnd).trim().toLowerCase();
+      const name = body
+        .slice(tagStart + 1, tagEnd)
+        .trim()
+        .toLowerCase();
       if (name === "outline" && groupStack.length > 0) groupStack.pop();
       i = tagEnd + 1;
       continue;
@@ -78,16 +79,13 @@ export function parseOpml(xml: string): OpmlParseResult {
       if (url && !seen.has(url)) {
         seen.add(url);
         const title =
-          decodeAttr(attrs.get("title") ?? attrs.get("text") ?? "").trim() ||
-          hostFromUrl(url);
-        const groupTitle =
-          groupStack.length > 0 ? groupStack[groupStack.length - 1]! : null;
+          decodeAttr(attrs.get("title") ?? attrs.get("text") ?? "").trim() || hostFromUrl(url);
+        const groupTitle = groupStack.length > 0 ? groupStack[groupStack.length - 1]! : null;
         feeds.push({ url, title, groupTitle });
       }
     } else if (!selfClosing) {
       // Group outline — push its label so descendant feeds inherit it.
-      const label =
-        decodeAttr(attrs.get("title") ?? attrs.get("text") ?? "").trim();
+      const label = decodeAttr(attrs.get("title") ?? attrs.get("text") ?? "").trim();
       groupStack.push(label || "");
     }
     i = tagEnd + 1;

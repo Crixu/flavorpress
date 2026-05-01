@@ -15,8 +15,7 @@ export function ShellNav() {
   return (
     <nav className="order-3 flex w-full items-center justify-center gap-1 md:order-none md:w-auto">
       {ITEMS.map((it) => {
-        const active =
-          it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
+        const active = it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
         return (
           <Link
             key={it.href}

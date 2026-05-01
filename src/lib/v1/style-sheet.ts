@@ -15,17 +15,114 @@
 
 const FUNCTION_WORDS = [
   // Top function words by English corpus frequency. Burrows' Delta basis.
-  "the", "of", "and", "a", "to", "in", "is", "you", "that", "it",
-  "he", "was", "for", "on", "are", "as", "with", "his", "they", "i",
-  "at", "be", "this", "have", "from", "or", "one", "had", "by", "word",
-  "but", "not", "what", "all", "were", "we", "when", "your", "can", "said",
-  "there", "use", "an", "each", "which", "she", "do", "how", "their", "if",
-  "will", "up", "other", "about", "out", "many", "then", "them", "these", "so",
-  "some", "her", "would", "make", "like", "him", "into", "time", "has", "look",
-  "two", "more", "write", "go", "see", "number", "no", "way", "could", "people",
-  "my", "than", "first", "been", "call", "who", "its", "now", "find", "long",
-  "down", "day", "did", "get", "come", "made", "may", "part",
-  "very", "after", "back", "any", "well", "such", "also", "just", "most", "over",
+  "the",
+  "of",
+  "and",
+  "a",
+  "to",
+  "in",
+  "is",
+  "you",
+  "that",
+  "it",
+  "he",
+  "was",
+  "for",
+  "on",
+  "are",
+  "as",
+  "with",
+  "his",
+  "they",
+  "i",
+  "at",
+  "be",
+  "this",
+  "have",
+  "from",
+  "or",
+  "one",
+  "had",
+  "by",
+  "word",
+  "but",
+  "not",
+  "what",
+  "all",
+  "were",
+  "we",
+  "when",
+  "your",
+  "can",
+  "said",
+  "there",
+  "use",
+  "an",
+  "each",
+  "which",
+  "she",
+  "do",
+  "how",
+  "their",
+  "if",
+  "will",
+  "up",
+  "other",
+  "about",
+  "out",
+  "many",
+  "then",
+  "them",
+  "these",
+  "so",
+  "some",
+  "her",
+  "would",
+  "make",
+  "like",
+  "him",
+  "into",
+  "time",
+  "has",
+  "look",
+  "two",
+  "more",
+  "write",
+  "go",
+  "see",
+  "number",
+  "no",
+  "way",
+  "could",
+  "people",
+  "my",
+  "than",
+  "first",
+  "been",
+  "call",
+  "who",
+  "its",
+  "now",
+  "find",
+  "long",
+  "down",
+  "day",
+  "did",
+  "get",
+  "come",
+  "made",
+  "may",
+  "part",
+  "very",
+  "after",
+  "back",
+  "any",
+  "well",
+  "such",
+  "also",
+  "just",
+  "most",
+  "over",
 ];
 
 const HEDGE_WORDS = [
@@ -176,9 +273,7 @@ export function extractStyleSheet(
   }
 
   const sentenceLengthMean =
-    totalWeightedSentences > 0
-      ? weightedSentenceLengthSum / totalWeightedSentences
-      : 0;
+    totalWeightedSentences > 0 ? weightedSentenceLengthSum / totalWeightedSentences : 0;
   const sentenceLengthVariance =
     totalWeightedSentences > 0
       ? weightedSentenceLengthSumSq / totalWeightedSentences -
@@ -186,19 +281,12 @@ export function extractStyleSheet(
       : 0;
 
   const hedgeFrequency =
-    totalWeightedTokens > 0
-      ? (weightedHedgeOccurrences / totalWeightedTokens) * 1000
-      : 0; // per 1000 tokens
+    totalWeightedTokens > 0 ? (weightedHedgeOccurrences / totalWeightedTokens) * 1000 : 0; // per 1000 tokens
 
   const emDashDensity =
-    totalWeightedTokens > 0
-      ? (weightedEmDashes / totalWeightedTokens) * 1000
-      : 0;
+    totalWeightedTokens > 0 ? (weightedEmDashes / totalWeightedTokens) * 1000 : 0;
 
-  const quoteDensity =
-    totalWeightedTokens > 0
-      ? (weightedQuotes / totalWeightedTokens) * 1000
-      : 0;
+  const quoteDensity = totalWeightedTokens > 0 ? (weightedQuotes / totalWeightedTokens) * 1000 : 0;
 
   // Vocabulary fingerprint via simple over/under-use against uniform baseline.
   // Better: TF-IDF against a generic-blog corpus; deferred to v1.1.
@@ -237,7 +325,7 @@ function decayWeight(ageDays: number, decay: DecayWeights): number {
 }
 
 function tokenize(text: string): string[] {
-  return (text.toLowerCase().match(/[a-z][a-z'-]*/g) ?? []);
+  return text.toLowerCase().match(/[a-z][a-z'-]*/g) ?? [];
 }
 
 function splitSentences(text: string): string[] {

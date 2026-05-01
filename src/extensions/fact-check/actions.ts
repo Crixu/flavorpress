@@ -1,11 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import {
-  clearFactCheckClaims,
-  claimToAnnotation,
-  runFactCheck,
-} from "./server";
+import { clearFactCheckClaims, claimToAnnotation, runFactCheck } from "./server";
 import type { ExtensionAnnotation } from "../types";
 
 export interface RunResult {
@@ -19,9 +15,7 @@ export interface RunError {
   error: string;
 }
 
-export async function runFactCheckAction(
-  formData: FormData,
-): Promise<RunResult | RunError> {
+export async function runFactCheckAction(formData: FormData): Promise<RunResult | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
   try {
@@ -40,9 +34,7 @@ export async function runFactCheckAction(
   }
 }
 
-export async function clearFactCheckAction(
-  formData: FormData,
-): Promise<{ ok: true } | RunError> {
+export async function clearFactCheckAction(formData: FormData): Promise<{ ok: true } | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
   await clearFactCheckClaims(draftId);

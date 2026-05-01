@@ -102,11 +102,11 @@ Back in FlavorPress, fill in:
 
 Click "Connect." FlavorPress runs an auth-detection probe (`GET /wp/v2/users/me`). One of three things happens:
 
-| Result | What it means | Action |
-| --- | --- | --- |
-| ✓ Connected | Application Password works on the REST API. | Continue to next step. |
-| ⚠ Jetpack-managed | Site uses Jetpack SSO; Application Passwords are blocked. | v1.1 will route through Jetpack Connect; for now, deactivate Jetpack SSO temporarily. |
-| ✗ 401 / 403 | Custom auth plugin is intercepting REST. | Disable LoginRadius / miniOrange / Auth0 / similar plugins, retry. Re-enable after onboarding. |
+| Result            | What it means                                             | Action                                                                                         |
+| ----------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| ✓ Connected       | Application Password works on the REST API.               | Continue to next step.                                                                         |
+| ⚠ Jetpack-managed | Site uses Jetpack SSO; Application Passwords are blocked. | v1.1 will route through Jetpack Connect; for now, deactivate Jetpack SSO temporarily.          |
+| ✗ 401 / 403       | Custom auth plugin is intercepting REST.                  | Disable LoginRadius / miniOrange / Auth0 / similar plugins, retry. Re-enable after onboarding. |
 
 The Application Password is encrypted at rest with AES-GCM; the key is derived from a server-side pepper plus a per-user salt, so a DB leak alone doesn't decrypt your credential. To revoke completely, go to WP admin → Application Passwords → Revoke. FlavorPress also has a kill-switch endpoint that issues the WordPress REST `DELETE` for you (useful in incidents).
 
@@ -235,11 +235,11 @@ sqlite3 .data/flavorpress.db "SELECT span, level, message FROM trace_log ORDER B
 
 Common failures:
 
-| Failure | Fix |
-| --- | --- |
-| `ANTHROPIC_API_KEY` missing | Set in `.env`. The smoke test doesn't actually call Anthropic, but the bootstrap registers a capability that requires the key be present. |
-| `cluster.engine` failed | Run `sqlite3 .data/flavorpress.db ".schema items"` and verify the schema matches `src/lib/db.ts`. If columns are missing, delete `.data/flavorpress.db` and re-run. |
-| `0 capabilities registered` | Check that `ensureRegisteredCapabilities()` is called. It is on first request to `/api/mcp` and on every smoke run. |
+| Failure                     | Fix                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY` missing | Set in `.env`. The smoke test doesn't actually call Anthropic, but the bootstrap registers a capability that requires the key be present.                           |
+| `cluster.engine` failed     | Run `sqlite3 .data/flavorpress.db ".schema items"` and verify the schema matches `src/lib/db.ts`. If columns are missing, delete `.data/flavorpress.db` and re-run. |
+| `0 capabilities registered` | Check that `ensureRegisteredCapabilities()` is called. It is on first request to `/api/mcp` and on every smoke run.                                                 |
 
 ### "No clusters forming" after a day
 
@@ -291,10 +291,10 @@ The schema rebuilds on first request.
 
 ## What's next on the roadmap
 
-| Version | Ships when | What |
-| --- | --- | --- |
-| v1.0 | now | Subscribe (RSS, Reddit, podcasts, YouTube), group, rank, draft, publish |
-| v1.1 | ~4 weeks after v1.0 | Push notifications (desktop-first), newsletter forwarding inbox, X connector via official API, Jetpack-managed WordPress, research agent |
-| v2 | Q3 2026 | Depth panel, scheduling agent, analytics agent (Jetpack Stats feedback loop), per-user voice LoRA fine-tuning, mobile read view, multisite WordPress |
+| Version | Ships when          | What                                                                                                                                                 |
+| ------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.0    | now                 | Subscribe (RSS, Reddit, podcasts, YouTube), group, rank, draft, publish                                                                              |
+| v1.1    | ~4 weeks after v1.0 | Push notifications (desktop-first), newsletter forwarding inbox, X connector via official API, Jetpack-managed WordPress, research agent             |
+| v2      | Q3 2026             | Depth panel, scheduling agent, analytics agent (Jetpack Stats feedback loop), per-user voice LoRA fine-tuning, mobile read view, multisite WordPress |
 
 You can drive any of these forward as a contributor; the architecture is built to plug in without rewriting core code.

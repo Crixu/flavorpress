@@ -15,9 +15,11 @@ import {
 import {
   clearSettingAction,
   saveSettingAction,
+  toggleExtensionAction,
 } from "@/lib/v1/settings-actions";
 import { resolveAnthropicAuth, type AuthMode } from "@/lib/anthropic";
 import { ensureSchema } from "@/lib/db";
+import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +29,8 @@ interface PageProps {
     saved?: string;
     cleared?: string;
     error?: string;
+    extension?: string;
+    state?: string;
   }>;
 }
 
@@ -51,20 +55,20 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           Configure FlavorPress without editing .env.
         </h1>
         <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          Values you save here are stored locally in the FlavorPress database and
-          override any matching <code>.env</code> entry. Clear a value to fall back
-          to the environment variable.
+          Values you save here are stored locally in the FlavorPress database and override any
+          matching <code>.env</code> entry. Clear a value to fall back to the environment variable.
         </p>
       </header>
 
       <AuthModeRow mode={auth.mode} hasApiKey={auth.apiKey !== null} />
 
-      {sp.saved ? (
-        <Banner kind="success">✓ Saved {labelFor(sp.saved)}.</Banner>
-      ) : null}
+      {sp.saved ? <Banner kind="success">✓ Saved {labelFor(sp.saved)}.</Banner> : null}
       {sp.cleared ? (
+        <Banner kind="success">✓ Cleared {labelFor(sp.cleared)}. Falling back to .env.</Banner>
+      ) : null}
+      {sp.extension && (sp.state === "enabled" || sp.state === "disabled") ? (
         <Banner kind="success">
-          ✓ Cleared {labelFor(sp.cleared)}. Falling back to .env.
+          ✓ {sp.state === "enabled" ? "Enabled" : "Disabled"} {extensionLabelFor(sp.extension)}.
         </Banner>
       ) : null}
       {sp.error === "anthropic_key_invalid" ? (
@@ -72,9 +76,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           ⚠ Anthropic key didn't match the expected <code>sk-ant-…</code> format. Nothing was saved.
         </Banner>
       ) : null}
-      {sp.error === "invalid_key" ? (
-        <Banner kind="error">⚠ Unknown setting key.</Banner>
-      ) : null}
+      {sp.error === "invalid_key" ? <Banner kind="error">⚠ Unknown setting key.</Banner> : null}
+      {sp.error === "invalid_extension" ? <Banner kind="error">⚠ Unknown extension.</Banner> : null}
 
       <SettingForm
         title="Anthropic API key"
@@ -99,11 +102,11 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         placeholder={SETTING_DEFAULTS.anthropicDraftModel}
         saveLabel="Save model"
         defaultValue={
-          snapshot.anthropicDraftModel.source === "db"
-            ? snapshot.anthropicDraftModel.value
-            : ""
+          snapshot.anthropicDraftModel.source === "db" ? snapshot.anthropicDraftModel.value : ""
         }
       />
+
+      <ExtensionsSection disabledExtensionIds={snapshot.disabledExtensionIds} />
     </div>
   );
 }
@@ -141,6 +144,52 @@ function AuthModeRow({
       <p className="text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
         {config.line}
       </p>
+    </section>
+  );
+}
+
+function ExtensionsSection({ disabledExtensionIds }: { disabledExtensionIds: string[] }) {
+  const disabled = new Set(disabledExtensionIds);
+  return (
+    <section className="fp-card p-5 space-y-4">
+      <div>
+        <div className="text-base font-semibold">Editor extensions</div>
+        <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+          Toggle which inspectors run on each draft. Disabling an extension stops loading its
+          annotations and hides its right-rail panel; the underlying data stays in the database so
+          you can re-enable later.
+        </p>
+      </div>
+      <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
+        {EXTENSION_METADATA.map((ext) => {
+          const isEnabled = !disabled.has(ext.id);
+          return (
+            <li key={ext.id} className="flex items-start gap-4 py-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-semibold">{ext.label}</span>
+                  <span className={isEnabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}>
+                    {isEnabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+                  {ext.description}
+                </p>
+              </div>
+              <form action={toggleExtensionAction} className="shrink-0">
+                <input type="hidden" name="extensionId" value={ext.id} />
+                <input type="hidden" name="enabled" value={isEnabled ? "0" : "1"} />
+                <SubmitButton
+                  className={isEnabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
+                  pendingLabel={isEnabled ? "Disabling" : "Enabling"}
+                >
+                  {isEnabled ? "Disable" : "Enable"}
+                </SubmitButton>
+              </form>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -186,9 +235,7 @@ function SettingForm({
           name="value"
           defaultValue={defaultValue ?? ""}
           placeholder={
-            preview && inputType === "password"
-              ? `Replace current (${preview})`
-              : placeholder
+            preview && inputType === "password" ? `Replace current (${preview})` : placeholder
           }
           autoComplete="off"
           spellCheck={false}
@@ -199,11 +246,7 @@ function SettingForm({
             {saveLabel}
           </SubmitButton>
           {source === "db" ? (
-            <button
-              type="submit"
-              formAction={clearSettingAction}
-              className="fp-btn fp-btn-ghost"
-            >
+            <button type="submit" formAction={clearSettingAction} className="fp-btn fp-btn-ghost">
               Clear & use .env
             </button>
           ) : null}
@@ -250,6 +293,10 @@ function labelFor(key: string): string {
   }
 }
 
+function extensionLabelFor(id: string): string {
+  return findExtensionMetadata(id)?.label ?? "extension";
+}
+
 function Banner({
   kind,
   children,
@@ -259,10 +306,22 @@ function Banner({
 }) {
   const palette =
     kind === "success"
-      ? { bg: "var(--emerald-tint)", fg: "var(--emerald)", border: "color-mix(in srgb, var(--emerald) 25%, var(--border))" }
+      ? {
+          bg: "var(--emerald-tint)",
+          fg: "var(--emerald)",
+          border: "color-mix(in srgb, var(--emerald) 25%, var(--border))",
+        }
       : kind === "warn"
-        ? { bg: "var(--amber-tint)", fg: "var(--amber)", border: "color-mix(in srgb, var(--amber) 25%, var(--border))" }
-        : { bg: "var(--rose-tint)", fg: "var(--rose)", border: "color-mix(in srgb, var(--rose) 25%, var(--border))" };
+        ? {
+            bg: "var(--amber-tint)",
+            fg: "var(--amber)",
+            border: "color-mix(in srgb, var(--amber) 25%, var(--border))",
+          }
+        : {
+            bg: "var(--rose-tint)",
+            fg: "var(--rose)",
+            border: "color-mix(in srgb, var(--rose) 25%, var(--border))",
+          };
   return (
     <div
       className="rounded-lg px-4 py-3 text-sm"
