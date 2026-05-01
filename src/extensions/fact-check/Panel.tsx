@@ -1,10 +1,22 @@
 "use client";
 
-import { useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { setActive, setSlice, useActiveSelection, useExtensionSlice } from "../store";
 import type { ClientExtensionEntry, ExtensionAnnotation, ExtensionPanelProps } from "../types";
-import { clearFactCheckAction, runFactCheckAction } from "./actions";
+import {
+  applyFactCheckFixAction,
+  clearFactCheckAction,
+  runFactCheckAction,
+  suggestFactCheckFixAction,
+} from "./actions";
 import { FACT_CHECK_ID, FACT_CHECK_LABEL } from "./types";
+
+interface ClaimSuggestion {
+  original: string;
+  replacement: string;
+  rationale: string;
+}
 
 const TONE_DOT: Record<ExtensionAnnotation["tone"], string> = {
   positive: "var(--emerald)",
@@ -13,9 +25,14 @@ const TONE_DOT: Record<ExtensionAnnotation["tone"], string> = {
 };
 
 function FactCheckPanel({ draftId }: ExtensionPanelProps) {
+  const router = useRouter();
   const slice = useExtensionSlice(draftId, FACT_CHECK_ID);
   const active = useActiveSelection(draftId);
   const [, startTransition] = useTransition();
+  const [suggestingId, setSuggestingId] = useState<string | null>(null);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Record<string, ClaimSuggestion>>({});
+  const [errorByClaim, setErrorByClaim] = useState<Record<string, string>>({});
 
   const isRunning = slice.status === "running";
   const annotations = slice.annotations;
@@ -61,6 +78,86 @@ function FactCheckPanel({ draftId }: ExtensionPanelProps) {
       });
       if (active?.extensionId === FACT_CHECK_ID) setActive(draftId, null);
     });
+  }
+
+  function clearError(id: string) {
+    setErrorByClaim((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function handleSuggest(annotationId: string) {
+    if (suggestingId || applyingId) return;
+    setSuggestingId(annotationId);
+    clearError(annotationId);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("draftId", draftId);
+      fd.set("claimId", annotationId);
+      const res = await suggestFactCheckFixAction(fd);
+      if (res.ok) {
+        setSuggestions((prev) => ({
+          ...prev,
+          [annotationId]: {
+            original: res.original,
+            replacement: res.replacement,
+            rationale: res.rationale,
+          },
+        }));
+      } else {
+        setErrorByClaim((prev) => ({ ...prev, [annotationId]: res.error }));
+      }
+      setSuggestingId(null);
+    });
+  }
+
+  function handleApply(annotationId: string) {
+    const suggestion = suggestions[annotationId];
+    if (!suggestion || applyingId || suggestingId) return;
+    setApplyingId(annotationId);
+    clearError(annotationId);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("draftId", draftId);
+      fd.set("claimId", annotationId);
+      fd.set("original", suggestion.original);
+      fd.set("replacement", suggestion.replacement);
+      const res = await applyFactCheckFixAction(fd);
+      if (res.ok) {
+        setSlice(draftId, FACT_CHECK_ID, {
+          annotations: res.annotations,
+          ranAt: res.ranAt,
+          status: "idle",
+          error: null,
+        });
+        setSuggestions((prev) => {
+          const next = { ...prev };
+          delete next[annotationId];
+          return next;
+        });
+        if (active?.extensionId === FACT_CHECK_ID && active.annotationId === annotationId) {
+          setActive(draftId, null);
+        }
+        // Refresh so the rewritten body re-renders in the article overlay.
+        router.refresh();
+      } else {
+        setErrorByClaim((prev) => ({ ...prev, [annotationId]: res.error }));
+      }
+      setApplyingId(null);
+    });
+  }
+
+  function handleDismiss(annotationId: string) {
+    setSuggestions((prev) => {
+      if (!(annotationId in prev)) return prev;
+      const next = { ...prev };
+      delete next[annotationId];
+      return next;
+    });
+    clearError(annotationId);
   }
 
   function handleJump(annotationId: string) {
@@ -190,6 +287,19 @@ function FactCheckPanel({ draftId }: ExtensionPanelProps) {
                     {a.linkTitle ?? hostFromUrl(a.linkUrl)} ↗
                   </a>
                 ) : null}
+                {isFixable(a) ? (
+                  <ClaimFixActions
+                    annotationId={a.id}
+                    suggestion={suggestions[a.id] ?? null}
+                    error={errorByClaim[a.id] ?? null}
+                    isSuggesting={suggestingId === a.id}
+                    isApplying={applyingId === a.id}
+                    busy={suggestingId !== null || applyingId !== null}
+                    onSuggest={() => handleSuggest(a.id)}
+                    onApply={() => handleApply(a.id)}
+                    onDismiss={() => handleDismiss(a.id)}
+                  />
+                ) : null}
               </li>
             );
           })}
@@ -197,6 +307,151 @@ function FactCheckPanel({ draftId }: ExtensionPanelProps) {
       ) : null}
     </div>
   );
+}
+
+interface ClaimFixActionsProps {
+  annotationId: string;
+  suggestion: ClaimSuggestion | null;
+  error: string | null;
+  isSuggesting: boolean;
+  isApplying: boolean;
+  /** True if any other claim is mid-suggest/apply; disables our buttons. */
+  busy: boolean;
+  onSuggest: () => void;
+  onApply: () => void;
+  onDismiss: () => void;
+}
+
+function ClaimFixActions({
+  suggestion,
+  error,
+  isSuggesting,
+  isApplying,
+  busy,
+  onSuggest,
+  onApply,
+  onDismiss,
+}: ClaimFixActionsProps) {
+  const stop = (handler: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    handler();
+  };
+
+  if (!suggestion) {
+    return (
+      <div className="mt-2.5 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={stop(onSuggest)}
+          disabled={busy}
+          className="rounded-full px-3 py-1 text-[11.5px]"
+          style={{
+            background: isSuggesting ? "var(--bg-subtle)" : "var(--fg)",
+            color: isSuggesting ? "var(--fg-muted)" : "var(--surface)",
+            cursor: !busy ? "pointer" : isSuggesting ? "wait" : "not-allowed",
+            opacity: busy && !isSuggesting ? 0.5 : 1,
+          }}
+        >
+          {isSuggesting ? "Drafting fix…" : "Suggest fix"}
+        </button>
+        {error ? (
+          <span className="text-[11px]" style={{ color: "#9C4A22" }}>
+            {error}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-3 rounded-lg p-2.5"
+      style={{ background: "var(--bg-subtle)", border: "1px solid var(--border)" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        className="text-[10.5px] uppercase tracking-wider"
+        style={{ color: "var(--fg-subtle)" }}
+      >
+        Suggested rewrite
+      </div>
+      <p
+        className="mt-1.5 text-[12.5px] leading-snug"
+        style={{
+          color: "var(--fg)",
+          fontFamily: "var(--font-serif), Georgia, serif",
+        }}
+      >
+        {stripHtmlForPreview(suggestion.replacement)}
+      </p>
+      <p
+        className="mt-2 text-[11.5px] leading-snug"
+        style={{ color: "var(--fg-muted)" }}
+      >
+        {suggestion.rationale}
+      </p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={stop(onApply)}
+          disabled={busy}
+          className="rounded-full px-3 py-1 text-[11.5px]"
+          style={{
+            background: isApplying ? "var(--bg-subtle)" : "var(--fg)",
+            color: isApplying ? "var(--fg-muted)" : "var(--surface)",
+            cursor: !busy ? "pointer" : isApplying ? "wait" : "not-allowed",
+            opacity: busy && !isApplying ? 0.5 : 1,
+          }}
+        >
+          {isApplying ? "Applying…" : "Apply to draft"}
+        </button>
+        <button
+          type="button"
+          onClick={stop(onSuggest)}
+          disabled={busy}
+          className="text-[11px]"
+          style={{ color: "var(--fg-subtle)" }}
+        >
+          {isSuggesting ? "Trying again…" : "Try again"}
+        </button>
+        <button
+          type="button"
+          onClick={stop(onDismiss)}
+          disabled={busy}
+          className="text-[11px]"
+          style={{ color: "var(--fg-subtle)" }}
+        >
+          Dismiss
+        </button>
+      </div>
+      {error ? (
+        <p className="mt-2 text-[11px]" style={{ color: "#9C4A22" }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Render the suggestion as plain text in the panel preview. The full
+ * replacement_html still lands in the body on Apply, but the panel
+ * lives outside the article's serif column and shouldn't pull in
+ * arbitrary inline tags via dangerouslySetInnerHTML.
+ */
+function stripHtmlForPreview(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?>/gi, " ")
+    .replace(/<\/(p|h\d|li|blockquote)>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isFixable(a: ExtensionAnnotation): boolean {
+  // Supported claims (positive tone) need no rewrite. Disputed (negative)
+  // and unverified (neutral) are the actionable ones.
+  return a.tone !== "positive";
 }
 
 export const factCheckClientEntry: ClientExtensionEntry = {
