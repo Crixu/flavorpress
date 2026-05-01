@@ -48,8 +48,7 @@ export default async function EditorPage({ params }: PageProps) {
     args: [String(d.cluster_id)],
   });
 
-  const mode =
-    String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
+  const mode = String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
   const sourceCount = clusterR.rows[0] ? Number(clusterR.rows[0].source_count) : 0;
   const traceId = String(d.trace_id ?? "");
 
@@ -77,8 +76,7 @@ export default async function EditorPage({ params }: PageProps) {
         sources={itemsR.rows.map((row) => ({
           id: String(row.id),
           title: String(row.title),
-          display_name:
-            row.display_name === null ? null : String(row.display_name),
+          display_name: row.display_name === null ? null : String(row.display_name),
           // canonical_url is the article URL; s.url is the feed URL and would
           // send the user to /feed/ instead of the post they wanted to read.
           source_url: String(row.canonical_url ?? row.source_url),

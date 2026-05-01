@@ -403,9 +403,7 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("mode")) {
         // eslint-disable-next-line no-console
         console.info("[migrate] drafts: adding mode column");
-        await db.execute(
-          "ALTER TABLE drafts ADD COLUMN mode TEXT NOT NULL DEFAULT 'drafter'",
-        );
+        await db.execute("ALTER TABLE drafts ADD COLUMN mode TEXT NOT NULL DEFAULT 'drafter'");
       }
       if (!cols.includes("notes")) {
         // eslint-disable-next-line no-console

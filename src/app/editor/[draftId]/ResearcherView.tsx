@@ -32,24 +32,13 @@ interface Props {
   sourceCount: number;
 }
 
-export function ResearcherView({
-  draftId,
-  topic,
-  notes,
-  sources,
-  traceId,
-  sourceCount,
-}: Props) {
+export function ResearcherView({ draftId, topic, notes, sources, traceId, sourceCount }: Props) {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1.5">
           <div className="fp-eyebrow">
-            <Link
-              href="/"
-              className="hover:underline"
-              style={{ color: "var(--fg-subtle)" }}
-            >
+            <Link href="/" className="hover:underline" style={{ color: "var(--fg-subtle)" }}>
               ← Today
             </Link>
             <span className="mx-2" style={{ color: "var(--border-strong)" }}>
@@ -64,13 +53,9 @@ export function ResearcherView({
           <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "26ch" }}>
             {topic}
           </h1>
-          <p
-            className="text-sm"
-            style={{ color: "var(--fg-muted)", maxWidth: "60ch" }}
-          >
-            Raw material to write from. Pick an angle, lift a verbatim quote,
-            chase a lead. Quotes are checked against the source text; leads
-            are claims to verify before you use them.
+          <p className="text-sm" style={{ color: "var(--fg-muted)", maxWidth: "60ch" }}>
+            Raw material to write from. Pick an angle, lift a verbatim quote, chase a lead. Quotes
+            are checked against the source text; leads are claims to verify before you use them.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -109,17 +94,13 @@ export function ResearcherView({
             }}
           >
             <span style={{ fontWeight: 600 }}>
-              {notes.ideas.length} ideas · {notes.quotes.length} quotes ·{" "}
-              {notes.facts.length} leads
+              {notes.ideas.length} ideas · {notes.quotes.length} quotes · {notes.facts.length} leads
             </span>
           </span>
         </div>
 
         <div className="grid grid-cols-12">
-          <aside
-            className="col-span-12 p-5 lg:col-span-3"
-            style={{ background: "#FAF7F1" }}
-          >
+          <aside className="col-span-12 p-5 lg:col-span-3" style={{ background: "#FAF7F1" }}>
             <div className="fp-eyebrow mb-3">Sources · {sources.length}</div>
             <ul className="space-y-2 text-xs">
               {sources.map((row) => (
@@ -167,10 +148,7 @@ export function ResearcherView({
                 className="flex flex-wrap items-center justify-between gap-3 pt-6"
                 style={{ borderTop: "1px solid var(--border)" }}
               >
-                <p
-                  className="text-[12px]"
-                  style={{ color: "var(--fg-subtle)" }}
-                >
+                <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
                   Done with these notes? Delete to keep your drafts list tidy.
                 </p>
                 <form action={deleteDraftAction}>
@@ -208,13 +186,9 @@ function IdeasSection({ ideas }: { ideas: ResearchIdea[] }) {
               color: "#9C4A22",
             }}
           >
-            <div className="text-[14px] font-semibold leading-snug">
-              {idea.angle}
-            </div>
+            <div className="text-[14px] font-semibold leading-snug">{idea.angle}</div>
             {idea.rationale ? (
-              <div className="mt-1 text-[12.5px] leading-snug">
-                {idea.rationale}
-              </div>
+              <div className="mt-1 text-[12.5px] leading-snug">{idea.rationale}</div>
             ) : null}
           </li>
         ))}
@@ -238,10 +212,7 @@ function QuotesSection({ quotes }: { quotes: ResearchQuote[] }) {
               fontFamily: "var(--font-serif), Georgia, serif",
             }}
           >
-            <blockquote
-              className="text-[15px] leading-relaxed"
-              style={{ color: "var(--fg)" }}
-            >
+            <blockquote className="text-[15px] leading-relaxed" style={{ color: "var(--fg)" }}>
               &ldquo;{q.text}&rdquo;
             </blockquote>
             <div
@@ -249,12 +220,7 @@ function QuotesSection({ quotes }: { quotes: ResearchQuote[] }) {
               style={{ color: "var(--fg-muted)", fontFamily: "inherit" }}
             >
               {q.speaker ? `${q.speaker} · ` : ""}
-              <a
-                href={q.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline"
-              >
+              <a href={q.sourceUrl} target="_blank" rel="noreferrer" className="hover:underline">
                 {hostFromUrl(q.sourceUrl)}
               </a>
             </div>
@@ -271,10 +237,7 @@ function FactsSection({ facts }: { facts: ResearchFact[] }) {
     <section className="space-y-3">
       <div className="flex items-baseline gap-2">
         <div className="fp-eyebrow">Leads · {facts.length}</div>
-        <span
-          className="text-[11px]"
-          style={{ color: "var(--fg-subtle)" }}
-        >
+        <span className="text-[11px]" style={{ color: "var(--fg-subtle)" }}>
           paraphrased; verify against the source before publishing
         </span>
       </div>

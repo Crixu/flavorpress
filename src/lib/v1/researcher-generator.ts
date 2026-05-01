@@ -197,9 +197,7 @@ async function runOnce(
     messages: [{ role: "user", content: prompt.userMessage }],
   });
 
-  const text = response.content
-    .map((b) => (b.type === "text" ? b.text : ""))
-    .join("");
+  const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
   return parseNotes(text);
 }
 
@@ -224,50 +222,54 @@ function parseNotes(text: string): ResearchNotes {
 
   const topic = String(parsed.topic ?? "Research notes");
   const ideasRaw = Array.isArray(parsed.ideas) ? parsed.ideas : [];
-  const ideas = ideasRaw.slice(0, 5).map((i) => {
-    const obj = i as Record<string, unknown>;
-    return {
-      angle: String(obj.angle ?? "").trim(),
-      rationale: String(obj.rationale ?? "").trim(),
-    };
-  }).filter((i) => i.angle.length > 0);
+  const ideas = ideasRaw
+    .slice(0, 5)
+    .map((i) => {
+      const obj = i as Record<string, unknown>;
+      return {
+        angle: String(obj.angle ?? "").trim(),
+        rationale: String(obj.rationale ?? "").trim(),
+      };
+    })
+    .filter((i) => i.angle.length > 0);
 
   const quotesRaw = Array.isArray(parsed.quotes) ? parsed.quotes : [];
-  const quotes = quotesRaw.slice(0, 6).map((q) => {
-    const obj = q as Record<string, unknown>;
-    const speakerRaw = obj.speaker;
-    return {
-      text: String(obj.text ?? "").trim(),
-      speaker:
-        speakerRaw === null || speakerRaw === undefined || speakerRaw === ""
-          ? null
-          : String(speakerRaw),
-      sourceUrl: String(obj.source_url ?? obj.sourceUrl ?? "").trim(),
-    };
-  }).filter(
-    (q) =>
-      q.text.length > 0 &&
-      q.sourceUrl.length > 0 &&
-      // Drop oversize quotes rather than truncate them. A truncated quote is
-      // a misquote (verbatim becomes partial), and copyright/no-slop both
-      // depend on this cap holding. 25 words matches the drafter cap so
-      // both modes agree on what counts as a fair-use pull.
-      wordCount(q.text) <= 25,
-  );
+  const quotes = quotesRaw
+    .slice(0, 6)
+    .map((q) => {
+      const obj = q as Record<string, unknown>;
+      const speakerRaw = obj.speaker;
+      return {
+        text: String(obj.text ?? "").trim(),
+        speaker:
+          speakerRaw === null || speakerRaw === undefined || speakerRaw === ""
+            ? null
+            : String(speakerRaw),
+        sourceUrl: String(obj.source_url ?? obj.sourceUrl ?? "").trim(),
+      };
+    })
+    .filter(
+      (q) =>
+        q.text.length > 0 &&
+        q.sourceUrl.length > 0 &&
+        // Drop oversize quotes rather than truncate them. A truncated quote is
+        // a misquote (verbatim becomes partial), and copyright/no-slop both
+        // depend on this cap holding. 25 words matches the drafter cap so
+        // both modes agree on what counts as a fair-use pull.
+        wordCount(q.text) <= 25,
+    );
 
   const factsRaw = Array.isArray(parsed.facts) ? parsed.facts : [];
-  const facts = factsRaw.slice(0, 8).map((f) => {
-    const obj = f as Record<string, unknown>;
-    return {
-      text: String(obj.text ?? "").trim(),
-      sourceUrl: String(obj.source_url ?? obj.sourceUrl ?? "").trim(),
-    };
-  }).filter(
-    (f) =>
-      f.text.length > 0 &&
-      f.sourceUrl.length > 0 &&
-      wordCount(f.text) <= 25,
-  );
+  const facts = factsRaw
+    .slice(0, 8)
+    .map((f) => {
+      const obj = f as Record<string, unknown>;
+      return {
+        text: String(obj.text ?? "").trim(),
+        sourceUrl: String(obj.source_url ?? obj.sourceUrl ?? "").trim(),
+      };
+    })
+    .filter((f) => f.text.length > 0 && f.sourceUrl.length > 0 && wordCount(f.text) <= 25);
 
   return { topic, ideas, quotes, facts };
 }
@@ -332,17 +334,11 @@ function normalizeForVerbatim(text: string): string {
 }
 
 function escapePromptXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function decodePromptXml(s: string): string {
-  return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
 function escapeHtml(s: string): string {
@@ -377,9 +373,7 @@ function renderNotesHtml(notes: ResearchNotes): string {
   if (notes.facts.length > 0) {
     parts.push("<h2>Facts</h2><ul>");
     for (const f of notes.facts) {
-      parts.push(
-        `<li>${escapeHtml(f.text)} <a href="${escapeHtml(f.sourceUrl)}">source</a></li>`,
-      );
+      parts.push(`<li>${escapeHtml(f.text)} <a href="${escapeHtml(f.sourceUrl)}">source</a></li>`);
     }
     parts.push("</ul>");
   }

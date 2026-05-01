@@ -91,11 +91,10 @@ export default async function TodayPage() {
       for (const row of draftR.rows) {
         const oid = row.outlet_id ? String(row.outlet_id) : "";
         if (!oid) continue;
-        const mode = (String(row.mode ?? "drafter") === "researcher"
-          ? "researcher"
-          : "drafter") as "drafter" | "researcher";
-        const bucket =
-          draftsByOutlet[oid] ?? { drafter: null, researcher: null };
+        const mode = (String(row.mode ?? "drafter") === "researcher" ? "researcher" : "drafter") as
+          | "drafter"
+          | "researcher";
+        const bucket = draftsByOutlet[oid] ?? { drafter: null, researcher: null };
         if (!bucket[mode]) {
           bucket[mode] = {
             id: String(row.id),

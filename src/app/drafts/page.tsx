@@ -68,8 +68,7 @@ export default async function DraftsPage() {
         topic: String(row.headline),
         cluster_id: String(row.cluster_id),
         created_at: Number(row.created_at),
-        source_count:
-          row.source_count === null ? null : Number(row.source_count),
+        source_count: row.source_count === null ? null : Number(row.source_count),
         ...counts,
       });
       continue;
@@ -81,14 +80,10 @@ export default async function DraftsPage() {
       outlet_id: String(row.outlet_id),
       voice_match_score: Number(row.voice_match_score ?? 0),
       created_at: Number(row.created_at),
-      source_count:
-        row.source_count === null ? null : Number(row.source_count),
+      source_count: row.source_count === null ? null : Number(row.source_count),
       outlet_display_name:
-        row.outlet_display_name === null
-          ? null
-          : String(row.outlet_display_name),
-      outlet_base_url:
-        row.outlet_base_url === null ? null : String(row.outlet_base_url),
+        row.outlet_display_name === null ? null : String(row.outlet_display_name),
+      outlet_base_url: row.outlet_base_url === null ? null : String(row.outlet_base_url),
     });
   }
 
@@ -171,15 +166,10 @@ export default async function DraftsPage() {
             <div className="text-[11px] uppercase tracking-wider text-stone-500">
               Research notes
             </div>
-            <h2 className="mt-1 text-base font-semibold tracking-tight">
-              Notes · {notes.length}
-            </h2>
-            <p
-              className="mt-1 text-sm"
-              style={{ color: "var(--fg-muted)" }}
-            >
-              Ideas, verbatim quotes, and leads to verify. Notes don't push
-              to WordPress; the post is yours to write.
+            <h2 className="mt-1 text-base font-semibold tracking-tight">Notes · {notes.length}</h2>
+            <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+              Ideas, verbatim quotes, and leads to verify. Notes don't push to WordPress; the post
+              is yours to write.
             </p>
           </header>
           <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
@@ -190,10 +180,7 @@ export default async function DraftsPage() {
                   key={n.id}
                   className="flex items-start gap-3 px-5 py-4 transition hover:bg-stone-50"
                 >
-                  <Link
-                    href={`/editor/${n.id}`}
-                    className="flex flex-1 items-start gap-4 min-w-0"
-                  >
+                  <Link href={`/editor/${n.id}`} className="flex flex-1 items-start gap-4 min-w-0">
                     <div className="flex-1 min-w-0">
                       <div className="line-clamp-2 text-sm font-medium text-stone-900">
                         {n.topic}
@@ -208,8 +195,7 @@ export default async function DraftsPage() {
                           <>
                             <span className="text-stone-300">·</span>
                             <span>
-                              {n.source_count}{" "}
-                              {n.source_count === 1 ? "source" : "sources"}
+                              {n.source_count} {n.source_count === 1 ? "source" : "sources"}
                             </span>
                           </>
                         ) : null}
