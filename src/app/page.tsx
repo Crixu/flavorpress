@@ -10,6 +10,7 @@ import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { CLUSTER_WINDOW_MS } from "@/lib/v1/cluster-engine";
 import { listOutlets } from "@/lib/v1/outlets";
+import { loadSignatureTermsByOutlet, pickPreferredOutletForCluster } from "@/lib/v1/ranker";
 import {
   TodayFolderStreams,
   type TodayClusterPreview,
@@ -20,7 +21,9 @@ export const dynamic = "force-dynamic";
 
 const PER_FOLDER_LIMIT = 5;
 
-type TodayClusterCandidate = TodayClusterPreview["cluster"];
+type TodayClusterCandidate = TodayClusterPreview["cluster"] & {
+  primaryEntities: string[] | null;
+};
 
 export default async function TodayPage() {
   await ensureSchema();
@@ -88,10 +91,20 @@ export default async function TodayPage() {
   // of how many fired clusters live in the freshness window.
   const clustersByFolder = await listTodayClustersByFolder(SINGLE_USER_ID);
 
+  const draftableOutletIds = draftableOutlets.map((o) => o.id);
+  const signatureTermsByOutlet = await loadSignatureTermsByOutlet(
+    draftableOutletIds,
+    SINGLE_USER_ID,
+  );
+
   const streams: TodayFolderStream[] = await Promise.all(
     folders.map(async (folder) => {
       const clusters = clustersByFolder.get(folder.id) ?? [];
-      const previews = await Promise.all(clusters.map((c) => buildClusterPreview(c, folder)));
+      const previews = await Promise.all(
+        clusters.map((c) =>
+          buildClusterPreview(c, folder, draftableOutletIds, signatureTermsByOutlet),
+        ),
+      );
       return { id: folder.id, folderId: folder.id, name: folder.name, clusters: previews };
     }),
   );
@@ -140,15 +153,29 @@ export default async function TodayPage() {
 async function buildClusterPreview(
   c: TodayClusterCandidate,
   folder: { id: string; name: string },
+  draftableOutletIds: string[],
+  signatureTermsByOutlet: Map<string, Set<string>>,
 ): Promise<TodayClusterPreview> {
   const r = await db.execute({
-    sql: `SELECT i.title, s.id AS source_id, s.url AS source_url, s.display_name
+    sql: `SELECT i.title, i.entities, s.id AS source_id, s.url AS source_url, s.display_name
           FROM items i
           JOIN sources s ON s.id = i.source_id
           WHERE i.cluster_id = ?
           ORDER BY i.published_at DESC LIMIT 8`,
     args: [c.id],
   });
+  const entitySet = new Set<string>();
+  for (const e of c.primaryEntities ?? []) entitySet.add(e.toLowerCase());
+  for (const row of r.rows) {
+    if (!row.entities) continue;
+    const ents = JSON.parse(String(row.entities)) as string[];
+    for (const e of ents) entitySet.add(e.toLowerCase());
+  }
+  const preferredOutletId = pickPreferredOutletForCluster(
+    Array.from(entitySet),
+    draftableOutletIds,
+    signatureTermsByOutlet,
+  );
   const draftR = await db.execute({
     sql: `SELECT id, outlet_id, mode, voice_match_score, wp_post_id, wp_edit_link
           FROM drafts WHERE cluster_id = ? AND user_id = ?
@@ -203,6 +230,7 @@ async function buildClusterPreview(
     folder,
     items,
     draftsByOutlet,
+    preferredOutletId,
   };
 }
 
@@ -256,7 +284,7 @@ async function listTodayClustersByFolder(
             GROUP BY cluster_id
           ),
           ranked AS (
-            SELECT c.id, c.formed_at, c.fired_at, c.source_count,
+            SELECT c.id, c.formed_at, c.fired_at, c.source_count, c.primary_entities,
                    rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite,
                    latest.latest_published_at,
                    df.fid AS folder_id,
@@ -273,7 +301,7 @@ async function listTodayClustersByFolder(
             WHERE c.user_id = ? AND c.state = 'fired'
               AND COALESCE(latest.latest_published_at, c.formed_at) >= ?
           )
-          SELECT id, formed_at, fired_at, source_count,
+          SELECT id, formed_at, fired_at, source_count, primary_entities,
                  archive_overlap, beat_match, source_trust, composite,
                  latest_published_at, folder_id
           FROM ranked
@@ -288,6 +316,9 @@ async function listTodayClustersByFolder(
       id: String(row.id),
       formedAt: Number(row.formed_at),
       firedAt: row.fired_at ? Number(row.fired_at) : null,
+      primaryEntities: row.primary_entities
+        ? (JSON.parse(String(row.primary_entities)) as string[])
+        : null,
       sourceCount: Number(row.source_count),
       latestPublishedAt:
         row.latest_published_at !== null && row.latest_published_at !== undefined

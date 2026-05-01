@@ -38,6 +38,7 @@ export interface TodayClusterPreview {
       { id: string; voiceMatch: number; wpEditLink: string | null } | null
     >
   >;
+  preferredOutletId: string | null;
 }
 
 export interface OutletOption {
@@ -424,7 +425,7 @@ function ClusterCard({
         <ClusterActions
           clusterId={c.id}
           outlets={outlets}
-          defaultOutletId={defaultOutletId}
+          defaultOutletId={preview.preferredOutletId ?? defaultOutletId}
           draftsByOutlet={preview.draftsByOutlet}
         />
         <button type="button" className="fp-btn fp-btn-ghost" onClick={dismiss} disabled={pending}>
