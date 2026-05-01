@@ -40,6 +40,7 @@ interface SourceRow {
   backoff_until: number | null;
   item_count: number;
   items_24h: number;
+  last_item_at: number | null;
 }
 
 interface FolderGroup {
@@ -89,7 +90,7 @@ export function SourcesExplorer({
               <div className="col-span-4">Source</div>
               <div className="col-span-1">Type</div>
               <div className="col-span-2">Folder</div>
-              <div className="col-span-2 text-right">Last fetch</div>
+              <div className="col-span-2 text-right">Activity</div>
               <div className="col-span-2 text-right">Actions</div>
             </div>
 
@@ -206,7 +207,8 @@ function ExplorerRow({
         <InlineFolderPicker sourceId={row.id} currentFolderId={row.folder_id} folders={folders} />
       </div>
       <div className="col-span-2 text-right text-stone-500">
-        {row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "never"}
+        <div>{row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "never"}</div>
+        <FreshnessLine lastItemAt={row.last_item_at} itemCount={row.item_count} />
       </div>
       <div className="col-span-2 flex flex-wrap justify-end gap-1.5">
         <Link
@@ -393,6 +395,29 @@ function hostFromUrl(s: string): string {
   } catch {
     return s;
   }
+}
+
+// Staleness threshold: 30 days without a new item flags the feed for
+// pruning. Below that, the line stays neutral so live feeds don't shout.
+const FRESHNESS_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+
+function FreshnessLine({
+  lastItemAt,
+  itemCount,
+}: {
+  lastItemAt: number | null;
+  itemCount: number;
+}) {
+  if (lastItemAt === null) {
+    return (
+      <div className="text-[11px] text-stone-400">
+        {itemCount === 0 ? "no items yet" : "no dates"}
+      </div>
+    );
+  }
+  const stale = Date.now() - lastItemAt >= FRESHNESS_STALE_MS;
+  const cls = stale ? "text-[11px] text-amber-700" : "text-[11px] text-stone-400";
+  return <div className={cls}>new item {relativeTime(lastItemAt)}</div>;
 }
 
 function relativeTime(ms: number): string {

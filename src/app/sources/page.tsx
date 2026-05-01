@@ -48,7 +48,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const sourcesR = await db.execute({
     sql: `SELECT s.*,
             (SELECT COUNT(*) FROM items WHERE source_id = s.id) AS item_count,
-            (SELECT COUNT(*) FROM items WHERE source_id = s.id AND fetched_at > ?) AS items_24h
+            (SELECT COUNT(*) FROM items WHERE source_id = s.id AND fetched_at > ?) AS items_24h,
+            (SELECT MAX(published_at) FROM items WHERE source_id = s.id) AS last_item_at
           FROM sources s WHERE s.user_id = ? ORDER BY s.created_at DESC`,
     args: [Date.now() - 24 * 60 * 60 * 1000, SINGLE_USER_ID],
   });
@@ -105,6 +106,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
       r.backoff_until === null || r.backoff_until === undefined ? null : Number(r.backoff_until),
     item_count: Number(r.item_count ?? 0),
     items_24h: Number(r.items_24h ?? 0),
+    last_item_at:
+      r.last_item_at === null || r.last_item_at === undefined ? null : Number(r.last_item_at),
   }));
   const grouped = groupByFolder(plainVisibleRows, folders);
 
@@ -426,6 +429,7 @@ interface SourceRow {
   created_at: number;
   item_count: number;
   items_24h: number;
+  last_item_at: number | null;
 }
 
 interface FolderRow {
@@ -448,6 +452,7 @@ interface PlainSourceRow {
   backoff_until: number | null;
   item_count: number;
   items_24h: number;
+  last_item_at: number | null;
 }
 
 interface FolderGroup {
