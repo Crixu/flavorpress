@@ -22,6 +22,7 @@ import { FolderChipBar } from "./_components/FolderChipBar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
 import { PollAllButton } from "./_components/PollAllButton";
 import { OpmlImportButton } from "./_components/OpmlImportButton";
+import { WaitingQueue } from "./_components/WaitingQueue";
 
 export const dynamic = "force-dynamic";
 
@@ -111,10 +112,35 @@ export default async function SourcesPage({ searchParams }: PageProps) {
       r.paused_until === null || r.paused_until === undefined
         ? null
         : Number(r.paused_until),
+    backoff_until:
+      r.backoff_until === null || r.backoff_until === undefined
+        ? null
+        : Number(r.backoff_until),
     item_count: Number(r.item_count ?? 0),
     items_24h: Number(r.items_24h ?? 0),
   }));
   const grouped = groupByFolder(plainVisibleRows, folders);
+
+  // Sources currently waiting on a 429/503 retry-after. Drawn from the same
+  // outlet-scoped set as the explorer so the chip count and the waiting list
+  // agree about what the user is looking at.
+  const nowTs = Date.now();
+  const waitingRows = plainVisibleRows
+    .filter(
+      (r) =>
+        r.backoff_until !== null &&
+        r.backoff_until > nowTs &&
+        // Snoozed sources are intentionally skipped; surface only rate-limit waits.
+        (r.paused_until === null || r.paused_until <= nowTs),
+    )
+    .map((r) => ({
+      id: r.id,
+      display: r.display_name || hostFromUrl(r.url),
+      host: hostFromUrl(r.url),
+      backoffUntil: r.backoff_until!,
+      lastError: r.last_error,
+    }))
+    .sort((a, b) => a.backoffUntil - b.backoffUntil);
 
   // Folder counts are based on the outlet-scoped set so the chip numbers
   // reflect what the user will actually see when they click.
@@ -359,10 +385,13 @@ https://hnrss.org/frontpage`}
           )}
         </div>
       ) : (
-        <SourcesExplorer
-          groups={grouped}
-          folders={folders.map((f) => ({ id: f.id, name: f.name }))}
-        />
+        <>
+          {waitingRows.length > 0 ? <WaitingQueue rows={waitingRows} /> : null}
+          <SourcesExplorer
+            groups={grouped}
+            folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+          />
+        </>
       )}
 
       {/* Diagnostics */}
@@ -433,6 +462,7 @@ interface SourceRow {
   last_polled_at: number | null;
   last_error: string | null;
   paused_until: number | null;
+  backoff_until: number | null;
   active: number;
   created_at: number;
   item_count: number;
@@ -456,6 +486,7 @@ interface PlainSourceRow {
   last_polled_at: number | null;
   last_error: string | null;
   paused_until: number | null;
+  backoff_until: number | null;
   item_count: number;
   items_24h: number;
 }

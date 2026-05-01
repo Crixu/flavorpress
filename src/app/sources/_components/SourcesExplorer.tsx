@@ -37,6 +37,7 @@ interface SourceRow {
   last_polled_at: number | null;
   last_error: string | null;
   paused_until: number | null;
+  backoff_until: number | null;
   item_count: number;
   items_24h: number;
 }
@@ -155,12 +156,16 @@ function ExplorerRow({
   const meta = KIND_META[row.kind] ?? KIND_META.rss!;
   const paused =
     row.paused_until !== null && row.paused_until > Date.now();
+  const waiting =
+    !paused &&
+    row.backoff_until !== null &&
+    row.backoff_until > Date.now();
   return (
     <div
       className={`grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs ${
         selected
           ? "bg-indigo-50/60"
-          : paused
+          : paused || waiting
             ? "bg-amber-50/40 hover:bg-amber-50/70"
             : "hover:bg-stone-50"
       }`}
@@ -186,6 +191,10 @@ function ExplorerRow({
           {paused ? (
             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-amber-800">
               Paused · resumes {relativeFuture(row.paused_until!)}
+            </span>
+          ) : waiting ? (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-amber-800">
+              Waiting · retries {relativeFuture(row.backoff_until!)}
             </span>
           ) : null}
         </div>
