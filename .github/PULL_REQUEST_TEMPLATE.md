@@ -10,7 +10,9 @@ Does this move reading to writing? KEEP / DEFER / DROP, plus one or two sentence
 
 ## How I tested
 
+- [ ] `npm run format:check`
 - [ ] `npm run lint`
+- [ ] `npm run typecheck`
 - [ ] `npm run test`
 - [ ] Manual check in the browser
 
