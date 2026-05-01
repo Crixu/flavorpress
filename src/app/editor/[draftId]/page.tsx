@@ -11,6 +11,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
 import { deleteDraftAction } from "@/lib/v1/actions";
+import { loadAllAnnotations } from "@/extensions/server";
+import { ExtensionsArticle } from "@/extensions/Article";
+import { ExtensionsPanels } from "@/extensions/Panels";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { PublishToWpForm } from "./PublishToWpForm";
 
@@ -43,6 +46,12 @@ export default async function EditorPage({ params }: PageProps) {
           WHERE i.cluster_id = ? ORDER BY i.published_at DESC`,
     args: [String(d.cluster_id)],
   });
+
+  const initialAnnotationsByExt = await loadAllAnnotations(String(d.id));
+  const totalAnnotations = Object.values(initialAnnotationsByExt).reduce(
+    (n, payload) => n + payload.annotations.length,
+    0,
+  );
 
   const headlineAlternates = d.headline_alternates
     ? (JSON.parse(String(d.headline_alternates)) as string[])
@@ -160,8 +169,12 @@ export default async function EditorPage({ params }: PageProps) {
             }}
           >
             <span style={{ color: "var(--fg-subtle)" }}>⊙</span>
-            <span style={{ fontWeight: 600 }}>fact-check</span>
-            <span style={{ color: "var(--fg-subtle)" }}>v1.1</span>
+            <span style={{ fontWeight: 600 }}>extensions</span>
+            <span style={{ color: "var(--fg-subtle)" }}>
+              {totalAnnotations > 0
+                ? `${totalAnnotations} annotation${totalAnnotations === 1 ? "" : "s"}`
+                : "right rail"}
+            </span>
           </span>
           <span className="ml-auto flex items-center gap-2 text-[12px]">
             <span
@@ -215,15 +228,10 @@ export default async function EditorPage({ params }: PageProps) {
                 locked={Boolean(d.wp_post_id)}
               />
 
-              <article
-                className="prose prose-stone mt-7 max-w-none"
-                style={{
-                  fontFamily: "var(--font-serif), Georgia, serif",
-                  fontSize: 17.5,
-                  lineHeight: 1.72,
-                  color: "var(--fg)",
-                }}
-                dangerouslySetInnerHTML={{ __html: String(d.body ?? "") }}
+              <ExtensionsArticle
+                draftId={String(d.id)}
+                bodyHtml={String(d.body ?? "")}
+                initialAnnotationsByExt={initialAnnotationsByExt}
               />
 
               {quotes.length > 0 ? (
@@ -250,6 +258,12 @@ export default async function EditorPage({ params }: PageProps) {
             className="col-span-12 space-y-3 p-5 lg:col-span-3"
             style={{ background: "#FAF7F1" }}
           >
+            {/* Editor extensions (fact-check, originality, ...) */}
+            <ExtensionsPanels
+              draftId={String(d.id)}
+              initialAnnotationsByExt={initialAnnotationsByExt}
+            />
+
             {/* Voice match */}
             <div
               className="rounded-2xl p-4"

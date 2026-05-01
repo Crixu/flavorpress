@@ -107,29 +107,65 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
     },
   });
 
-  // ----- fact-check (skeleton) -----
+  // ----- fact-check (editor extension) -----
+  // Implementation lives in src/extensions/fact-check/server.ts; the
+  // capability registration here is for MCP / external agents that
+  // want to invoke the same engine. The editor UI calls the server
+  // action directly rather than going through the registry, since the
+  // action also handles client-state plumbing.
+  //
+  // 2.0.0: web-search-grounded run. The 1.0.0 skeleton returned
+  // `{passed, flaggedClaimIds}` from a no-op invoke; this version
+  // returns `{ranAt, claims[]}`. The output schema is incompatible,
+  // so the version is bumped (semver major) instead of overloading
+  // the same id@1.0.0 with a new contract. No internal caller pins
+  // 1.0.0; external callers reading from the capabilities table will
+  // see the new manifest.
   await registry.register({
     id: "fact-check",
-    version: "1.0.0",
+    version: "2.0.0",
     description:
-      "Single-call fact-check pass against the cluster source bundle. Per claim: pass/flag with confidence and source attribution.",
+      "Web-search-grounded fact-check over a draft body. Identifies up to 6 verbatim claims, returns per-claim verdict (supported/disputed/unverified), comment, and source URL.",
     inputSchema: z.object({ draftId: z.string() }),
     outputSchema: z.object({
-      passed: z.boolean(),
-      flaggedClaimIds: z.array(z.string()),
+      ranAt: z.number(),
+      claims: z.array(
+        z.object({
+          id: z.string(),
+          claimIndex: z.number(),
+          claimText: z.string(),
+          verdict: z.enum(["supported", "disputed", "unverified"]),
+          comment: z.string(),
+          sourceUrl: z.string().nullable(),
+          sourceTitle: z.string().nullable(),
+        }),
+      ),
     }),
-    latencyBudgetMs: 4000,
+    latencyBudgetMs: 60000,
     tier: "both",
-    requiresAuth: false,
-    subscribesTo: ["draft.rendered"],
+    requiresAuth: true,
+    subscribesTo: [], // user-triggered from the editor extension
     emits: ["draft.fact_checked"],
-    costClass: "medium",
-    tags: ["pipeline.qa"],
+    costClass: "expensive",
+    tags: ["editor.extension", "pipeline.qa"],
     invoke: async (input) => {
+      const { runFactCheck } = await import(
+        "../../extensions/fact-check/server"
+      );
       const { draftId } = input as { draftId: string };
-      // v1.0.0 skeleton: always passes. The real LLM call lives next pass.
-      void draftId;
-      return { passed: true, flaggedClaimIds: [] };
+      const result = await runFactCheck(draftId);
+      return {
+        ranAt: result.ranAt,
+        claims: result.claims.map((c) => ({
+          id: c.id,
+          claimIndex: c.claimIndex,
+          claimText: c.claimText,
+          verdict: c.verdict,
+          comment: c.comment,
+          sourceUrl: c.sourceUrl,
+          sourceTitle: c.sourceTitle,
+        })),
+      };
     },
   });
 

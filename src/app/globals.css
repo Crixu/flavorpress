@@ -366,3 +366,29 @@ html, body {
     animation-duration: 0ms !important;
   }
 }
+
+/* Editor extension annotations (Google-Docs-style highlights) */
+mark[data-fp-ext] {
+  background: var(--bg-subtle);
+  border-bottom: 2px solid var(--fg-subtle);
+  color: inherit;
+  padding: 0 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: box-shadow 120ms var(--ease), background 120ms var(--ease);
+}
+mark[data-fp-ext][data-fp-tone="positive"] {
+  background: var(--emerald-tint);
+  border-bottom-color: var(--emerald);
+}
+mark[data-fp-ext][data-fp-tone="negative"] {
+  background: var(--rose-tint);
+  border-bottom-color: var(--rose);
+}
+mark[data-fp-ext][data-fp-tone="neutral"] {
+  background: var(--amber-tint);
+  border-bottom-color: var(--amber);
+}
+mark[data-fp-ext][data-fp-active="1"] {
+  box-shadow: 0 0 0 2px var(--fg);
+}
