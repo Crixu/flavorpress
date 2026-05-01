@@ -21,6 +21,7 @@ import {
 import { FolderChipBar } from "./_components/FolderChipBar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
 import { PollAllButton } from "./_components/PollAllButton";
+import { OpmlImportButton } from "./_components/OpmlImportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -215,7 +216,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
 
       {/* Add sources */}
       <section className="rounded-2xl border border-stone-200 bg-white p-6">
-        <div className="mb-1">
+        <div className="mb-1 flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">Add sources</div>
             <div className="text-[11px] text-stone-500">
@@ -223,6 +224,12 @@ export default async function SourcesPage({ searchParams }: PageProps) {
               channel feeds. Paste many; one per line.
             </div>
           </div>
+          <OpmlImportButton
+            folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+            currentFolderId={
+              folderParam && folderParam !== "ungrouped" ? folderParam : null
+            }
+          />
         </div>
         <form action={addSourceAction} className="mt-3 space-y-2">
           <textarea
