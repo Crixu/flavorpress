@@ -49,7 +49,12 @@ export function ExtensionsArticle({
     const root = articleRef.current;
     if (!root) return;
     unwrapMarks(root);
-    for (const { extensionId, annotation } of all) {
+    const byShortestSpan = [...all].sort(
+      (a, b) =>
+        a.annotation.spanText.length - b.annotation.spanText.length ||
+        a.annotation.index - b.annotation.index,
+    );
+    for (const { extensionId, annotation } of byShortestSpan) {
       wrapFirstOccurrence(root, extensionId, annotation);
     }
   }, [all, bodyHtml]);
