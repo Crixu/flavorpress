@@ -20,7 +20,12 @@ export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
 
 const DEFAULT_DRAFT_MODEL = "claude-haiku-4-5-20251001";
 
-export async function getSetting(key: SettingKey): Promise<string | null> {
+/**
+ * Read any app_settings row. Built-in keys live in SETTING_KEYS;
+ * extension-owned keys (e.g. x_bridge_template) are passed as raw
+ * strings so the extension layer can keep its key constants local.
+ */
+export async function getSetting(key: string): Promise<string | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT value FROM app_settings WHERE key = ?`,
@@ -33,7 +38,7 @@ export async function getSetting(key: SettingKey): Promise<string | null> {
   return s.length > 0 ? s : null;
 }
 
-export async function setSetting(key: SettingKey, value: string | null): Promise<void> {
+export async function setSetting(key: string, value: string | null): Promise<void> {
   await ensureSchema();
   if (value === null || value.trim() === "") {
     await db.execute({
@@ -71,6 +76,12 @@ export interface SettingsSnapshot {
   anthropicApiKey: { hasValue: boolean; source: "db" | "env" | "none"; preview: string | null };
   anthropicDraftModel: { value: string; source: "db" | "env" | "default" };
   disabledExtensionIds: string[];
+  /**
+   * Values for extension-registered settings, keyed by setting key.
+   * Sourced strictly from the DB; extensions decide their own env-var
+   * fallbacks when they read the value at runtime.
+   */
+  extensionSettings: Record<string, { value: string | null; source: "db" | "none" }>;
 }
 
 /**
@@ -106,18 +117,26 @@ function previewSecret(value: string): string {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 }
 
-export async function loadSettingsSnapshot(): Promise<SettingsSnapshot> {
+export async function loadSettingsSnapshot(
+  extensionSettingKeys: string[] = [],
+): Promise<SettingsSnapshot> {
   await ensureSchema();
-  const [dbApiKey, dbModel, disabled] = await Promise.all([
+  const [dbApiKey, dbModel, disabled, extensionValues] = await Promise.all([
     getSetting(SETTING_KEYS.anthropicApiKey),
     getSetting(SETTING_KEYS.anthropicDraftModel),
     getDisabledExtensionIds(),
+    Promise.all(extensionSettingKeys.map(async (k) => [k, await getSetting(k)] as const)),
   ]);
 
   const envApiKey = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY);
   const apiKeyValue = normalizeAnthropicKey(dbApiKey) ?? envApiKey;
 
   const modelValue = dbModel ?? process.env.ANTHROPIC_DRAFT_MODEL ?? DEFAULT_DRAFT_MODEL;
+
+  const extensionSettings: SettingsSnapshot["extensionSettings"] = {};
+  for (const [key, value] of extensionValues) {
+    extensionSettings[key] = { value, source: value ? "db" : "none" };
+  }
 
   return {
     anthropicApiKey: {
@@ -130,6 +149,7 @@ export async function loadSettingsSnapshot(): Promise<SettingsSnapshot> {
       source: dbModel ? "db" : process.env.ANTHROPIC_DRAFT_MODEL ? "env" : "default",
     },
     disabledExtensionIds: [...disabled].sort(),
+    extensionSettings,
   };
 }
 

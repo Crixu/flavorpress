@@ -2,18 +2,37 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { setExtensionEnabled, setSetting, SETTING_KEYS, type SettingKey } from "./settings";
+import { setExtensionEnabled, setSetting, SETTING_KEYS } from "./settings";
 import { findExtensionMetadata } from "@/extensions/registry";
+import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
+import type { ExtensionSettingField } from "@/extensions/types";
 
 const ANTHROPIC_KEY_PATTERN = /^sk-ant-[a-zA-Z0-9_-]{10,}$/;
 
-const VALIDATORS: Partial<Record<SettingKey, (value: string) => string | null>> = {
+type Validator = (value: string) => string | null;
+
+const BUILT_IN_VALIDATORS: Record<string, Validator> = {
   [SETTING_KEYS.anthropicApiKey]: (v) =>
     ANTHROPIC_KEY_PATTERN.test(v) ? null : "anthropic_key_invalid",
 };
 
-function isAllowedKey(key: string): key is SettingKey {
-  return (Object.values(SETTING_KEYS) as string[]).includes(key);
+function findExtensionSettingField(key: string): ExtensionSettingField | null {
+  for (const ext of SOURCE_EXTENSIONS) {
+    const field = ext.settings?.find((f) => f.key === key);
+    if (field) return field;
+  }
+  return null;
+}
+
+function isAllowedKey(key: string): boolean {
+  if ((Object.values(SETTING_KEYS) as string[]).includes(key)) return true;
+  return findExtensionSettingField(key) !== null;
+}
+
+function getValidator(key: string): Validator | null {
+  if (BUILT_IN_VALIDATORS[key]) return BUILT_IN_VALIDATORS[key];
+  const field = findExtensionSettingField(key);
+  return field?.validate ?? null;
 }
 
 /**
@@ -26,25 +45,24 @@ export async function saveSettingAction(formData: FormData): Promise<void> {
   if (!isAllowedKey(key)) {
     redirect("/settings?error=invalid_key");
   }
-  const settingKey = key as SettingKey;
   const value = String(formData.get("value") ?? "").trim();
 
   if (value === "") {
-    await setSetting(settingKey, null);
+    await setSetting(key, null);
     revalidatePath("/settings");
-    redirect(`/settings?cleared=${encodeURIComponent(settingKey)}`);
+    redirect(`/settings?cleared=${encodeURIComponent(key)}`);
   }
 
-  const validator = VALIDATORS[settingKey];
+  const validator = getValidator(key);
   const error = validator ? validator(value) : null;
   if (error) {
     revalidatePath("/settings");
     redirect(`/settings?error=${encodeURIComponent(error)}`);
   }
 
-  await setSetting(settingKey, value);
+  await setSetting(key, value);
   revalidatePath("/settings");
-  redirect(`/settings?saved=${encodeURIComponent(settingKey)}`);
+  redirect(`/settings?saved=${encodeURIComponent(key)}`);
 }
 
 export async function clearSettingAction(formData: FormData): Promise<void> {
@@ -52,7 +70,7 @@ export async function clearSettingAction(formData: FormData): Promise<void> {
   if (!isAllowedKey(key)) {
     redirect("/settings?error=invalid_key");
   }
-  await setSetting(key as SettingKey, null);
+  await setSetting(key, null);
   revalidatePath("/settings");
   redirect(`/settings?cleared=${encodeURIComponent(key)}`);
 }

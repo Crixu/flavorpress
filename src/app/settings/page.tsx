@@ -6,12 +6,7 @@
  * working; values stored here override when present.
  */
 
-import {
-  loadSettingsSnapshot,
-  SETTING_DEFAULTS,
-  SETTING_KEYS,
-  type SettingKey,
-} from "@/lib/v1/settings";
+import { loadSettingsSnapshot, SETTING_DEFAULTS, SETTING_KEYS } from "@/lib/v1/settings";
 import {
   clearSettingAction,
   saveSettingAction,
@@ -20,6 +15,8 @@ import {
 import { resolveAnthropicAuth, type AuthMode } from "@/lib/anthropic";
 import { ensureSchema } from "@/lib/db";
 import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
+import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
+import type { ExtensionSettingField } from "@/extensions/types";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +31,19 @@ interface PageProps {
   }>;
 }
 
+const extensionSettingFields: ExtensionSettingField[] = SOURCE_EXTENSIONS.flatMap(
+  (ext) => ext.settings ?? [],
+);
+
+const extensionErrorMessages: Record<string, string> = Object.fromEntries(
+  extensionSettingFields.flatMap((f) => Object.entries(f.errorMessages ?? {})),
+);
+
 export default async function SettingsPage({ searchParams }: PageProps) {
   await ensureSchema();
   const sp = await searchParams;
   const [snapshot, auth] = await Promise.all([
-    loadSettingsSnapshot(),
+    loadSettingsSnapshot(extensionSettingFields.map((f) => f.key)),
     resolveAnthropicAuth().catch(
       () =>
         ({ mode: "none", apiKey: null, claudePath: null }) as Awaited<
@@ -76,6 +81,9 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           ⚠ Anthropic key didn't match the expected <code>sk-ant-…</code> format. Nothing was saved.
         </Banner>
       ) : null}
+      {sp.error && extensionErrorMessages[sp.error] ? (
+        <Banner kind="error">⚠ {extensionErrorMessages[sp.error]}</Banner>
+      ) : null}
       {sp.error === "invalid_key" ? <Banner kind="error">⚠ Unknown setting key.</Banner> : null}
       {sp.error === "invalid_extension" ? <Banner kind="error">⚠ Unknown extension.</Banner> : null}
 
@@ -105,6 +113,25 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           snapshot.anthropicDraftModel.source === "db" ? snapshot.anthropicDraftModel.value : ""
         }
       />
+
+      {extensionSettingFields.map((field) => {
+        const snap = snapshot.extensionSettings[field.key] ?? { value: null, source: "none" };
+        return (
+          <SettingForm
+            key={field.key}
+            title={field.title}
+            hint={field.hint}
+            settingKey={field.key}
+            envVar={field.envVar}
+            source={snap.source}
+            preview={snap.value}
+            inputType={field.inputType}
+            placeholder={field.placeholder}
+            saveLabel={field.saveLabel}
+            defaultValue={field.inputType === "password" ? undefined : (snap.value ?? "")}
+          />
+        );
+      })}
 
       <ExtensionsSection disabledExtensionIds={snapshot.disabledExtensionIds} />
 
@@ -216,7 +243,7 @@ function ExtensionsSection({ disabledExtensionIds }: { disabledExtensionIds: str
 interface SettingFormProps {
   title: string;
   hint: string;
-  settingKey: SettingKey;
+  settingKey: string;
   envVar: string;
   source: "db" | "env" | "default" | "none";
   preview: string | null;
@@ -307,8 +334,10 @@ function labelFor(key: string): string {
       return "Anthropic API key";
     case SETTING_KEYS.anthropicDraftModel:
       return "draft model";
-    default:
-      return "setting";
+    default: {
+      const field = extensionSettingFields.find((f) => f.key === key);
+      return field ? field.title : "setting";
+    }
   }
 }
 

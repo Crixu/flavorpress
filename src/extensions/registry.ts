@@ -11,6 +11,7 @@
 
 import { FACT_CHECK_ID, FACT_CHECK_LABEL } from "./fact-check/types";
 import { RELATED_IMAGES_ID, RELATED_IMAGES_LABEL } from "./related-images/types";
+import { X_SOURCE_DESCRIPTION, X_SOURCE_ID, X_SOURCE_LABEL } from "./x-source/types";
 
 export interface ExtensionMetadata {
   id: string;
@@ -30,6 +31,11 @@ export const EXTENSION_METADATA: ExtensionMetadata[] = [
     label: RELATED_IMAGES_LABEL,
     description:
       "Searches Openverse for openly-licensed photos and illustrations the writer can drop into the draft, filtered by license.",
+  },
+  {
+    id: X_SOURCE_ID,
+    label: X_SOURCE_LABEL,
+    description: X_SOURCE_DESCRIPTION,
   },
 ];
 

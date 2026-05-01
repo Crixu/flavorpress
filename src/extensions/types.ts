@@ -1,26 +1,29 @@
 /**
- * Extension contract for the editor surface.
+ * Extension contract.
  *
- * An extension is a packaged inspector for the draft (fact-check,
- * originality, plagiarism, citation-finder, ...). Every extension
- * implements a server half and a client half:
+ * FlavorPress has two kinds of extensions, both gated by the same
+ * "Editor extensions" toggle in /settings:
  *
- *   - Server half (ServerExtensionEntry) lives in a server-only module.
- *     It knows how to load persisted annotations for a draft so the
- *     editor page can hydrate the client store on first paint.
- *   - Client half (ClientExtensionEntry) lives in a "use client" module.
- *     It owns its right-rail Panel and reads/writes its slice of the
- *     shared store. The Panel is bespoke per extension; only the
- *     annotation contract below is shared.
+ *   1. Editor extensions: per-draft inspectors that contribute marked
+ *      spans + a right-rail Panel (fact-check, related-images, ...).
+ *      Server half (ServerExtensionEntry) loads persisted annotations
+ *      on first paint; client half (ClientExtensionEntry) renders the
+ *      Panel.
  *
- * The article overlay (`extensions/Article.tsx`) walks every extension's
- * annotations and wraps the matching draft text in a `<mark>` element
- * tagged with `data-fp-ext` and `data-fp-ann`. Click handling uses those
- * attributes to scroll the matching Panel comment into view via
- * `data-fp-comment="<extId>:<annId>"`.
+ *   2. Source extensions: claim a user-pasted input on the source-add
+ *      path and resolve it into the URL FlavorPress should poll. The
+ *      x-source extension (under `src/extensions/x-source/`) is the
+ *      reference implementation; copy that folder for new ones.
+ *
+ * The article overlay (`extensions/Article.tsx`) walks every editor
+ * extension's annotations and wraps the matching draft text in a
+ * `<mark>` element tagged with `data-fp-ext` and `data-fp-ann`. Click
+ * handling uses those attributes to scroll the matching Panel comment
+ * into view via `data-fp-comment="<extId>:<annId>"`.
  */
 
 import type { ComponentType } from "react";
+import type { SourceKind } from "@/lib/v1/types";
 
 export type AnnotationTone = "positive" | "negative" | "neutral";
 
@@ -80,3 +83,67 @@ export interface ClientExtensionEntry {
 }
 
 export type InitialAnnotationsByExtension = Record<string, AnnotationLoad>;
+
+/**
+ * The shape an extension returns when it claims a source input. Stored
+ * verbatim on the `sources` row at insert time.
+ */
+export interface ResolvedSource {
+  /** The URL the polling loop fetches. For X this is the bridge URL. */
+  url: string;
+  /** Display label seeded on the row (suppresses LLM auto-titling). */
+  displayName: string;
+}
+
+/**
+ * One settings field an extension wants the /settings page to render.
+ * The page knows how to render `text` and `password` inputs; richer
+ * controls require widening this type. Validators live alongside their
+ * field so the save action can enforce them without a central registry.
+ */
+export interface ExtensionSettingField {
+  key: string;
+  envVar: string;
+  title: string;
+  hint: string;
+  placeholder: string;
+  saveLabel: string;
+  inputType: "text" | "password";
+  /**
+   * Returns null when the value is acceptable; an error code string
+   * otherwise. The settings UI surfaces the code via the same banner
+   * mechanism used for built-in validators.
+   */
+  validate?(value: string): string | null;
+  /**
+   * Maps a validator error code to the message the UI should render.
+   * Each extension owns its messages so the page doesn't need to
+   * special-case them.
+   */
+  errorMessages?: Record<string, string>;
+}
+
+/**
+ * Source-extension contract. Implement under `src/extensions/<id>/server.ts`,
+ * register in `src/extensions/source-extensions.ts`. See
+ * `src/extensions/x-source/server.ts` for the reference implementation.
+ */
+export interface SourceExtensionEntry {
+  id: string;
+  label: string;
+  /** SourceKind written to `sources.kind` when this extension claims an input. */
+  kind: SourceKind;
+  /**
+   * Pure check: does this extension claim this input? Side-effect-free
+   * so the dispatcher can run it on every paste without I/O.
+   */
+  claims(input: string): boolean;
+  /**
+   * Resolve a claimed input into the row to insert. Throws with a
+   * user-facing message when the extension is misconfigured (missing
+   * setting, malformed input). Only called when `claims()` returned true.
+   */
+  resolve(input: string): Promise<ResolvedSource>;
+  /** Settings the extension wants on /settings. Empty for none. */
+  settings?: ExtensionSettingField[];
+}

@@ -46,6 +46,8 @@ import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
 import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
+import { findClaimingSourceExtension } from "@/extensions/source-extensions";
+import { getDisabledExtensionIds } from "./settings";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -168,7 +170,7 @@ export async function addSourceAction(formData: FormData) {
   const folderId = await resolveFolderIdField(formData);
 
   // Bulk paste support: split on newlines, commas, or spaces.
-  const urls = Array.from(
+  const inputs = Array.from(
     new Set(
       raw
         .split(/[\s,]+/)
@@ -177,15 +179,50 @@ export async function addSourceAction(formData: FormData) {
     ),
   );
 
+  // Source extensions get first crack at each input. A disabled extension
+  // that *would* have claimed an input is treated as an error so we don't
+  // silently fall through to detectKind (which would store, say, an x.com
+  // profile URL as an RSS feed and 404 on poll).
+  const disabled = await getDisabledExtensionIds();
+  for (const input of inputs) {
+    const claimer = findClaimingSourceExtension(input);
+    if (claimer && disabled.has(claimer.id)) {
+      throw new Error(`${claimer.label} is disabled in Settings.`);
+    }
+  }
+
   // Inserted rows that should get an LLM-generated display name in the
   // background once the request returns. We hand back the host as the
   // initial label so the row is immediately recognizable.
   const titleJobs: { id: string; url: string }[] = [];
 
-  for (const url of urls) {
-    const kind = detectKind(url);
+  for (const input of inputs) {
+    let kind: "rss" | "reddit" | "podcast" | "youtube" | "x";
+    let url: string;
+    let display: string;
+    let claimedByExtension = false;
+    const claimer = findClaimingSourceExtension(input);
+    try {
+      if (claimer) {
+        const resolved = await claimer.resolve(input);
+        kind = claimer.kind as typeof kind;
+        url = resolved.url;
+        display = resolved.displayName;
+        claimedByExtension = true;
+      } else {
+        kind = detectKind(input);
+        url = input;
+        display = hostFromUrl(input);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (claimer) {
+        throw new Error(message);
+      }
+      console.warn(`addSource: ${input}: ${message}`);
+      continue;
+    }
     const id = crypto.randomUUID();
-    const display = hostFromUrl(url);
     // Podcasts and YouTube need transcription; tracked but inactive in v1
     // so we don't lose them — when v1.1 ships Whisper, we just flip active.
     const isPending = kind === "podcast" || kind === "youtube";
@@ -210,7 +247,9 @@ export async function addSourceAction(formData: FormData) {
           Date.now(),
         ],
       });
-      titleJobs.push({ id, url });
+      // Extensions seed their own display names; the LLM auto-titler would
+      // just re-derive a label from the bridge host and clobber it.
+      if (!claimedByExtension) titleJobs.push({ id, url });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes("UNIQUE")) console.warn(`addSource: ${url}: ${msg}`);

@@ -406,6 +406,8 @@ function kindLabel(k: string): string {
       return "Podcast";
     case "youtube":
       return "YouTube";
+    case "x":
+      return "X";
     default:
       return k;
   }
