@@ -8,18 +8,24 @@
 import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
-import { topFiredClusters } from "@/lib/v1/ranker";
+import { CLUSTER_WINDOW_MS } from "@/lib/v1/cluster-engine";
 import { listOutlets } from "@/lib/v1/outlets";
-import { TodayFolderStreams, type TodayClusterPreview } from "./_components/TodayFolderStreams";
+import {
+  TodayFolderStreams,
+  type TodayClusterPreview,
+  type TodayFolderStream,
+} from "./_components/TodayFolderStreams";
 
 export const dynamic = "force-dynamic";
+
+const PER_FOLDER_LIMIT = 5;
+
+type TodayClusterCandidate = TodayClusterPreview["cluster"];
 
 export default async function TodayPage() {
   await ensureSchema();
   await ensureSingleUser();
   await ensureRegisteredCapabilities();
-
-  const clusters = await topFiredClusters(SINGLE_USER_ID, 18);
 
   const outlets = await listOutlets(SINGLE_USER_ID);
   const connectedOutlets = outlets.filter((o) => o.connected);
@@ -60,102 +66,57 @@ export default async function TodayPage() {
     );
   }
 
-  const allPreviews: TodayClusterPreview[] = await Promise.all(
-    clusters.map(async (c) => {
-      const r = await db.execute({
-        sql: `SELECT i.title, s.id AS source_id, s.url AS source_url, s.display_name,
-                     s.folder_id, sf.name AS folder_name
-              FROM items i
-              JOIN sources s ON s.id = i.source_id
-              LEFT JOIN source_folders sf ON sf.id = s.folder_id
-              WHERE i.cluster_id = ?
-              ORDER BY i.published_at DESC LIMIT 8`,
-        args: [c.id],
-      });
-      // Existing drafts for this cluster, keyed by outlet. The card uses
-      // the per-outlet draft to decide between "Open draft" and "Draft this"
-      // for the selected outlet.
-      const draftR = await db.execute({
-        sql: `SELECT id, outlet_id, mode, voice_match_score, wp_post_id, wp_edit_link
-              FROM drafts WHERE cluster_id = ? AND user_id = ?
-              ORDER BY created_at DESC`,
-        args: [c.id, SINGLE_USER_ID],
-      });
-      const draftsByOutlet: Record<
-        string,
-        Record<
-          "drafter" | "researcher",
-          { id: string; voiceMatch: number; wpEditLink: string | null } | null
-        >
-      > = {};
-      for (const row of draftR.rows) {
-        const oid = row.outlet_id ? String(row.outlet_id) : "";
-        if (!oid) continue;
-        const mode = (String(row.mode ?? "drafter") === "researcher" ? "researcher" : "drafter") as
-          | "drafter"
-          | "researcher";
-        const bucket = draftsByOutlet[oid] ?? { drafter: null, researcher: null };
-        if (!bucket[mode]) {
-          bucket[mode] = {
-            id: String(row.id),
-            voiceMatch: Number(row.voice_match_score ?? 0),
-            wpEditLink: row.wp_edit_link ? String(row.wp_edit_link) : null,
-          };
-        }
-        draftsByOutlet[oid] = bucket;
-      }
-      const items = r.rows.map((row) => ({
-        title: String(row.title),
-        sourceId: String(row.source_id),
-        sourceUrl: String(row.source_url),
-        displayName: String(row.display_name ?? ""),
-        folderId: row.folder_id ? String(row.folder_id) : null,
-        folderName: row.folder_name ? String(row.folder_name) : "Ungrouped",
-      }));
-      const folder = dominantFolder(items);
-      return {
-        cluster: {
-          id: c.id,
-          formedAt: c.formedAt,
-          firedAt: c.firedAt,
-          latestPublishedAt: c.latestPublishedAt,
-          sourceCount: c.sourceCount,
-          signals: c.signals
-            ? {
-                archiveOverlap: c.signals.archiveOverlap,
-                beatMatch: c.signals.beatMatch,
-                sourceTrust: c.signals.sourceTrust,
-                composite: c.signals.composite,
-              }
-            : null,
-        },
-        folder,
-        items: items.map((item) => ({
-          title: item.title,
-          sourceId: item.sourceId,
-          sourceUrl: item.sourceUrl,
-          displayName: item.displayName,
-        })),
-        draftsByOutlet,
-      };
+  // Today is a per-folder surface: each folder is a reading lane. We assign
+  // every eligible cluster to one lane before applying the per-folder cap so
+  // a noisy folder cannot crowd quieter ones out. Ungrouped is intentionally
+  // excluded; a lane with no shape isn't a writing brief.
+  const folderRows = await db.execute({
+    sql: `SELECT id, name FROM source_folders
+          WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
+    args: [SINGLE_USER_ID],
+  });
+  const folders = folderRows.rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+  }));
+
+  // A cluster can have items from sources in multiple folders. Pin each
+  // cluster to the folder that contributed the most items, then keep at
+  // most PER_FOLDER_LIMIT clusters per folder. The query handles dominant
+  // assignment and the per-folder cap in SQL via window functions, so the
+  // result set is bounded at folders.length * PER_FOLDER_LIMIT regardless
+  // of how many fired clusters live in the freshness window.
+  const clustersByFolder = await listTodayClustersByFolder(SINGLE_USER_ID);
+
+  const streams: TodayFolderStream[] = await Promise.all(
+    folders.map(async (folder) => {
+      const clusters = clustersByFolder.get(folder.id) ?? [];
+      const previews = await Promise.all(clusters.map((c) => buildClusterPreview(c, folder)));
+      return { id: folder.id, folderId: folder.id, name: folder.name, clusters: previews };
     }),
   );
 
-  // Today is a writing surface; an "Ungrouped" reading lane has no shape to
-  // brief from, so we hide those clusters here. They still appear under
-  // Ungrouped in the Sources view.
-  const previews = allPreviews.filter((p) => p.folder.id !== null);
+  const nonEmptyStreams = streams.filter((s) => s.clusters.length > 0);
+  nonEmptyStreams.sort((a, b) => {
+    const aScore = a.clusters[0]?.cluster.signals?.composite ?? 0;
+    const bScore = b.clusters[0]?.cluster.signals?.composite ?? 0;
+    return bScore - aScore;
+  });
+
+  const totalPreviews = nonEmptyStreams.reduce((acc, s) => acc + s.clusters.length, 0);
 
   return (
     <div className="space-y-8">
       <header className="space-y-1.5">
         <div className="fp-eyebrow">{formatDate(Date.now())}</div>
         <h1 className="fp-h1 fp-h1-serif">
-          {previews.length === 0
+          {totalPreviews === 0
             ? "No clusters yet"
-            : previews.length === 1
+            : totalPreviews === 1
               ? "One cluster worth your attention"
-              : `${previews.length} clusters across ${countFolders(previews)} streams`}
+              : `${totalPreviews} clusters across ${nonEmptyStreams.length} ${
+                  nonEmptyStreams.length === 1 ? "stream" : "streams"
+                }`}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
           Each folder is a reading lane. Open the strongest cluster, ask for more, or set that lane
@@ -163,17 +124,190 @@ export default async function TodayPage() {
         </p>
       </header>
 
-      {previews.length === 0 ? (
+      {totalPreviews === 0 ? (
         <EmptyClusters />
       ) : (
         <TodayFolderStreams
-          previews={previews}
+          streams={nonEmptyStreams}
           outlets={outletOptions}
           defaultOutletId={defaultOutletId}
         />
       )}
     </div>
   );
+}
+
+async function buildClusterPreview(
+  c: TodayClusterCandidate,
+  folder: { id: string; name: string },
+): Promise<TodayClusterPreview> {
+  const r = await db.execute({
+    sql: `SELECT i.title, s.id AS source_id, s.url AS source_url, s.display_name
+          FROM items i
+          JOIN sources s ON s.id = i.source_id
+          WHERE i.cluster_id = ?
+          ORDER BY i.published_at DESC LIMIT 8`,
+    args: [c.id],
+  });
+  const draftR = await db.execute({
+    sql: `SELECT id, outlet_id, mode, voice_match_score, wp_post_id, wp_edit_link
+          FROM drafts WHERE cluster_id = ? AND user_id = ?
+          ORDER BY created_at DESC`,
+    args: [c.id, SINGLE_USER_ID],
+  });
+  const draftsByOutlet: Record<
+    string,
+    Record<
+      "drafter" | "researcher",
+      { id: string; voiceMatch: number; wpEditLink: string | null } | null
+    >
+  > = {};
+  for (const row of draftR.rows) {
+    const oid = row.outlet_id ? String(row.outlet_id) : "";
+    if (!oid) continue;
+    const mode = (String(row.mode ?? "drafter") === "researcher" ? "researcher" : "drafter") as
+      | "drafter"
+      | "researcher";
+    const bucket = draftsByOutlet[oid] ?? { drafter: null, researcher: null };
+    if (!bucket[mode]) {
+      bucket[mode] = {
+        id: String(row.id),
+        voiceMatch: Number(row.voice_match_score ?? 0),
+        wpEditLink: row.wp_edit_link ? String(row.wp_edit_link) : null,
+      };
+    }
+    draftsByOutlet[oid] = bucket;
+  }
+  const items = r.rows.map((row) => ({
+    title: String(row.title),
+    sourceId: String(row.source_id),
+    sourceUrl: String(row.source_url),
+    displayName: String(row.display_name ?? ""),
+  }));
+  return {
+    cluster: {
+      id: c.id,
+      formedAt: c.formedAt,
+      firedAt: c.firedAt,
+      latestPublishedAt: c.latestPublishedAt,
+      sourceCount: c.sourceCount,
+      signals: c.signals
+        ? {
+            archiveOverlap: c.signals.archiveOverlap,
+            beatMatch: c.signals.beatMatch,
+            sourceTrust: c.signals.sourceTrust,
+            composite: c.signals.composite,
+          }
+        : null,
+    },
+    folder,
+    items,
+    draftsByOutlet,
+  };
+}
+
+/**
+ * Top fired clusters per folder for the Today surface, bucketed by their
+ * dominant folder. The query handles three things in one SQL pass so the
+ * server doesn't have to materialize every fired cluster the user has
+ * ever had:
+ *
+ *   1. Group every cluster's items by folder, pick the folder that owns
+ *      the most items (ties broken by the user's own folder sort_order,
+ *      then name) as the cluster's dominant folder.
+ *   2. Order each folder's clusters by composite score, latest published,
+ *      then fired_at.
+ *   3. Cap each folder at PER_FOLDER_LIMIT rows via ROW_NUMBER().
+ *
+ * Result is bounded at folders.length * PER_FOLDER_LIMIT regardless of
+ * how many clusters live in the freshness window, so neither the IN-list
+ * variable limit (SQLite caps at SQLITE_MAX_VARIABLE_NUMBER) nor the
+ * Node-side fan-out grows with archive size. Clusters whose entire item
+ * set is ungrouped have no dominant folder and therefore don't appear on
+ * Today, matching the existing rule for ungrouped sources.
+ */
+async function listTodayClustersByFolder(
+  userId: string,
+): Promise<Map<string, TodayClusterCandidate[]>> {
+  const freshnessCutoff = Date.now() - CLUSTER_WINDOW_MS;
+  const r = await db.execute({
+    sql: `WITH folder_item_counts AS (
+            SELECT i.cluster_id AS cid, s.folder_id AS fid, COUNT(*) AS n
+            FROM items i
+            JOIN sources s ON s.id = i.source_id
+            JOIN clusters c ON c.id = i.cluster_id
+            WHERE c.user_id = ? AND c.state = 'fired' AND s.folder_id IS NOT NULL
+            GROUP BY i.cluster_id, s.folder_id
+          ),
+          dominant_folder AS (
+            SELECT cid, fid FROM (
+              SELECT fic.cid, fic.fid,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY fic.cid
+                       ORDER BY fic.n DESC, sf.sort_order ASC, sf.name ASC
+                     ) AS rn
+              FROM folder_item_counts fic
+              JOIN source_folders sf ON sf.id = fic.fid
+            ) WHERE rn = 1
+          ),
+          latest_per_cluster AS (
+            SELECT cluster_id, MAX(published_at) AS latest_published_at
+            FROM items WHERE cluster_id IS NOT NULL
+            GROUP BY cluster_id
+          ),
+          ranked AS (
+            SELECT c.id, c.formed_at, c.fired_at, c.source_count,
+                   rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite,
+                   latest.latest_published_at,
+                   df.fid AS folder_id,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY df.fid
+                     ORDER BY COALESCE(rs.composite, 0) DESC,
+                              COALESCE(latest.latest_published_at, c.formed_at) DESC,
+                              c.fired_at DESC
+                   ) AS rn
+            FROM clusters c
+            JOIN dominant_folder df ON df.cid = c.id
+            LEFT JOIN ranker_signals rs ON rs.cluster_id = c.id AND rs.user_id = c.user_id
+            LEFT JOIN latest_per_cluster latest ON latest.cluster_id = c.id
+            WHERE c.user_id = ? AND c.state = 'fired'
+              AND COALESCE(latest.latest_published_at, c.formed_at) >= ?
+          )
+          SELECT id, formed_at, fired_at, source_count,
+                 archive_overlap, beat_match, source_trust, composite,
+                 latest_published_at, folder_id
+          FROM ranked
+          WHERE rn <= ?
+          ORDER BY folder_id, rn`,
+    args: [userId, userId, freshnessCutoff, PER_FOLDER_LIMIT],
+  });
+  const byFolder = new Map<string, TodayClusterCandidate[]>();
+  for (const row of r.rows) {
+    const folderId = String(row.folder_id);
+    const candidate: TodayClusterCandidate = {
+      id: String(row.id),
+      formedAt: Number(row.formed_at),
+      firedAt: row.fired_at ? Number(row.fired_at) : null,
+      sourceCount: Number(row.source_count),
+      latestPublishedAt:
+        row.latest_published_at !== null && row.latest_published_at !== undefined
+          ? Number(row.latest_published_at)
+          : Number(row.formed_at),
+      signals:
+        row.composite !== null && row.composite !== undefined
+          ? {
+              archiveOverlap: Number(row.archive_overlap),
+              beatMatch: Number(row.beat_match),
+              sourceTrust: Number(row.source_trust),
+              composite: Number(row.composite),
+            }
+          : null,
+    };
+    const list = byFolder.get(folderId);
+    if (list) list.push(candidate);
+    else byFolder.set(folderId, [candidate]);
+  }
+  return byFolder;
 }
 
 function EmptyClusters() {
@@ -534,34 +668,4 @@ function formatDate(ms: number): string {
     month: "long",
     day: "numeric",
   });
-}
-
-function countFolders(previews: TodayClusterPreview[]): number {
-  return new Set(previews.map((preview) => preview.folder.id ?? "ungrouped")).size;
-}
-
-function dominantFolder(items: Array<{ folderId: string | null; folderName: string }>): {
-  id: string | null;
-  name: string;
-} {
-  const counts = new Map<string, { id: string | null; name: string; count: number }>();
-  for (const item of items) {
-    const key = item.folderId ?? "ungrouped";
-    const current = counts.get(key);
-    if (current) {
-      current.count += 1;
-    } else {
-      counts.set(key, {
-        id: item.folderId,
-        name: item.folderName,
-        count: 1,
-      });
-    }
-  }
-  return (
-    Array.from(counts.values()).sort((a, b) => b.count - a.count)[0] ?? {
-      id: null,
-      name: "Ungrouped",
-    }
-  );
 }
