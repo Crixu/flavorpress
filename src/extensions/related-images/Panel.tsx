@@ -154,9 +154,13 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
       </div>
 
       <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "var(--fg-muted)" }}>
-        {state.results.length === 0
-          ? "Searches Openverse for licensed photographs that match the draft."
-          : `${state.results.length} licensed image${state.results.length === 1 ? "" : "s"} found.`}
+        {isRunning
+          ? "Searching Openverse…"
+          : state.ranAt !== null && state.results.length === 0
+            ? "No images found under the current license filter. Widen the filter or try after the draft has more text."
+            : state.results.length === 0
+              ? "Searches Openverse for licensed photographs that match the draft."
+              : `${state.results.length} licensed image${state.results.length === 1 ? "" : "s"} found.`}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -249,6 +253,36 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
         >
           {state.error}
         </p>
+      ) : null}
+
+      {isRunning && state.results.length === 0 ? (
+        <ul aria-hidden className="mt-4 grid grid-cols-2 gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <li
+              key={i}
+              className="overflow-hidden rounded-xl"
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <div
+                className="h-24 w-full animate-pulse"
+                style={{ background: "var(--bg-subtle)" }}
+              />
+              <div className="p-2">
+                <div
+                  className="h-2.5 w-3/4 animate-pulse rounded-full"
+                  style={{ background: "var(--bg-subtle)" }}
+                />
+                <div
+                  className="mt-1.5 h-2 w-1/2 animate-pulse rounded-full"
+                  style={{ background: "var(--bg-subtle)" }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       {state.results.length > 0 ? (

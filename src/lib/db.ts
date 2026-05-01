@@ -328,9 +328,15 @@ export async function ensureSchema(): Promise<void> {
       // Per-draft run marker for the related-images extension. A run that
       // yielded zero hits still has a row here, so the panel can render
       // "searched Xm ago" instead of looking like it was never run.
+      // license_filter is the comma-separated, alphabetically sorted set
+      // of license codes the search ran under; the loader uses it to
+      // invalidate `ranAt` when the user later narrows or widens the
+      // filter. Otherwise a filter-prune leaves the panel claiming a
+      // search ran with the new filter when none did.
       `CREATE TABLE IF NOT EXISTS related_image_runs (
         draft_id TEXT PRIMARY KEY,
-        searched_at INTEGER NOT NULL
+        searched_at INTEGER NOT NULL,
+        license_filter TEXT
       )`,
 
       // App-level settings the user can edit from /settings instead of .env.
@@ -421,6 +427,23 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("paused_until")) {
         console.info("[migrate] sources: adding paused_until column");
         await db.execute("ALTER TABLE sources ADD COLUMN paused_until INTEGER");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // related_image_runs: license_filter column added so the loader can
+  // tell when the cached run is for a different filter than the user's
+  // current selection.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(related_image_runs)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("license_filter")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] related_image_runs: adding license_filter column");
+        await db.execute("ALTER TABLE related_image_runs ADD COLUMN license_filter TEXT");
       }
     }
   } catch {
