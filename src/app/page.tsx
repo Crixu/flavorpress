@@ -332,11 +332,7 @@ function EmptyClusters({
   // never asked to pick between "manage" and "publish" in a moment that
   // is just about getting the first cluster on screen.
   const stage =
-    polledSourceCount === 0
-      ? "first-poll"
-      : itemsTotal === 0
-        ? "no-items"
-        : "no-cluster-yet";
+    polledSourceCount === 0 ? "first-poll" : itemsTotal === 0 ? "no-items" : "no-cluster-yet";
 
   const copy = {
     "first-poll": {
