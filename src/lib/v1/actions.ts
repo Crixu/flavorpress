@@ -38,6 +38,7 @@ import {
 import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
 import { OPML_IMPORT_CAP, parseOpml } from "./opml";
+import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -536,10 +537,18 @@ export async function dismissClusterAction(formData: FormData) {
   await ensureSchema();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
-  await db.execute({
-    sql: `UPDATE clusters SET state = 'dismissed' WHERE id = ? AND user_id = ?`,
+  // The trust penalty represents "skipped without drafting", so only the
+  // fired→dismissed transition counts. A stale Today tab that submits Not
+  // now after the cluster was already drafted must not re-penalize.
+  const r = await db.execute({
+    sql: `UPDATE clusters SET state = 'dismissed'
+          WHERE id = ? AND user_id = ? AND state = 'fired'`,
     args: [clusterId, SINGLE_USER_ID],
   });
+  if (r.rowsAffected > 0) {
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed);
+    revalidatePath("/sources");
+  }
   revalidatePath("/");
 }
 
@@ -728,6 +737,35 @@ export async function deleteSourceAction(formData: FormData) {
 }
 
 /**
+ * Manual trust boost for a single source. Bumps trust_score by `delta`,
+ * clamped to [0, 1]. Used when the user wants to push a source up (a
+ * trusted niche blog) or down (a noisy aggregator) without waiting for an
+ * automatic signal. The ranker re-reads trust at scoring time, so the
+ * effect lands on the next cluster fire or rerank.
+ *
+ * Form fields: sourceId, delta (e.g. "0.1" or "-0.1").
+ */
+export async function boostSourceTrustAction(formData: FormData) {
+  await ensureSchema();
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) throw new Error("sourceId required.");
+  const delta = Number(formData.get("delta") ?? 0);
+  if (!Number.isFinite(delta) || delta === 0) {
+    throw new Error("Non-zero delta required.");
+  }
+  // Single atomic clamping UPDATE: two concurrent +0.1 clicks both apply
+  // their delta instead of racing through a read-modify-write.
+  await db.execute({
+    sql: `UPDATE sources
+          SET trust_score = MAX(0.0, MIN(1.0, COALESCE(trust_score, 0.5) + ?))
+          WHERE id = ? AND user_id = ?`,
+    args: [delta, sourceId, SINGLE_USER_ID],
+  });
+  revalidatePath("/sources");
+  revalidatePath(`/sources/${sourceId}`);
+}
+
+/**
  * Delete an unsent draft. Refuses if the draft has already been pushed to
  * WordPress; once a draft has a wp_post_id, the canonical version lives on
  * the user's site and removing it should happen in WordPress.
@@ -741,7 +779,7 @@ export async function deleteDraftAction(formData: FormData) {
   if (!draftId) throw new Error("draftId required.");
 
   const r = await db.execute({
-    sql: `SELECT wp_post_id FROM drafts WHERE id = ? AND user_id = ?`,
+    sql: `SELECT wp_post_id, cluster_id FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
@@ -750,6 +788,9 @@ export async function deleteDraftAction(formData: FormData) {
       "Draft is already in WordPress. Delete it from your site instead.",
     );
   }
+  const clusterId = r.rows[0]!.cluster_id
+    ? String(r.rows[0]!.cluster_id)
+    : null;
 
   await db.execute({
     sql: `DELETE FROM fact_check_results WHERE draft_id = ?`,
@@ -759,10 +800,15 @@ export async function deleteDraftAction(formData: FormData) {
     sql: `DELETE FROM originality_results WHERE draft_id = ?`,
     args: [draftId],
   });
-  await db.execute({
+  const del = await db.execute({
     sql: `DELETE FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
+
+  if (del.rowsAffected > 0 && clusterId) {
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted);
+    revalidatePath("/sources");
+  }
 
   revalidatePath("/drafts");
   revalidatePath("/");
@@ -1213,7 +1259,7 @@ export async function publishDraftToWPAction(
   const scheduleAt = scheduleAtRaw ? Number(scheduleAtRaw) : undefined;
 
   const r = await db.execute({
-    sql: `SELECT id, outlet_id, headline, body, state, wp_post_id, wp_edit_link
+    sql: `SELECT id, outlet_id, cluster_id, headline, body, state, wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
@@ -1259,7 +1305,13 @@ export async function publishDraftToWPAction(
     ],
   });
 
+  const clusterId = row.cluster_id ? String(row.cluster_id) : null;
+  if (clusterId) {
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished);
+  }
+
   revalidatePath(`/editor/${draftId}`);
+  revalidatePath("/sources");
   return { editLink: result.editLink };
 }
 
