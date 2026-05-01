@@ -19,6 +19,10 @@ interface DraftRef {
   wpEditLink: string | null;
 }
 
+type Mode = "drafter" | "researcher";
+
+type DraftsByMode = Record<Mode, DraftRef | null>;
+
 interface OutletOption {
   id: string;
   displayName: string;
@@ -28,7 +32,7 @@ interface Props {
   clusterId: string;
   outlets: OutletOption[];
   defaultOutletId: string | null;
-  draftsByOutlet: Record<string, DraftRef>;
+  draftsByOutlet: Record<string, DraftsByMode>;
 }
 
 const PRESET_LENGTHS = [200, 400, 600] as const;
@@ -43,6 +47,7 @@ export function ClusterActions({
   draftsByOutlet,
 }: Props) {
   const [pending, startTransition] = useTransition();
+  const [mode, setMode] = useState<Mode>("drafter");
   const [lengthChoice, setLengthChoice] = useState<LengthChoice>(600);
   const [customWords, setCustomWords] = useState<string>("800");
   const initialOutletId =
@@ -52,7 +57,10 @@ export function ClusterActions({
   const [selectedOutletId, setSelectedOutletId] = useState<string | null>(
     initialOutletId,
   );
-  const draft = selectedOutletId ? draftsByOutlet[selectedOutletId] ?? null : null;
+  const draftsForOutlet = selectedOutletId
+    ? draftsByOutlet[selectedOutletId] ?? null
+    : null;
+  const draft = draftsForOutlet ? draftsForOutlet[mode] ?? null : null;
   const showPicker = outlets.length >= 2;
 
   function resolveWordCount(): number | null {
@@ -64,12 +72,15 @@ export function ClusterActions({
 
   function trigger(force: boolean) {
     if (!selectedOutletId) return;
-    const wordCount = resolveWordCount();
-    if (wordCount === null) return;
     const fd = new FormData();
     fd.set("clusterId", clusterId);
     fd.set("outletId", selectedOutletId);
-    fd.set("wordCount", String(wordCount));
+    fd.set("mode", mode);
+    if (mode === "drafter") {
+      const wordCount = resolveWordCount();
+      if (wordCount === null) return;
+      fd.set("wordCount", String(wordCount));
+    }
     if (force) fd.set("force", "1");
     startTransition(async () => {
       await generateDraftAction(fd);
@@ -77,11 +88,18 @@ export function ClusterActions({
   }
 
   if (pending) {
-    return <Drafting variant={draft ? "regenerating" : "drafting"} />;
+    return (
+      <Drafting
+        variant={draft ? "regenerating" : "drafting"}
+        mode={mode}
+      />
+    );
   }
 
   const customInvalid =
-    lengthChoice === "custom" && resolveWordCount() === null;
+    mode === "drafter" &&
+    lengthChoice === "custom" &&
+    resolveWordCount() === null;
 
   const outletPicker = showPicker ? (
     <OutletPicker
@@ -92,31 +110,50 @@ export function ClusterActions({
     />
   ) : null;
 
-  const lengthPicker = (
-    <LengthPicker
-      choice={lengthChoice}
-      onChoose={setLengthChoice}
-      customWords={customWords}
-      onCustomWordsChange={setCustomWords}
-      invalid={customInvalid}
+  const modePicker = (
+    <ModePicker
+      mode={mode}
+      onChange={setMode}
+      draftsForOutlet={draftsForOutlet}
     />
   );
 
+  const lengthPicker =
+    mode === "drafter" ? (
+      <LengthPicker
+        choice={lengthChoice}
+        onChoose={setLengthChoice}
+        customWords={customWords}
+        onCustomWordsChange={setCustomWords}
+        invalid={customInvalid}
+      />
+    ) : null;
+
   if (draft) {
+    const openLabel = mode === "researcher" ? "Open notes →" : "Open draft →";
+    const openCopy =
+      mode === "researcher"
+        ? "ideas, quotes, leads"
+        : (
+            <>
+              voice-match{" "}
+              <span className="font-medium tabular">{draft.voiceMatch}</span>
+            </>
+          );
     return (
       <div className="flex flex-col gap-3">
         {outletPicker}
+        {modePicker}
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href={`/editor/${draft.id}`}
             className="fp-btn fp-btn-primary fp-press"
           >
-            Open draft →
+            {openLabel}
           </Link>
           <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-            voice-match{" "}
-            <span className="font-medium tabular">{draft.voiceMatch}</span>
-            {draft.wpEditLink ? (
+            {openCopy}
+            {mode === "drafter" && draft.wpEditLink ? (
               <>
                 {" · "}
                 <a
@@ -144,9 +181,16 @@ export function ClusterActions({
     );
   }
 
+  const primaryLabel = mode === "researcher" ? "Research this →" : "Draft this →";
+  const primaryCopy =
+    mode === "researcher"
+      ? "ideas, quotes, leads you can write from"
+      : `voice-matched ${resolveWordCount() ?? "?"}-word draft`;
+
   return (
     <div className="flex flex-col gap-3">
       {outletPicker}
+      {modePicker}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -154,13 +198,85 @@ export function ClusterActions({
           disabled={customInvalid || !selectedOutletId}
           className="fp-btn fp-btn-primary fp-press"
         >
-          Draft this →
+          {primaryLabel}
         </button>
         <span className="text-xs" style={{ color: "var(--fg-subtle)" }}>
-          voice-matched {resolveWordCount() ?? "?"}-word draft
+          {primaryCopy}
         </span>
       </div>
       {lengthPicker}
+    </div>
+  );
+}
+
+function ModePicker({
+  mode,
+  onChange,
+  draftsForOutlet,
+}: {
+  mode: Mode;
+  onChange: (m: Mode) => void;
+  draftsForOutlet: DraftsByMode | null;
+}) {
+  const options: { id: Mode; label: string; hint: string }[] = [
+    {
+      id: "drafter",
+      label: "Drafter",
+      hint: "writes the post in your voice",
+    },
+    {
+      id: "researcher",
+      label: "Researcher",
+      hint: "ideas, quotes, facts only",
+    },
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className="text-[11px] uppercase tracking-wider"
+        style={{ color: "var(--fg-muted)" }}
+      >
+        Mode
+      </span>
+      <div
+        className="inline-flex rounded-lg p-0.5"
+        style={{
+          background: "var(--bg-subtle)",
+          border: "1px solid var(--border)",
+        }}
+        role="radiogroup"
+        aria-label="Mode"
+      >
+        {options.map((opt) => {
+          const isSelected = opt.id === mode;
+          const has = Boolean(draftsForOutlet?.[opt.id]);
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              onClick={() => onChange(opt.id)}
+              className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+              style={{
+                background: isSelected ? "var(--surface)" : "transparent",
+                color: isSelected ? "var(--fg)" : "var(--fg-muted)",
+                boxShadow: isSelected ? "var(--shadow-sm)" : undefined,
+              }}
+              title={opt.hint}
+            >
+              {opt.label}
+              {has ? (
+                <span
+                  className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                  style={{ background: "var(--emerald)" }}
+                  aria-label="has draft"
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -173,7 +289,7 @@ function OutletPicker({
 }: {
   outlets: OutletOption[];
   selectedId: string | null;
-  draftsByOutlet: Record<string, DraftRef>;
+  draftsByOutlet: Record<string, DraftsByMode>;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -195,7 +311,8 @@ function OutletPicker({
       >
         {outlets.map((o) => {
           const isSelected = o.id === selectedId;
-          const hasDraft = Boolean(draftsByOutlet[o.id]);
+          const bucket = draftsByOutlet[o.id];
+          const hasDraft = Boolean(bucket?.drafter || bucket?.researcher);
           return (
             <button
               key={o.id}
@@ -359,7 +476,42 @@ const STAGES: Stage[] = [
   },
 ];
 
-function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
+const RESEARCH_STAGES: Stage[] = [
+  {
+    label: "Reading sources",
+    detail: "Pulling cluster items into a single timeline.",
+    ms: 800,
+  },
+  {
+    label: "Pulling angles",
+    detail: "3 to 5 distinct framings the post could take.",
+    ms: 2500,
+  },
+  {
+    label: "Lifting quotes",
+    detail: "Verbatim, attributed, capped at 30 words each.",
+    ms: 2500,
+  },
+  {
+    label: "Pulling leads",
+    detail: "Claims with source URLs for you to verify.",
+    ms: 2500,
+  },
+  {
+    label: "Polishing",
+    detail: "Persisting; opening the notes view.",
+    ms: 99_999,
+  },
+];
+
+function Drafting({
+  variant,
+  mode,
+}: {
+  variant: "drafting" | "regenerating";
+  mode: Mode;
+}) {
+  const stages = mode === "researcher" ? RESEARCH_STAGES : STAGES;
   const [stageIdx, setStageIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0);
 
@@ -369,22 +521,26 @@ function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
       const e = performance.now() - start;
       setElapsed(e);
       let cum = 0;
-      for (let i = 0; i < STAGES.length; i++) {
-        cum += STAGES[i]!.ms;
+      for (let i = 0; i < stages.length; i++) {
+        cum += stages[i]!.ms;
         if (e < cum) {
           setStageIdx(i);
           return;
         }
       }
-      setStageIdx(STAGES.length - 1);
+      setStageIdx(stages.length - 1);
     }, 150);
     return () => window.clearInterval(tick);
-  }, []);
+  }, [stages]);
 
   const headline =
-    variant === "regenerating"
-      ? "Regenerating draft"
-      : "Drafting your story";
+    mode === "researcher"
+      ? variant === "regenerating"
+        ? "Regenerating notes"
+        : "Pulling research"
+      : variant === "regenerating"
+        ? "Regenerating draft"
+        : "Drafting your story";
 
   return (
     <div
@@ -404,7 +560,7 @@ function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
             className="mt-0.5 text-xs leading-tight truncate"
             style={{ color: "var(--fg-muted)" }}
           >
-            {STAGES[stageIdx]!.label}: {STAGES[stageIdx]!.detail}
+            {stages[stageIdx]!.label}: {stages[stageIdx]!.detail}
           </div>
         </div>
         <div
@@ -430,7 +586,7 @@ function Drafting({ variant }: { variant: "drafting" | "regenerating" }) {
       </div>
 
       <ol className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
-        {STAGES.slice(0, -1).map((s, i) => {
+        {stages.slice(0, -1).map((s, i) => {
           const isDone = i < stageIdx;
           const isActive = i === stageIdx;
           const color = isDone

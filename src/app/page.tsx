@@ -89,23 +89,34 @@ export default async function TodayPage() {
       // the per-outlet draft to decide between "Open draft" and "Draft this"
       // for the selected outlet.
       const draftR = await db.execute({
-        sql: `SELECT id, outlet_id, voice_match_score, wp_post_id, wp_edit_link
+        sql: `SELECT id, outlet_id, mode, voice_match_score, wp_post_id, wp_edit_link
               FROM drafts WHERE cluster_id = ? AND user_id = ?
               ORDER BY created_at DESC`,
         args: [c.id, SINGLE_USER_ID],
       });
       const draftsByOutlet: Record<
         string,
-        { id: string; voiceMatch: number; wpEditLink: string | null }
+        Record<
+          "drafter" | "researcher",
+          { id: string; voiceMatch: number; wpEditLink: string | null } | null
+        >
       > = {};
       for (const row of draftR.rows) {
         const oid = row.outlet_id ? String(row.outlet_id) : "";
-        if (!oid || draftsByOutlet[oid]) continue;
-        draftsByOutlet[oid] = {
-          id: String(row.id),
-          voiceMatch: Number(row.voice_match_score ?? 0),
-          wpEditLink: row.wp_edit_link ? String(row.wp_edit_link) : null,
-        };
+        if (!oid) continue;
+        const mode = (String(row.mode ?? "drafter") === "researcher"
+          ? "researcher"
+          : "drafter") as "drafter" | "researcher";
+        const bucket =
+          draftsByOutlet[oid] ?? { drafter: null, researcher: null };
+        if (!bucket[mode]) {
+          bucket[mode] = {
+            id: String(row.id),
+            voiceMatch: Number(row.voice_match_score ?? 0),
+            wpEditLink: row.wp_edit_link ? String(row.wp_edit_link) : null,
+          };
+        }
+        draftsByOutlet[oid] = bucket;
       }
       const items = r.rows.map((row) => ({
         title: String(row.title),

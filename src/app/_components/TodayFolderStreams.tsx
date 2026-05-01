@@ -32,7 +32,10 @@ export interface TodayClusterPreview {
   }[];
   draftsByOutlet: Record<
     string,
-    { id: string; voiceMatch: number; wpEditLink: string | null }
+    Record<
+      "drafter" | "researcher",
+      { id: string; voiceMatch: number; wpEditLink: string | null } | null
+    >
   >;
 }
 

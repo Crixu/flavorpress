@@ -10,6 +10,7 @@ import { after } from "next/server";
 import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
+import { generateResearch } from "./researcher-generator";
 import { getRegistry } from "./capability-registry";
 import { extractStyleSheet } from "./style-sheet";
 import {
@@ -1202,22 +1203,32 @@ export async function generateDraftAction(formData: FormData) {
     );
   }
 
-  const wordCount = parseWordCount(formData.get("wordCount"));
+  const mode = parseMode(formData.get("mode"));
+  const wordCount = mode === "researcher" ? undefined : parseWordCount(formData.get("wordCount"));
 
-  // Reuse: if a draft already exists for this cluster + outlet, jump to it.
-  // Generation costs an Anthropic call; we don't pay it twice for the same
-  // cluster unless the user explicitly asks to regenerate (force=1).
+  // Reuse: if a draft of the same mode already exists for this cluster +
+  // outlet, jump to it. Drafter and researcher runs are independent because
+  // they produce different artifacts; one shouldn't shadow the other.
   const force = String(formData.get("force") ?? "") === "1";
   if (!force) {
     const existing = await db.execute({
       sql: `SELECT id FROM drafts
-            WHERE cluster_id = ? AND outlet_id = ? AND user_id = ?
+            WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = ?
             ORDER BY created_at DESC LIMIT 1`,
-      args: [clusterId, outletId, SINGLE_USER_ID],
+      args: [clusterId, outletId, SINGLE_USER_ID, mode],
     });
     if (existing.rows.length > 0) {
       redirect(`/editor/${String(existing.rows[0]!.id)}`);
     }
+  }
+
+  if (mode === "researcher") {
+    const research = await generateResearch({
+      clusterId,
+      userId: SINGLE_USER_ID,
+      outletId,
+    });
+    redirect(`/editor/${research.draftId}`);
   }
 
   const draft = await generateDraft({
@@ -1227,6 +1238,10 @@ export async function generateDraftAction(formData: FormData) {
     wordCount,
   });
   redirect(`/editor/${draft.draftId}`);
+}
+
+function parseMode(raw: FormDataEntryValue | null): "drafter" | "researcher" {
+  return String(raw ?? "") === "researcher" ? "researcher" : "drafter";
 }
 
 function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
@@ -1271,12 +1286,21 @@ export async function publishDraftToWPAction(
   const scheduleAt = scheduleAtRaw ? Number(scheduleAtRaw) : undefined;
 
   const r = await db.execute({
-    sql: `SELECT id, outlet_id, cluster_id, headline, body, state, wp_post_id, wp_edit_link
+    sql: `SELECT id, mode, outlet_id, cluster_id, headline, body, state, wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
+
+  if (String(row.mode ?? "drafter") === "researcher") {
+    // Researcher notes are research material, not a post. The editor view
+    // hides the publish UI; this server-side check enforces the same
+    // invariant against any caller that hand-crafts a request.
+    throw new Error(
+      "Research notes are not publishable. Open the cluster in Drafter mode to write a post.",
+    );
+  }
 
   if (row.wp_post_id) {
     // Already pushed once; just hand back the existing edit link so the

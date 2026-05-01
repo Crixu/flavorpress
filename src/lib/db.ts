@@ -161,10 +161,12 @@ export async function ensureSchema(): Promise<void> {
         user_id TEXT NOT NULL,
         outlet_id TEXT NOT NULL,
         capability_version_pin TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'drafter',
         headline TEXT NOT NULL,
         headline_alternates TEXT,
         body TEXT NOT NULL,
         quotes TEXT,
+        notes TEXT,
         voice_match_score REAL NOT NULL,
         angle_archive TEXT,
         angle_gap TEXT,
@@ -401,6 +403,18 @@ async function migrateLegacyTables(): Promise<void> {
         await db.execute(
           "ALTER TABLE drafts ADD COLUMN outlet_id TEXT NOT NULL DEFAULT ''",
         );
+      }
+      if (!cols.includes("mode")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] drafts: adding mode column");
+        await db.execute(
+          "ALTER TABLE drafts ADD COLUMN mode TEXT NOT NULL DEFAULT 'drafter'",
+        );
+      }
+      if (!cols.includes("notes")) {
+        // eslint-disable-next-line no-console
+        console.info("[migrate] drafts: adding notes column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN notes TEXT");
       }
     }
   } catch {
