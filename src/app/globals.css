@@ -111,6 +111,24 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+/* Peek row affordance: cheap hover/focus feedback on the headline button
+   so the user can tell the row is interactive without making the wrapper
+   div itself a fake button. */
+.fp-peek-open {
+  border-radius: calc(var(--radius-xl) - 4px);
+  padding: 4px 6px;
+  margin: -4px -6px;
+  transition: background var(--duration) var(--ease);
+}
+.fp-peek-open:hover,
+.fp-peek-open:focus-visible {
+  background: var(--bg-subtle);
+}
+.fp-peek-open:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
 .fp-card-feature {
   background: linear-gradient(135deg, #ffe3c9 0%, #ffd0b0 60%, #f7b98c 100%);
   border: 1px solid transparent;
@@ -409,6 +427,43 @@ body {
   transform-origin: center;
 }
 
+/* Today view transitions: cluster dismissal + lane reorder.
+   Each card and lane gets a `view-transition-name` set inline, so the
+   browser snapshots them before/after the state change and morphs between
+   the two. Matched pairs slide via the group; unmatched exits/enters use
+   the slight slide-fade below. Tuned a touch slower than the UA default so
+   reorder feels intentional rather than twitchy. */
+@keyframes fp-vt-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@keyframes fp-vt-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+::view-transition-old(*) {
+  animation: fp-vt-fade-out 220ms var(--ease) forwards;
+}
+::view-transition-new(*) {
+  animation: fp-vt-fade-in 220ms var(--ease) forwards;
+}
+::view-transition-group(*) {
+  animation-duration: 260ms;
+  animation-timing-function: var(--ease);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -416,6 +471,11 @@ body {
   *::after {
     transition-duration: 0ms !important;
     animation-duration: 0ms !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
 

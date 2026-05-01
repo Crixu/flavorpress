@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { dismissClusterAction, pollFolderAction } from "@/lib/v1/actions";
 import { ClusterActions } from "./ClusterActions";
@@ -21,7 +22,7 @@ export interface TodayClusterPreview {
     } | null;
   };
   folder: {
-    id: string | null;
+    id: string;
     name: string;
   };
   items: {
@@ -38,56 +39,136 @@ export interface OutletOption {
   displayName: string;
 }
 
-interface TodayFolderStream {
+export interface TodayFolderStream {
   id: string;
-  folderId: string | null;
+  folderId: string;
   name: string;
   clusters: TodayClusterPreview[];
 }
 
 interface Props {
-  previews: TodayClusterPreview[];
+  streams: TodayFolderStream[];
   outlets: OutletOption[];
   defaultOutletId: string | null;
 }
 
-const INITIAL_VISIBLE = 1;
-const MORE_STEP = 2;
+const PEEK_COUNT = 2;
 
-export function TodayFolderStreams({ previews, outlets, defaultOutletId }: Props) {
-  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
+export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props) {
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [expandedStreams, setExpandedStreams] = useState<Set<string>>(new Set());
 
-  const streams = useMemo(() => buildStreams(previews), [previews]);
+  // Filter out optimistically-dismissed clusters and lanes that have lost
+  // every cluster as a result. We re-derive on every render so the moment
+  // setDismissedIds + a view transition fire, the next paint reflects it.
+  const visibleStreams = useMemo(() => {
+    const result: TodayFolderStream[] = [];
+    for (const stream of streams) {
+      const remaining = stream.clusters.filter((c) => !dismissedIds.has(c.cluster.id));
+      if (remaining.length === 0) continue;
+      result.push({ ...stream, clusters: remaining });
+    }
+    return result;
+  }, [streams, dismissedIds]);
+
+  // Lane-level view-transition-name keeps the section in place during a
+  // dismiss; cards animate within while the surrounding lane stays anchored.
+  const compact = visibleStreams.length > 2;
+
+  // Optimistic dismiss + rollback. The card hides immediately so the user
+  // sees feedback while the server action runs; if the action throws (DB
+  // error, network blip, etc.), we put the id back so the cluster doesn't
+  // appear deleted while the server still has it as 'fired'. Wrapping
+  // both directions in startViewTransition keeps the animation symmetric.
+  const dismissOptimistically = (id: string) => {
+    applyDismissalWithTransition(() =>
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      }),
+    );
+  };
+  const restoreAfterFailure = (id: string) => {
+    applyDismissalWithTransition(() =>
+      setDismissedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      }),
+    );
+  };
 
   return (
     <div className="space-y-6">
-      {streams.map((stream) => {
-        const visibleCount = visibleCounts[stream.id] ?? INITIAL_VISIBLE;
-        const shown = stream.clusters.slice(0, visibleCount);
-        const remaining = stream.clusters.length - shown.length;
+      {visibleStreams.map((stream) => {
+        const expanded = expandedStreams.has(stream.id);
+        const heroPreview = stream.clusters[0]!;
+        const peekPreviews = expanded
+          ? stream.clusters.slice(1)
+          : stream.clusters.slice(1, 1 + PEEK_COUNT);
+        const hiddenCount = expanded ? 0 : Math.max(0, stream.clusters.length - 1 - PEEK_COUNT);
+
         return (
-          <section key={stream.id} className="space-y-3">
-            <FolderStreamHeader
-              stream={stream}
-              remaining={remaining}
-              onMore={() => {
-                setVisibleCounts((current) => ({
-                  ...current,
-                  [stream.id]: visibleCount + MORE_STEP,
-                }));
-              }}
-            />
-            <div className="space-y-4">
-              {shown.map((preview, idx) => (
-                <ClusterCard
+          <section
+            key={stream.id}
+            className="space-y-3"
+            style={{ viewTransitionName: laneTransitionName(stream.id) }}
+          >
+            <FolderStreamHeader stream={stream} compact={compact} />
+            <div className="space-y-3">
+              <ClusterCard
+                key={heroPreview.cluster.id}
+                preview={heroPreview}
+                rank={1}
+                isTop
+                outlets={outlets}
+                defaultOutletId={defaultOutletId}
+                onDismiss={dismissOptimistically}
+                onDismissFailed={restoreAfterFailure}
+              />
+              {peekPreviews.map((preview, idx) => (
+                <PeekRow
                   key={preview.cluster.id}
                   preview={preview}
-                  rank={idx + 1}
-                  isTop={idx === 0}
+                  rank={idx + 2}
                   outlets={outlets}
                   defaultOutletId={defaultOutletId}
+                  onDismiss={dismissOptimistically}
+                  onDismissFailed={restoreAfterFailure}
                 />
               ))}
+              {hiddenCount > 0 ? (
+                <button
+                  type="button"
+                  className="fp-btn fp-btn-ghost w-full justify-center"
+                  onClick={() =>
+                    setExpandedStreams((prev) => {
+                      const next = new Set(prev);
+                      next.add(stream.id);
+                      return next;
+                    })
+                  }
+                >
+                  Show {hiddenCount} more from {stream.name}
+                </button>
+              ) : null}
+              {expanded && stream.clusters.length > 1 + PEEK_COUNT ? (
+                <button
+                  type="button"
+                  className="fp-btn fp-btn-ghost w-full justify-center"
+                  onClick={() =>
+                    setExpandedStreams((prev) => {
+                      const next = new Set(prev);
+                      next.delete(stream.id);
+                      return next;
+                    })
+                  }
+                >
+                  Collapse {stream.name}
+                </button>
+              ) : null}
             </div>
           </section>
         );
@@ -96,50 +177,86 @@ export function TodayFolderStreams({ previews, outlets, defaultOutletId }: Props
   );
 }
 
-function buildStreams(previews: TodayClusterPreview[]): TodayFolderStream[] {
-  const byFolder = new Map<string, TodayFolderStream>();
-  for (const preview of previews) {
-    const id = preview.folder.id ?? "ungrouped";
-    const existing = byFolder.get(id);
-    if (existing) {
-      existing.clusters.push(preview);
-      continue;
-    }
-    byFolder.set(id, {
-      id,
-      folderId: preview.folder.id,
-      name: preview.folder.name,
-      clusters: [preview],
+// View transitions API: snapshot the DOM, apply state, animate between.
+// Falls through synchronously when the browser doesn't support it (older
+// Firefox builds) so behavior degrades to the same instant swap as before.
+function applyDismissalWithTransition(apply: () => void) {
+  if (
+    typeof document !== "undefined" &&
+    typeof (document as Document & { startViewTransition?: unknown }).startViewTransition ===
+      "function"
+  ) {
+    (
+      document as Document & {
+        startViewTransition: (cb: () => void) => unknown;
+      }
+    ).startViewTransition(() => {
+      flushSync(apply);
     });
+    return;
   }
-  return Array.from(byFolder.values()).sort((a, b) => {
-    const aScore = a.clusters[0]?.cluster.signals?.composite ?? 0;
-    const bScore = b.clusters[0]?.cluster.signals?.composite ?? 0;
-    return bScore - aScore;
-  });
+  apply();
 }
 
-function FolderStreamHeader({
-  stream,
-  remaining,
-  onMore,
-}: {
-  stream: TodayFolderStream;
-  remaining: number;
-  onMore: () => void;
-}) {
+function laneTransitionName(id: string) {
+  return `fp-lane-${cssIdent(id)}`;
+}
+
+function cardTransitionName(id: string) {
+  return `fp-cluster-${cssIdent(id)}`;
+}
+
+function cssIdent(s: string) {
+  return s.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function FolderStreamHeader({ stream, compact }: { stream: TodayFolderStream; compact: boolean }) {
   const [, startTransition] = useTransition();
   const polling = useBackgroundPolling();
   const [lastCount, setLastCount] = useState<number | null>(null);
 
   function refresh() {
     const fd = new FormData();
-    fd.set("folderId", stream.folderId ?? "");
+    fd.set("folderId", stream.folderId);
     polling.start();
     startTransition(async () => {
       const result = await pollFolderAction(fd);
       setLastCount(result.sourceCount);
     });
+  }
+
+  if (compact) {
+    return (
+      <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">{stream.name}</h2>
+          <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+            {stream.clusters.length} ready
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {polling.active ? (
+            <PollingPill
+              label={
+                lastCount === null
+                  ? "Refreshing"
+                  : lastCount === 0
+                    ? "Nothing to poll"
+                    : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
+              }
+            />
+          ) : null}
+          <button
+            type="button"
+            className="text-xs underline-offset-2 hover:underline"
+            style={{ color: "var(--fg-muted)" }}
+            onClick={refresh}
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -166,11 +283,6 @@ function FolderStreamHeader({
                   : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
             }
           />
-        ) : null}
-        {remaining > 0 ? (
-          <button type="button" className="fp-btn fp-btn-ghost" onClick={onMore}>
-            More
-          </button>
         ) : null}
         <button type="button" className="fp-btn fp-btn-ghost" onClick={refresh}>
           Refresh
@@ -204,12 +316,16 @@ function ClusterCard({
   isTop,
   outlets,
   defaultOutletId,
+  onDismiss,
+  onDismissFailed,
 }: {
   preview: TodayClusterPreview;
   rank: number;
   isTop: boolean;
   outlets: OutletOption[];
   defaultOutletId: string | null;
+  onDismiss: (id: string) => void;
+  onDismissFailed: (id: string) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -218,18 +334,27 @@ function ClusterCard({
   const fit = c.signals?.composite ?? 0;
 
   function dismiss() {
+    onDismiss(c.id);
     const fd = new FormData();
     fd.set("clusterId", c.id);
     startTransition(async () => {
-      await dismissClusterAction(fd);
-      router.refresh();
+      try {
+        await dismissClusterAction(fd);
+        router.refresh();
+      } catch (err) {
+        onDismissFailed(c.id);
+        console.error("dismissClusterAction failed", err);
+      }
     });
   }
 
   return (
     <article
       className={`fp-card ${isTop ? "fp-card-feature" : "fp-card-hover"} relative p-6`}
-      style={pending ? { opacity: 0.5 } : undefined}
+      style={{
+        opacity: pending ? 0.5 : undefined,
+        viewTransitionName: cardTransitionName(c.id),
+      }}
     >
       {isTop ? (
         <div
@@ -301,6 +426,107 @@ function ClusterCard({
         </button>
       </div>
     </article>
+  );
+}
+
+function PeekRow({
+  preview,
+  rank,
+  outlets,
+  defaultOutletId,
+  onDismiss,
+  onDismissFailed,
+}: {
+  preview: TodayClusterPreview;
+  rank: number;
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
+  onDismiss: (id: string) => void;
+  onDismissFailed: (id: string) => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [expanded, setExpanded] = useState(false);
+  const c = preview.cluster;
+  const headline = preview.items[0]?.title ?? "Untitled cluster";
+  const fit = c.signals?.composite ?? 0;
+
+  function dismiss() {
+    onDismiss(c.id);
+    const fd = new FormData();
+    fd.set("clusterId", c.id);
+    startTransition(async () => {
+      try {
+        await dismissClusterAction(fd);
+        router.refresh();
+      } catch (err) {
+        onDismissFailed(c.id);
+        console.error("dismissClusterAction failed", err);
+      }
+    });
+  }
+
+  if (expanded) {
+    return (
+      <ClusterCard
+        preview={preview}
+        rank={rank}
+        isTop={false}
+        outlets={outlets}
+        defaultOutletId={defaultOutletId}
+        onDismiss={onDismiss}
+        onDismissFailed={onDismissFailed}
+      />
+    );
+  }
+
+  // The row itself is presentational. Two real controls live inside: an
+  // expand button that wraps the rank+headline+meta, and the dismiss
+  // button. Nesting interactives is invalid HTML and breaks keyboard and
+  // screen-reader navigation; siblings keep both reachable.
+  return (
+    <div
+      className="fp-card flex flex-wrap items-center gap-3 px-4 py-3"
+      style={{
+        opacity: pending ? 0.5 : undefined,
+        viewTransitionName: cardTransitionName(c.id),
+      }}
+    >
+      <button
+        type="button"
+        className="fp-peek-open flex min-w-0 flex-1 items-center gap-3 text-left"
+        onClick={() => setExpanded(true)}
+        aria-label={`Open ${headline}`}
+      >
+        <span
+          className="text-xs tabular shrink-0"
+          style={{ color: "var(--fg-subtle)", minWidth: "1.5rem" }}
+        >
+          #{rank}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{headline}</span>
+          <span
+            className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            <span>{c.sourceCount} sources</span>
+            <span style={{ color: "var(--border-strong)" }}>·</span>
+            <span>{relativeTime(c.latestPublishedAt)}</span>
+          </span>
+        </span>
+      </button>
+      <span className="fp-chip fp-chip-emerald shrink-0">fit {fit.toFixed(2)}</span>
+      <button
+        type="button"
+        className="fp-btn fp-btn-ghost shrink-0"
+        onClick={dismiss}
+        disabled={pending}
+        aria-label={`Dismiss ${headline}`}
+      >
+        {pending ? "Dismissing" : "Not now"}
+      </button>
+    </div>
   );
 }
 
