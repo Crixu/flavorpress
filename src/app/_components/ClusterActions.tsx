@@ -42,7 +42,7 @@ const MAX_WORDS = 1500;
 
 export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOutlet }: Props) {
   const [pending, startTransition] = useTransition();
-  const [mode, setMode] = useState<Mode>("drafter");
+  const [mode, setMode] = useState<Mode>("researcher");
   const [lengthChoice, setLengthChoice] = useState<LengthChoice>(600);
   const [customWords, setCustomWords] = useState<string>("800");
   const initialOutletId =
@@ -196,14 +196,14 @@ function ModePicker({
 }) {
   const options: { id: Mode; label: string; hint: string }[] = [
     {
-      id: "drafter",
-      label: "Drafter",
-      hint: "writes the post in your voice",
-    },
-    {
       id: "researcher",
       label: "Researcher",
       hint: "ideas, quotes, facts only",
+    },
+    {
+      id: "drafter",
+      label: "Drafter",
+      hint: "writes the post in your voice",
     },
   ];
   return (
