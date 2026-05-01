@@ -15,8 +15,10 @@ import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
 import { getDisabledExtensionIds } from "@/lib/v1/settings";
+import type { ResearchNotes } from "@/lib/v1/researcher-generator";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { PublishToWpForm } from "./PublishToWpForm";
+import { ResearcherView } from "./ResearcherView";
 
 export const dynamic = "force-dynamic";
 
@@ -39,14 +41,52 @@ export default async function EditorPage({ params }: PageProps) {
     sql: `SELECT * FROM clusters WHERE id = ?`,
     args: [String(d.cluster_id)],
   });
-  const cluster = clusterR.rows[0];
-
   const itemsR = await db.execute({
     sql: `SELECT i.*, s.display_name, s.url AS source_url
           FROM items i JOIN sources s ON s.id = i.source_id
           WHERE i.cluster_id = ? ORDER BY i.published_at DESC`,
     args: [String(d.cluster_id)],
   });
+
+  const mode = String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
+  const sourceCount = clusterR.rows[0] ? Number(clusterR.rows[0].source_count) : 0;
+  const traceId = String(d.trace_id ?? "");
+
+  if (mode === "researcher") {
+    const notesRaw = d.notes ? String(d.notes) : null;
+    let notes: ResearchNotes = {
+      topic: String(d.headline ?? "Research notes"),
+      ideas: [],
+      quotes: [],
+      facts: [],
+    };
+    if (notesRaw) {
+      try {
+        notes = JSON.parse(notesRaw) as ResearchNotes;
+      } catch {
+        // Persisted JSON malformed; fall back to empty notes so the page
+        // still renders. The body HTML mirror is the user's escape hatch.
+      }
+    }
+    return (
+      <ResearcherView
+        draftId={String(d.id)}
+        topic={notes.topic || String(d.headline ?? "Research notes")}
+        notes={notes}
+        sources={itemsR.rows.map((row) => ({
+          id: String(row.id),
+          title: String(row.title),
+          display_name: row.display_name === null ? null : String(row.display_name),
+          // canonical_url is the article URL; s.url is the feed URL and would
+          // send the user to /feed/ instead of the post they wanted to read.
+          source_url: String(row.canonical_url ?? row.source_url),
+          published_at: Number(row.published_at),
+        }))}
+        traceId={traceId}
+        sourceCount={sourceCount}
+      />
+    );
+  }
 
   const initialAnnotationsByExt = await loadAllAnnotations(String(d.id));
   const totalAnnotations = Object.values(initialAnnotationsByExt).reduce(
@@ -69,10 +109,7 @@ export default async function EditorPage({ params }: PageProps) {
       }>)
     : [];
   const voiceScore = Number(d.voice_match_score ?? 0);
-  const traceId = String(d.trace_id ?? "");
-
   const voiceOk = voiceScore >= 75;
-  const sourceCount = cluster ? Number(cluster.source_count) : 0;
 
   return (
     <div className="space-y-6">

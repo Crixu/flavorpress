@@ -28,13 +28,24 @@ interface DraftRow {
   outlet_base_url: string | null;
 }
 
+interface NoteRow {
+  id: string;
+  topic: string;
+  cluster_id: string;
+  created_at: number;
+  source_count: number | null;
+  ideas: number;
+  quotes: number;
+  facts: number;
+}
+
 export default async function DraftsPage() {
   await ensureSchema();
   await ensureSingleUser();
 
   const r = await db.execute({
-    sql: `SELECT d.id, d.headline, d.cluster_id, d.outlet_id,
-                 d.voice_match_score, d.created_at,
+    sql: `SELECT d.id, d.mode, d.headline, d.cluster_id, d.outlet_id,
+                 d.voice_match_score, d.notes, d.created_at,
                  c.source_count AS source_count,
                  o.display_name AS outlet_display_name,
                  o.base_url AS outlet_base_url
@@ -46,21 +57,35 @@ export default async function DraftsPage() {
     args: [SINGLE_USER_ID],
   });
 
-  const drafts = r.rows.map(
-    (row) =>
-      ({
+  const drafts: DraftRow[] = [];
+  const notes: NoteRow[] = [];
+  for (const row of r.rows) {
+    const mode = String(row.mode ?? "drafter");
+    if (mode === "researcher") {
+      const counts = parseNoteCounts(row.notes ? String(row.notes) : null);
+      notes.push({
         id: String(row.id),
-        headline: String(row.headline),
+        topic: String(row.headline),
         cluster_id: String(row.cluster_id),
-        outlet_id: String(row.outlet_id),
-        voice_match_score: Number(row.voice_match_score ?? 0),
         created_at: Number(row.created_at),
         source_count: row.source_count === null ? null : Number(row.source_count),
-        outlet_display_name:
-          row.outlet_display_name === null ? null : String(row.outlet_display_name),
-        outlet_base_url: row.outlet_base_url === null ? null : String(row.outlet_base_url),
-      }) satisfies DraftRow,
-  );
+        ...counts,
+      });
+      continue;
+    }
+    drafts.push({
+      id: String(row.id),
+      headline: String(row.headline),
+      cluster_id: String(row.cluster_id),
+      outlet_id: String(row.outlet_id),
+      voice_match_score: Number(row.voice_match_score ?? 0),
+      created_at: Number(row.created_at),
+      source_count: row.source_count === null ? null : Number(row.source_count),
+      outlet_display_name:
+        row.outlet_display_name === null ? null : String(row.outlet_display_name),
+      outlet_base_url: row.outlet_base_url === null ? null : String(row.outlet_base_url),
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -73,7 +98,7 @@ export default async function DraftsPage() {
         </p>
       </header>
 
-      {drafts.length === 0 ? (
+      {drafts.length === 0 && notes.length === 0 ? (
         <div
           className="rounded-xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
@@ -84,7 +109,7 @@ export default async function DraftsPage() {
           </Link>{" "}
           to draft from a cluster.
         </div>
-      ) : (
+      ) : drafts.length === 0 ? null : (
         <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
           {drafts.map((d) => {
             const isStale = Date.now() - d.created_at > STALE_AFTER_MS;
@@ -134,8 +159,91 @@ export default async function DraftsPage() {
           })}
         </ul>
       )}
+
+      {notes.length > 0 ? (
+        <section className="space-y-3">
+          <header>
+            <div className="text-[11px] uppercase tracking-wider text-stone-500">
+              Research notes
+            </div>
+            <h2 className="mt-1 text-base font-semibold tracking-tight">Notes · {notes.length}</h2>
+            <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+              Ideas, verbatim quotes, and leads to verify. Notes don't push to WordPress; the post
+              is yours to write.
+            </p>
+          </header>
+          <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
+            {notes.map((n) => {
+              const isStale = Date.now() - n.created_at > STALE_AFTER_MS;
+              return (
+                <li
+                  key={n.id}
+                  className="flex items-start gap-3 px-5 py-4 transition hover:bg-stone-50"
+                >
+                  <Link href={`/editor/${n.id}`} className="flex flex-1 items-start gap-4 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="line-clamp-2 text-sm font-medium text-stone-900">
+                        {n.topic}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
+                        <span>{relativeTime(n.created_at)}</span>
+                        <span className="text-stone-300">·</span>
+                        <span>
+                          {n.ideas} ideas · {n.quotes} quotes · {n.facts} leads
+                        </span>
+                        {n.source_count !== null ? (
+                          <>
+                            <span className="text-stone-300">·</span>
+                            <span>
+                              {n.source_count} {n.source_count === 1 ? "source" : "sources"}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                    {isStale ? <StaleChip /> : null}
+                  </Link>
+                  <form action={deleteDraftAction}>
+                    <input type="hidden" name="draftId" value={n.id} />
+                    <button
+                      type="submit"
+                      className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                      title="Delete these notes"
+                      aria-label={`Delete notes: ${n.topic}`}
+                    >
+                      Delete
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
+}
+
+function parseNoteCounts(raw: string | null): {
+  ideas: number;
+  quotes: number;
+  facts: number;
+} {
+  if (!raw) return { ideas: 0, quotes: 0, facts: 0 };
+  try {
+    const parsed = JSON.parse(raw) as {
+      ideas?: unknown[];
+      quotes?: unknown[];
+      facts?: unknown[];
+    };
+    return {
+      ideas: Array.isArray(parsed.ideas) ? parsed.ideas.length : 0,
+      quotes: Array.isArray(parsed.quotes) ? parsed.quotes.length : 0,
+      facts: Array.isArray(parsed.facts) ? parsed.facts.length : 0,
+    };
+  } catch {
+    return { ideas: 0, quotes: 0, facts: 0 };
+  }
 }
 
 function StaleChip() {

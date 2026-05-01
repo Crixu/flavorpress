@@ -31,7 +31,13 @@ export interface TodayClusterPreview {
     sourceUrl: string;
     displayName: string;
   }[];
-  draftsByOutlet: Record<string, { id: string; voiceMatch: number; wpEditLink: string | null }>;
+  draftsByOutlet: Record<
+    string,
+    Record<
+      "drafter" | "researcher",
+      { id: string; voiceMatch: number; wpEditLink: string | null } | null
+    >
+  >;
 }
 
 export interface OutletOption {
