@@ -804,6 +804,14 @@ export async function deleteDraftAction(formData: FormData) {
     sql: `DELETE FROM originality_results WHERE draft_id = ?`,
     args: [draftId],
   });
+  await db.execute({
+    sql: `DELETE FROM related_image_results WHERE draft_id = ?`,
+    args: [draftId],
+  });
+  await db.execute({
+    sql: `DELETE FROM related_image_runs WHERE draft_id = ?`,
+    args: [draftId],
+  });
   const del = await db.execute({
     sql: `DELETE FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],

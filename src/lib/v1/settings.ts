@@ -12,6 +12,7 @@ import { db, ensureSchema } from "../db";
 export const SETTING_KEYS = {
   anthropicApiKey: "anthropic_api_key",
   anthropicDraftModel: "anthropic_draft_model",
+  relatedImagesLicenseFilter: "related_images_license_filter",
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];

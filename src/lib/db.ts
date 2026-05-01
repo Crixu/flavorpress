@@ -301,6 +301,39 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_trace_log_trace ON trace_log(trace_id, occurred_at)`,
 
+      // Related-images extension cache. Each row is one Openverse hit
+      // surfaced into the editor's right rail; the extension persists
+      // results so a search survives page reload without re-billing the
+      // upstream provider. License columns mirror the Openverse fields
+      // so the panel can render attribution + a license badge offline.
+      `CREATE TABLE IF NOT EXISTS related_image_results (
+        id TEXT PRIMARY KEY,
+        draft_id TEXT NOT NULL,
+        result_index INTEGER NOT NULL,
+        image_url TEXT NOT NULL,
+        thumbnail_url TEXT NOT NULL,
+        source_url TEXT NOT NULL,
+        source_provider TEXT,
+        title TEXT,
+        creator TEXT,
+        creator_url TEXT,
+        license_code TEXT NOT NULL,
+        license_version TEXT,
+        license_url TEXT,
+        width INTEGER,
+        height INTEGER,
+        searched_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_related_image_results_draft ON related_image_results(draft_id, result_index)`,
+
+      // Per-draft run marker for the related-images extension. A run that
+      // yielded zero hits still has a row here, so the panel can render
+      // "searched Xm ago" instead of looking like it was never run.
+      `CREATE TABLE IF NOT EXISTS related_image_runs (
+        draft_id TEXT PRIMARY KEY,
+        searched_at INTEGER NOT NULL
+      )`,
+
       // App-level settings the user can edit from /settings instead of .env.
       // Single-user prototype so we keep this keyed only by `key`; values are
       // stored as TEXT (matches the v1-alpha plaintext approach used for
