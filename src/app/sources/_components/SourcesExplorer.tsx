@@ -20,6 +20,7 @@ import {
 } from "@/lib/v1/actions";
 import { SubmitButton } from "../../_components/SubmitButton";
 import { PollSourceButton } from "./PollSourceButton";
+import { TrustBoostControl } from "./TrustBoostControl";
 
 interface FolderRow {
   id: string;
@@ -194,6 +195,12 @@ function ExplorerRow({
             {row.last_error}
           </div>
         ) : null}
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-stone-500">
+            Trust
+          </span>
+          <TrustBoostControl sourceId={row.id} trust={row.trust_score} />
+        </div>
       </div>
       <div className="col-span-1">
         <span

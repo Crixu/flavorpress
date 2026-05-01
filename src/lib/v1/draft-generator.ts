@@ -20,6 +20,7 @@ import { fingerprintText, voiceMatchScore } from "./style-sheet";
 import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
+import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import type { DraftRenderedPayload, Item, VoiceProfile } from "./types";
 const VOICE_MATCH_FLOOR = 75; // accept threshold (0-100)
 const STREAMING_VOICE_FLOOR = 0.5; // mid-flight Burrows' Delta cutoff
@@ -204,6 +205,8 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     sql: `UPDATE clusters SET state = 'drafted' WHERE id = ?`,
     args: [input.clusterId],
   });
+
+  await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated);
 
   await getBus().emit<DraftRenderedPayload>(
     "draft.rendered",

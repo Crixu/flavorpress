@@ -23,6 +23,7 @@ import {
 } from "@/lib/v1/actions";
 import { listOutlets, getOutletIdsForSource } from "@/lib/v1/outlets";
 import { PollSourceButton } from "../_components/PollSourceButton";
+import { TrustBoostControl } from "../_components/TrustBoostControl";
 import { SourceTitleEditor } from "./_components/SourceTitleEditor";
 
 export const dynamic = "force-dynamic";
@@ -184,6 +185,21 @@ export default async function SourceDetailPage({ params }: PageProps) {
           }
           value={String(Number(source.clusters_joined))}
         />
+      </section>
+
+      <section className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-white px-4 py-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-stone-500">
+            Boost trust
+          </div>
+          <div className="text-[12px] text-stone-600">
+            Nudge ±0.1 per click. Higher = this source counts for more when
+            clusters fire; lower = noisier sources stop dragging the inbox.
+          </div>
+        </div>
+        <div className="ml-auto">
+          <TrustBoostControl sourceId={id} trust={trust} size="md" />
+        </div>
       </section>
 
       {isPaused ? (
