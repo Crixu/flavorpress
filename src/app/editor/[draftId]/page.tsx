@@ -17,6 +17,7 @@ import { ExtensionsPanels } from "@/extensions/Panels";
 import { getDisabledExtensionIds } from "@/lib/v1/settings";
 import type { ResearchNotes } from "@/lib/v1/researcher-generator";
 import { HeadlineSelector } from "./HeadlineSelector";
+import { ParagraphRewriter } from "./ParagraphRewriter";
 import { PublishToWpForm } from "./PublishToWpForm";
 import { PullFromWpForm } from "./PullFromWpForm";
 import { ResearcherView } from "./ResearcherView";
@@ -285,6 +286,11 @@ export default async function EditorPage({ params }: PageProps) {
                 bodyHtml={String(d.body ?? "")}
                 initialAnnotationsByExt={initialAnnotationsByExt}
                 enabledExtensionIds={enabledExtensionIds}
+              />
+              <ParagraphRewriter
+                draftId={String(d.id)}
+                bodyHtml={String(d.body ?? "")}
+                locked={Boolean(d.wp_post_id)}
               />
 
               {quotes.length > 0 ? (
