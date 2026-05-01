@@ -107,7 +107,32 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       />
 
       <ExtensionsSection disabledExtensionIds={snapshot.disabledExtensionIds} />
+
+      <ExportSection />
     </div>
+  );
+}
+
+function ExportSection() {
+  return (
+    <section className="fp-card p-5 space-y-3">
+      <div>
+        <div className="text-base font-semibold">Export your data</div>
+        <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+          Download a JSON snapshot of your drafts, voice profiles, outlets, source folders, sources,
+          and source-to-outlet assignments. Application Passwords and other secrets are stripped
+          before download.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <a className="fp-btn fp-btn-primary" href="/api/export" download>
+          Download export
+        </a>
+        <span className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
+          Generated on demand. Nothing is stored on disk.
+        </span>
+      </div>
+    </section>
   );
 }
 
