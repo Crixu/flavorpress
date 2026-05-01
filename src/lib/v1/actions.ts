@@ -12,7 +12,7 @@ import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
 import { rerollHeadlines } from "./headline-reroll";
 import { rewriteParagraph } from "./paragraph-rewrite";
-import { generateResearch } from "./researcher-generator";
+import { generateResearch, type ResearchNotes } from "./researcher-generator";
 import { getRegistry } from "./capability-registry";
 import { extractStyleSheet } from "./style-sheet";
 import {
@@ -1521,6 +1521,168 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
   revalidatePath(`/editor/${draftId}`);
   revalidatePath("/sources");
   return { editLink: result.editLink };
+}
+
+/**
+ * Send a researcher-mode draft to WordPress as a starting-point post body.
+ * The editor writes the actual prose in WordPress; FlavorPress hands over the
+ * angles, verbatim quotes, leads, and the source list as a structured scaffold
+ * the editor can mine and overwrite.
+ *
+ * One-shot: subsequent calls reopen the existing WP edit link instead of
+ * creating a duplicate, since drafting now lives in WordPress.
+ */
+export async function sendResearchToWPAction(formData: FormData): Promise<{ editLink: string }> {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const r = await db.execute({
+    sql: `SELECT id, mode, outlet_id, cluster_id, headline, notes,
+                 wp_post_id, wp_edit_link
+          FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("Draft not found.");
+  const row = r.rows[0]!;
+
+  if (String(row.mode ?? "drafter") !== "researcher") {
+    throw new Error("This action is only for researcher notes.");
+  }
+
+  if (row.wp_edit_link) {
+    return { editLink: String(row.wp_edit_link) };
+  }
+
+  const outletId = String(row.outlet_id ?? "");
+  if (!outletId) throw new Error("Draft is not bound to an outlet.");
+  const creds = await getOutletCredentials(outletId);
+  if (!creds) {
+    throw new Error(
+      "Outlet has no stored credentials. Reconnect the outlet on /voice and try again.",
+    );
+  }
+
+  const itemsR = await db.execute({
+    sql: `SELECT i.title, i.canonical_url, s.display_name, s.url AS source_url
+          FROM items i JOIN sources s ON s.id = i.source_id
+          WHERE i.cluster_id = ? ORDER BY i.published_at DESC`,
+    args: [String(row.cluster_id ?? "")],
+  });
+
+  const fallbackTopic = String(row.headline ?? "Research notes");
+  const notesRaw = row.notes ? String(row.notes) : null;
+  let notes: ResearchNotes = {
+    topic: fallbackTopic,
+    ideas: [],
+    quotes: [],
+    facts: [],
+  };
+  if (notesRaw) {
+    try {
+      notes = JSON.parse(notesRaw) as ResearchNotes;
+    } catch {
+      // Persisted JSON malformed; fall back to empty notes. The editor still
+      // gets the source list and can write from scratch in WP.
+    }
+  }
+
+  const sources = itemsR.rows.map((s) => ({
+    title: String(s.title),
+    canonicalUrl: String(s.canonical_url ?? s.source_url),
+    displayName: s.display_name === null ? null : String(s.display_name),
+  }));
+  const handoffHtml = renderResearchHandoffHtml(notes, sources);
+  const headline = notes.topic || fallbackTopic;
+
+  const result = await publishToWordPress({
+    creds,
+    title: headline,
+    contentHtml: handoffHtml,
+    status: "draft",
+  });
+
+  const contentHash = wpRoundTripBodyHash(handoffHtml);
+  const now = Date.now();
+  await db.execute({
+    sql: `UPDATE drafts
+          SET wp_post_id = ?, wp_edit_link = ?,
+              wp_synced_at = ?, wp_modified_at = ?, wp_content_hash = ?,
+              state = ?, edited_at = ?
+          WHERE id = ? AND user_id = ?`,
+    args: [
+      result.wpPostId,
+      result.editLink,
+      now,
+      result.modifiedAt ?? now,
+      contentHash,
+      "in-wordpress",
+      now,
+      draftId,
+      SINGLE_USER_ID,
+    ],
+  });
+
+  revalidatePath(`/editor/${draftId}`);
+  return { editLink: result.editLink };
+}
+
+interface HandoffSource {
+  title: string;
+  canonicalUrl: string;
+  displayName: string | null;
+}
+
+function renderResearchHandoffHtml(notes: ResearchNotes, sources: HandoffSource[]): string {
+  const parts: string[] = [];
+  parts.push(
+    `<p><em>Source notes from FlavorPress. Replace this paragraph with your draft and lift quotes, leads, and links from the sections below.</em></p>`,
+  );
+  if (notes.ideas.length > 0) {
+    parts.push(`<p><strong>Angles</strong></p>`);
+    for (const idea of notes.ideas) {
+      const angle = escapeHandoffHtml(idea.angle);
+      const rationale = idea.rationale ? `; ${escapeHandoffHtml(idea.rationale)}` : "";
+      parts.push(`<p>${angle}${rationale}</p>`);
+    }
+  }
+  if (notes.quotes.length > 0) {
+    parts.push(`<p><strong>Verbatim quotes</strong></p>`);
+    for (const q of notes.quotes) {
+      const cite = q.speaker ? `${escapeHandoffHtml(q.speaker)}, ` : "";
+      const url = escapeHandoffHtml(q.sourceUrl);
+      parts.push(
+        `<blockquote><p>&ldquo;${escapeHandoffHtml(q.text)}&rdquo; ${cite}<a href="${url}">source</a></p></blockquote>`,
+      );
+    }
+  }
+  if (notes.facts.length > 0) {
+    parts.push(`<p><strong>Leads to verify</strong></p>`);
+    for (const f of notes.facts) {
+      parts.push(
+        `<p>${escapeHandoffHtml(f.text)} <a href="${escapeHandoffHtml(f.sourceUrl)}">verify</a></p>`,
+      );
+    }
+  }
+  if (sources.length > 0) {
+    parts.push(`<p><strong>Sources</strong></p>`);
+    for (const s of sources) {
+      const label = s.displayName ?? hostFromUrl(s.canonicalUrl);
+      parts.push(
+        `<p>${escapeHandoffHtml(label)}: <a href="${escapeHandoffHtml(s.canonicalUrl)}">${escapeHandoffHtml(s.title)}</a></p>`,
+      );
+    }
+  }
+  return parts.join("\n");
+}
+
+function escapeHandoffHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function stripHtml(s: string): string {
