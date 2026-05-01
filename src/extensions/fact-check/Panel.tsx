@@ -369,10 +369,7 @@ function ClaimFixActions({
       style={{ background: "var(--bg-subtle)", border: "1px solid var(--border)" }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div
-        className="text-[10.5px] uppercase tracking-wider"
-        style={{ color: "var(--fg-subtle)" }}
-      >
+      <div className="text-[10.5px] uppercase tracking-wider" style={{ color: "var(--fg-subtle)" }}>
         Suggested rewrite
       </div>
       <p
@@ -384,10 +381,7 @@ function ClaimFixActions({
       >
         {stripHtmlForPreview(suggestion.replacement)}
       </p>
-      <p
-        className="mt-2 text-[11.5px] leading-snug"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "var(--fg-muted)" }}>
         {suggestion.rationale}
       </p>
       <div className="mt-2.5 flex flex-wrap items-center gap-2">

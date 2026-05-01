@@ -343,8 +343,7 @@ Hard rules:
   }
   const original =
     typeof parsed.original_html_substring === "string" ? parsed.original_html_substring : "";
-  const replacement =
-    typeof parsed.replacement_html === "string" ? parsed.replacement_html : "";
+  const replacement = typeof parsed.replacement_html === "string" ? parsed.replacement_html : "";
   const rationale =
     typeof parsed.rationale === "string" && parsed.rationale.trim().length > 0
       ? parsed.rationale.trim()

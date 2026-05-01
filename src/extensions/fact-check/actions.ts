@@ -79,9 +79,7 @@ export interface ApplyResult {
   ranAt: number | null;
 }
 
-export async function applyFactCheckFixAction(
-  formData: FormData,
-): Promise<ApplyResult | RunError> {
+export async function applyFactCheckFixAction(formData: FormData): Promise<ApplyResult | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   const claimId = String(formData.get("claimId") ?? "");
   const original = String(formData.get("original") ?? "");
