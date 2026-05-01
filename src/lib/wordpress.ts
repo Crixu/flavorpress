@@ -426,6 +426,14 @@ export interface PublishResult {
   wpPostId: number;
   url: string;
   editLink: string;
+  modifiedAt?: number;
+}
+
+function parseModifiedGmt(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  // modified_gmt has no timezone suffix; treat it as UTC.
+  const modifiedAt = Date.parse(`${raw}Z`);
+  return Number.isFinite(modifiedAt) ? modifiedAt : undefined;
 }
 
 /**
@@ -485,24 +493,136 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
     body.date = new Date(input.scheduleAt).toISOString();
   }
 
-  const res = await fetch(`${root(input.creds)}/wp-json/wp/v2/posts`, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader(input.creds),
-      "Content-Type": "application/json",
+  const res = await fetch(
+    `${root(input.creds)}/wp-json/wp/v2/posts?context=edit&_fields=id,link,modified_gmt`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: authHeader(input.creds),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+  );
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`WP publish failed: ${res.status} ${text.slice(0, 200)}`);
   }
-  const post = (await res.json()) as { id: number; link: string };
+  const post = (await res.json()) as { id: number; link: string; modified_gmt?: string };
   return {
     wpPostId: post.id,
     url: post.link,
     editLink: `${root(input.creds)}/wp-admin/post.php?post=${post.id}&action=edit`,
+    modifiedAt: parseModifiedGmt(post.modified_gmt),
   };
+}
+
+export interface UpdateInput {
+  creds: WPCredentials;
+  postId: number;
+  title: string;
+  contentHtml: string;
+  status?: WPPostStatus;
+}
+
+/**
+ * PUT an existing post. Used by the round-trip sync: after a Pull from WP,
+ * the user runs fact-check or related-images locally, then pushes the
+ * updated body back to the same WP post instead of creating a new one.
+ */
+export async function updateWordPressPost(input: UpdateInput): Promise<PublishResult> {
+  const body: Record<string, unknown> = {
+    title: input.title,
+    content: htmlToBlocks(input.contentHtml),
+  };
+  if (input.status) body.status = input.status;
+
+  const res = await fetch(
+    `${root(input.creds)}/wp-json/wp/v2/posts/${input.postId}?context=edit&_fields=id,link,modified_gmt`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: authHeader(input.creds),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`WP update failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  const post = (await res.json()) as { id: number; link: string; modified_gmt?: string };
+  return {
+    wpPostId: post.id,
+    url: post.link,
+    editLink: `${root(input.creds)}/wp-admin/post.php?post=${post.id}&action=edit`,
+    modifiedAt: parseModifiedGmt(post.modified_gmt),
+  };
+}
+
+export interface FetchedPost {
+  id: number;
+  titleRaw: string;
+  contentRaw: string;
+  modifiedAt: number;
+  link: string;
+}
+
+/**
+ * GET a post in edit context so we receive `title.raw` and `content.raw`
+ * (raw block markup) instead of the rendered HTML. The user must have
+ * edit_posts on this post; the Application Password the outlet was
+ * connected with already implies that.
+ */
+export async function fetchPostFromWP(creds: WPCredentials, postId: number): Promise<FetchedPost> {
+  const url = `${root(creds)}/wp-json/wp/v2/posts/${postId}?context=edit&_fields=id,title,content,modified_gmt,link`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(creds) },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`WP fetch failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  const post = (await res.json()) as {
+    id: number;
+    title?: { raw?: string; rendered?: string };
+    content?: { raw?: string; rendered?: string };
+    modified_gmt?: string;
+    link?: string;
+  };
+  const titleRaw = String(post.title?.raw ?? post.title?.rendered ?? "");
+  const contentRaw = String(post.content?.raw ?? post.content?.rendered ?? "");
+  const modifiedAt = parseModifiedGmt(post.modified_gmt);
+  return {
+    id: post.id,
+    titleRaw,
+    contentRaw,
+    modifiedAt: modifiedAt ?? Date.now(),
+    link: String(post.link ?? ""),
+  };
+}
+
+/**
+ * Strip Gutenberg block delimiter comments back to inline HTML. Lossy by
+ * design: void blocks (separator, spacer, image-without-fallback) leave
+ * nothing behind, and block attribute JSON is discarded. Acceptable for
+ * the prototype because a re-push runs the body through `htmlToBlocks`
+ * again, which only knows how to wrap `<p>` and `<blockquote>`.
+ *
+ * The intent is that the local `body` column stays plain HTML so the
+ * fact-check claim-text substring search keeps working.
+ */
+export function blocksToHtml(raw: string): string {
+  if (!raw) return "";
+  return (
+    raw
+      // Drop opening, closing, and self-closing block delimiters.
+      .replace(/<!--\s*\/?wp:[^>]*-->/g, "")
+      // Collapse whitespace runs the comments leave behind.
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 /**

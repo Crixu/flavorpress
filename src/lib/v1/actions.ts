@@ -15,15 +15,20 @@ import { generateResearch } from "./researcher-generator";
 import { getRegistry } from "./capability-registry";
 import { extractStyleSheet } from "./style-sheet";
 import {
+  blocksToHtml,
   encodePreflight,
   fetchHomepageProse,
+  fetchPostFromWP,
   fetchSiteIdentity,
+  htmlToBlocks,
   listRecentPosts,
   MIN_VOICE_TRAIN_POSTS,
   preflightWordPress,
   probeWordPress,
   publishToWordPress,
+  updateWordPressPost,
 } from "../wordpress";
+import { createHash } from "node:crypto";
 import { createAnthropicClient, extractText, MODEL } from "../anthropic";
 import {
   stageOutlet,
@@ -1146,14 +1151,19 @@ export async function selectDraftHeadlineAction(formData: FormData) {
   if (!headline) throw new Error("headline required.");
 
   const r = await db.execute({
-    sql: `SELECT headline, headline_alternates, wp_post_id FROM drafts
+    sql: `SELECT headline, headline_alternates, wp_post_id, wp_synced_at FROM drafts
           WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
-  if (row.wp_post_id) {
-    throw new Error("Headline already sent to WordPress. Edit the title in WordPress.");
+  if (row.wp_post_id && !row.wp_synced_at) {
+    // Just-pushed draft, no pull yet: WP is the canonical surface and the
+    // user is editing there. Refuse to overwrite. Once they Pull from WP,
+    // wp_synced_at is set and headline edits flow through to the next push.
+    throw new Error(
+      "Headline already sent to WordPress. Pull from WP first if you want to edit it here.",
+    );
   }
   const current = String(row.headline ?? "");
   if (current === headline) return;
@@ -1260,6 +1270,102 @@ function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
   return Math.round(n);
 }
 
+function draftBodyHash(bodyHtml: string): string {
+  return createHash("sha256").update(bodyHtml).digest("hex");
+}
+
+function wpRoundTripBodyHash(bodyHtml: string): string {
+  return draftBodyHash(blocksToHtml(htmlToBlocks(bodyHtml)));
+}
+
+/**
+ * Pull the post body and title back from WordPress into the local draft.
+ *
+ * Round-trip lifecycle: the user pushes the draft to WP, refines copy in
+ * wp-admin, then comes back here to re-run fact-check or related-images.
+ * Without a sync, those tools would either be hard-blocked (today's
+ * behaviour) or operate on stale local content and clobber the user's WP
+ * edits on the next push. This action makes WP the source of truth for
+ * body and headline at sync time.
+ *
+ * Conflict policy is "WP wins" by construction; any local body changes
+ * since the last sync are discarded. The only mutations the local body
+ * can have between syncs are extension-tool runs (fact-check fixes,
+ * related-image inserts), and those are reproducible. The user's wp-admin
+ * typing is not.
+ *
+ * The pull is lossy. WP returns Gutenberg block markup; we strip the
+ * delimiter comments and store plain HTML so the fact-check claim-text
+ * substring search keeps working. Custom blocks added in wp-admin
+ * (cover, columns, embeds) lose their wrappers; the next push will rebuild
+ * paragraph/quote wrappers but won't reconstruct those richer blocks.
+ *
+ * Form fields: draftId (required).
+ */
+export async function pullFromWPAction(formData: FormData): Promise<void> {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const r = await db.execute({
+    sql: `SELECT id, outlet_id, wp_post_id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("Draft not found.");
+  const row = r.rows[0]!;
+  const wpPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
+  if (!wpPostId) {
+    throw new Error("Draft has not been pushed to WordPress yet; nothing to pull.");
+  }
+
+  const outletId = String(row.outlet_id ?? "");
+  if (!outletId) throw new Error("Draft is not bound to an outlet.");
+  const creds = await getOutletCredentials(outletId);
+  if (!creds) {
+    throw new Error(
+      "Outlet has no stored credentials. Reconnect the outlet on /voice and try again.",
+    );
+  }
+
+  const post = await fetchPostFromWP(creds, wpPostId);
+  const bodyHtml = blocksToHtml(post.contentRaw);
+  const headline = post.titleRaw.trim();
+  const contentHash = draftBodyHash(bodyHtml);
+  const now = Date.now();
+
+  await db.execute({
+    sql: `UPDATE drafts
+          SET headline = ?, body = ?,
+              wp_synced_at = ?, wp_modified_at = ?, wp_content_hash = ?,
+              edited_at = ?
+          WHERE id = ? AND user_id = ?`,
+    args: [headline, bodyHtml, now, post.modifiedAt, contentHash, now, draftId, SINGLE_USER_ID],
+  });
+
+  // Extension state is keyed to the previous body's substrings; after a
+  // pull, claim_text for fact-check claims may no longer occur in the body
+  // and related-image queries are based on stale headline/body. Clear both
+  // so the editor presents an honest "not run since sync" state.
+  await db.execute({
+    sql: `DELETE FROM fact_check_claims WHERE draft_id = ?`,
+    args: [draftId],
+  });
+  await db.execute({
+    sql: `DELETE FROM fact_check_results WHERE draft_id = ?`,
+    args: [draftId],
+  });
+  await db.execute({
+    sql: `DELETE FROM related_image_results WHERE draft_id = ?`,
+    args: [draftId],
+  });
+  await db.execute({
+    sql: `DELETE FROM related_image_runs WHERE draft_id = ?`,
+    args: [draftId],
+  });
+
+  revalidatePath(`/editor/${draftId}`);
+}
+
 /**
  * Push the rendered draft to the connected outlet as a WordPress post.
  * Default status is "draft" — the user lands on the WP edit screen, reads
@@ -1274,6 +1380,10 @@ function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
  *
  * Persists wp_post_id and wp_edit_link on the drafts row so the editor
  * can show "Open in WordPress" instead of "Publish" on subsequent visits.
+ *
+ * On a draft that already has wp_post_id, the action does a PUT instead
+ * of a POST: the same WP post receives the updated title and body, and
+ * the editor can keep refining it locally between WP edits.
  */
 export async function publishDraftToWPAction(formData: FormData): Promise<{ editLink: string }> {
   await ensureSchema();
@@ -1288,7 +1398,8 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
   const scheduleAt = scheduleAtRaw ? Number(scheduleAtRaw) : undefined;
 
   const r = await db.execute({
-    sql: `SELECT id, mode, outlet_id, cluster_id, headline, body, state, wp_post_id, wp_edit_link
+    sql: `SELECT id, mode, outlet_id, cluster_id, headline, body, state,
+                 wp_post_id, wp_edit_link, wp_synced_at, wp_modified_at, wp_content_hash
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
@@ -1304,13 +1415,6 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     );
   }
 
-  if (row.wp_post_id) {
-    // Already pushed once; just hand back the existing edit link so the
-    // client can open WordPress in a new tab.
-    revalidatePath(`/editor/${draftId}`);
-    return { editLink: String(row.wp_edit_link ?? "") };
-  }
-
   const outletId = String(row.outlet_id ?? "");
   if (!outletId) throw new Error("Draft is not bound to an outlet.");
   const creds = await getOutletCredentials(outletId);
@@ -1320,32 +1424,76 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     );
   }
 
-  const result = await publishToWordPress({
-    creds,
-    title: String(row.headline ?? ""),
-    contentHtml: String(row.body ?? ""),
-    status,
-    scheduleAt,
-  });
+  const headline = String(row.headline ?? "");
+  const body = String(row.body ?? "");
+  const existingPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
 
+  if (existingPostId) {
+    const lastContentHash = row.wp_content_hash ? String(row.wp_content_hash) : "";
+    if (!row.wp_synced_at || !lastContentHash) {
+      throw new Error("Pull the latest version from WordPress before pushing an update.");
+    }
+
+    const remotePost = await fetchPostFromWP(creds, existingPostId);
+    const remoteBodyHash = draftBodyHash(blocksToHtml(remotePost.contentRaw));
+    const lastModifiedAt = row.wp_modified_at ? Number(row.wp_modified_at) : null;
+    const remoteChanged =
+      remoteBodyHash !== lastContentHash ||
+      (lastModifiedAt !== null && remotePost.modifiedAt > lastModifiedAt);
+    if (remoteChanged) {
+      throw new Error(
+        "WordPress has newer edits. Pull from WP before pushing an update from FlavorPress.",
+      );
+    }
+  }
+
+  const result = existingPostId
+    ? await updateWordPressPost({
+        creds,
+        postId: existingPostId,
+        title: headline,
+        contentHtml: body,
+        // Update keeps the existing post status by default; only force when
+        // the caller explicitly asked to publish or schedule.
+        status: status === "draft" ? undefined : status,
+      })
+    : await publishToWordPress({
+        creds,
+        title: headline,
+        contentHtml: body,
+        status,
+        scheduleAt,
+      });
+
+  const contentHash = wpRoundTripBodyHash(body);
+  const now = Date.now();
   await db.execute({
     sql: `UPDATE drafts
           SET wp_post_id = ?, wp_edit_link = ?,
+              wp_synced_at = ?, wp_modified_at = ?, wp_content_hash = ?,
               state = ?, edited_at = ?
           WHERE id = ? AND user_id = ?`,
     args: [
       result.wpPostId,
       result.editLink,
+      now,
+      result.modifiedAt ?? now,
+      contentHash,
       status === "publish" ? "published" : "in-wordpress",
-      Date.now(),
+      now,
       draftId,
       SINGLE_USER_ID,
     ],
   });
 
-  const clusterId = row.cluster_id ? String(row.cluster_id) : null;
-  if (clusterId) {
-    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished);
+  if (!existingPostId) {
+    // First push: bump source-trust for the cluster. Re-pushes don't earn
+    // additional trust; the trust delta is tied to "this story shipped",
+    // not "the user kept editing it".
+    const clusterId = row.cluster_id ? String(row.cluster_id) : null;
+    if (clusterId) {
+      await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished);
+    }
   }
 
   revalidatePath(`/editor/${draftId}`);

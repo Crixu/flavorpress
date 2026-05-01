@@ -177,6 +177,9 @@ export async function ensureSchema(): Promise<void> {
         edit_distance_from_original REAL,
         wp_post_id INTEGER,
         wp_edit_link TEXT,
+        wp_synced_at INTEGER,
+        wp_modified_at INTEGER,
+        wp_content_hash TEXT,
         state TEXT NOT NULL DEFAULT 'pre-rendered'
       )`,
       `CREATE INDEX IF NOT EXISTS idx_drafts_user_cluster ON drafts(user_id, cluster_id)`,
@@ -409,6 +412,23 @@ async function migrateLegacyTables(): Promise<void> {
         // eslint-disable-next-line no-console
         console.info("[migrate] drafts: adding notes column");
         await db.execute("ALTER TABLE drafts ADD COLUMN notes TEXT");
+      }
+      // WP round-trip sync columns. wp_synced_at is the local clock at the
+      // last successful pull or push; wp_modified_at mirrors WP's post.modified
+      // so we can detect WP-side changes between syncs; wp_content_hash is the
+      // sha256 of the body as it was at the last sync, used to tell whether
+      // the local body has drifted since.
+      if (!cols.includes("wp_synced_at")) {
+        console.info("[migrate] drafts: adding wp_synced_at column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN wp_synced_at INTEGER");
+      }
+      if (!cols.includes("wp_modified_at")) {
+        console.info("[migrate] drafts: adding wp_modified_at column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN wp_modified_at INTEGER");
+      }
+      if (!cols.includes("wp_content_hash")) {
+        console.info("[migrate] drafts: adding wp_content_hash column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN wp_content_hash TEXT");
       }
     }
   } catch {

@@ -18,6 +18,7 @@ import { getDisabledExtensionIds } from "@/lib/v1/settings";
 import type { ResearchNotes } from "@/lib/v1/researcher-generator";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { PublishToWpForm } from "./PublishToWpForm";
+import { PullFromWpForm } from "./PullFromWpForm";
 import { ResearcherView } from "./ResearcherView";
 
 export const dynamic = "force-dynamic";
@@ -146,14 +147,19 @@ export default async function EditorPage({ params }: PageProps) {
             {traceId.slice(0, 8) || "—"}
           </span>
           {d.wp_edit_link ? (
-            <a
-              href={String(d.wp_edit_link)}
-              target="_blank"
-              rel="noreferrer"
-              className="fp-btn fp-btn-primary"
-            >
-              Open in WordPress →
-            </a>
+            <>
+              <PullFromWpForm draftId={String(d.id)} className="fp-btn" pendingLabel="Pulling">
+                Pull from WP
+              </PullFromWpForm>
+              <a
+                href={String(d.wp_edit_link)}
+                target="_blank"
+                rel="noreferrer"
+                className="fp-btn fp-btn-primary"
+              >
+                Open in WordPress →
+              </a>
+            </>
           ) : (
             <PublishToWpForm
               draftId={String(d.id)}
@@ -271,7 +277,7 @@ export default async function EditorPage({ params }: PageProps) {
                 draftId={String(d.id)}
                 headline={String(d.headline)}
                 alternates={headlineAlternates}
-                locked={Boolean(d.wp_post_id)}
+                locked={Boolean(d.wp_post_id) && !d.wp_synced_at}
               />
 
               <ExtensionsArticle
@@ -454,15 +460,34 @@ export default async function EditorPage({ params }: PageProps) {
             {/* Publish actions */}
             <div className="space-y-2 pt-1">
               {d.wp_edit_link ? (
-                <a
-                  href={String(d.wp_edit_link)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="fp-btn fp-btn-primary w-full"
-                  style={{ width: "100%" }}
-                >
-                  Open in WordPress →
-                </a>
+                <>
+                  <a
+                    href={String(d.wp_edit_link)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="fp-btn fp-btn-primary w-full"
+                    style={{ width: "100%" }}
+                  >
+                    Open in WordPress →
+                  </a>
+                  <PullFromWpForm
+                    draftId={String(d.id)}
+                    className="fp-btn w-full"
+                    style={{ width: "100%" }}
+                    pendingLabel="Pulling from WP"
+                  >
+                    Pull from WP
+                  </PullFromWpForm>
+                  {d.wp_synced_at ? (
+                    <PublishToWpForm
+                      draftId={String(d.id)}
+                      className="fp-btn w-full"
+                      pendingLabel="Pushing update"
+                    >
+                      Push update to WP
+                    </PublishToWpForm>
+                  ) : null}
+                </>
               ) : (
                 <PublishToWpForm
                   draftId={String(d.id)}
