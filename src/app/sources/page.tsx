@@ -267,60 +267,59 @@ https://hnrss.org/frontpage`}
         </form>
       </section>
 
-      {/* Empty state with starter packs */}
+      {/* Empty state — one recommended pack inline; alternates collapsed. */}
       {isEmpty ? (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <div className="text-[11px] uppercase tracking-wider text-stone-500">
-            Need a starting roster? Pick a pack to copy and paste above
+            Or start with a recommended pack — copy and paste above
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <StarterPack
-              name="Apple-blogger pack"
-              description="MacRumors, 9to5Mac, AppleInsider, Six Colors, Daring Fireball, Apple newsroom."
-              urls={[
-                "https://9to5mac.com/feed/",
-                "https://appleinsider.com/rss/news",
-                "https://feeds.macrumors.com/MacRumors-Front",
-                "https://daringfireball.net/feeds/main",
-                "https://feedpress.me/sixcolors",
-                "https://www.apple.com/newsroom/rss-feed.rss",
-              ]}
-            />
-            <StarterPack
-              name="Indie tech pack"
-              description="Stratechery-adjacent and indie tech writers."
-              urls={[
-                "https://stratechery.com/feed",
-                "https://www.theverge.com/rss/index.xml",
-                "https://hnrss.org/frontpage",
-                "https://ma.tt/rss",
-              ]}
-            />
-            <StarterPack
-              name="Specialty coffee pack"
-              description="Sprudge, Daily Coffee News, r/specialtycoffee."
-              urls={[
-                "https://sprudge.com/feed",
-                "https://dailycoffeenews.com/feed",
-                "https://reddit.com/r/specialtycoffee/.rss",
-              ]}
-            />
-            <StarterPack
-              name="AI ecosystem pack"
-              description="Anthropic, OpenAI, Latent Space, Pragmatic Engineer."
-              urls={[
-                "https://www.anthropic.com/news/rss.xml",
-                "https://openai.com/blog/rss.xml",
-                "https://www.latent.space/feed",
-                "https://newsletter.pragmaticengineer.com/feed",
-              ]}
-            />
-          </div>
-          <p className="text-xs text-stone-500">
-            Aim for 5+ feeds covering the same beat. Clusters fire when the combined trust of
-            distinct sources crosses 1.0 within 72 hours from at least 2 distinct domains. New
-            sources start at 0.5 trust, so two fresh feeds covering the same story already fire.
-          </p>
+          <StarterPack
+            name="Indie tech pack"
+            description="Broad prosumer-tech baseline. Swap in your own once you see how clusters fire."
+            urls={[
+              "https://stratechery.com/feed",
+              "https://www.theverge.com/rss/index.xml",
+              "https://hnrss.org/frontpage",
+              "https://ma.tt/rss",
+              "https://daringfireball.net/feeds/main",
+            ]}
+          />
+          <details className="text-xs text-stone-500">
+            <summary className="cursor-pointer hover:text-stone-900">More starter packs</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <StarterPack
+                name="Apple-blogger pack"
+                description="MacRumors, 9to5Mac, AppleInsider, Six Colors, Daring Fireball, Apple newsroom."
+                urls={[
+                  "https://9to5mac.com/feed/",
+                  "https://appleinsider.com/rss/news",
+                  "https://feeds.macrumors.com/MacRumors-Front",
+                  "https://daringfireball.net/feeds/main",
+                  "https://feedpress.me/sixcolors",
+                  "https://www.apple.com/newsroom/rss-feed.rss",
+                ]}
+              />
+              <StarterPack
+                name="Specialty coffee pack"
+                description="Sprudge, Daily Coffee News, r/specialtycoffee."
+                urls={[
+                  "https://sprudge.com/feed",
+                  "https://dailycoffeenews.com/feed",
+                  "https://reddit.com/r/specialtycoffee/.rss",
+                ]}
+              />
+              <StarterPack
+                name="AI ecosystem pack"
+                description="Anthropic, OpenAI, Latent Space, Pragmatic Engineer."
+                urls={[
+                  "https://www.anthropic.com/news/rss.xml",
+                  "https://openai.com/blog/rss.xml",
+                  "https://www.latent.space/feed",
+                  "https://newsletter.pragmaticengineer.com/feed",
+                ]}
+              />
+            </div>
+          </details>
         </section>
       ) : filteredEmpty ? (
         <div

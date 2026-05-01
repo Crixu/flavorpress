@@ -15,6 +15,7 @@ import {
   type TodayClusterPreview,
   type TodayFolderStream,
 } from "./_components/TodayFolderStreams";
+import { PollAllButton } from "./sources/_components/PollAllButton";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,16 @@ export default async function TodayPage() {
     args: [SINGLE_USER_ID, Date.now()],
   });
   const sourceCount = Number(sourceCountR.rows[0]!.n);
+
+  const pollStatsR = await db.execute({
+    sql: `SELECT
+            (SELECT COUNT(*) FROM sources
+              WHERE user_id = ? AND active = 1 AND last_polled_at IS NOT NULL) AS polled,
+            (SELECT COUNT(*) FROM items WHERE user_id = ?) AS items_total`,
+    args: [SINGLE_USER_ID, SINGLE_USER_ID],
+  });
+  const polledSourceCount = Number(pollStatsR.rows[0]!.polled ?? 0);
+  const itemsTotal = Number(pollStatsR.rows[0]!.items_total ?? 0);
 
   const voiceR = await db.execute({
     sql: `SELECT outlet_id FROM voice_profiles WHERE user_id = ?`,
@@ -125,7 +136,7 @@ export default async function TodayPage() {
       </header>
 
       {totalPreviews === 0 ? (
-        <EmptyClusters />
+        <EmptyClusters polledSourceCount={polledSourceCount} itemsTotal={itemsTotal} />
       ) : (
         <TodayFolderStreams
           streams={nonEmptyStreams}
@@ -310,7 +321,34 @@ async function listTodayClustersByFolder(
   return byFolder;
 }
 
-function EmptyClusters() {
+function EmptyClusters({
+  polledSourceCount,
+  itemsTotal,
+}: {
+  polledSourceCount: number;
+  itemsTotal: number;
+}) {
+  // Three distinct waiting states. Each gets one action so the user is
+  // never asked to pick between "manage" and "publish" in a moment that
+  // is just about getting the first cluster on screen.
+  const stage =
+    polledSourceCount === 0 ? "first-poll" : itemsTotal === 0 ? "no-items" : "no-cluster-yet";
+
+  const copy = {
+    "first-poll": {
+      title: "Polling your feeds for the first time.",
+      body: "Items appear as the first fetch completes. A cluster fires when 3 sources converge on the same story within 72 hours.",
+    },
+    "no-items": {
+      title: "Polls done. No items came back yet.",
+      body: "A few sources may be returning errors. Open the source list to see which feeds are stuck.",
+    },
+    "no-cluster-yet": {
+      title: `${itemsTotal} ${itemsTotal === 1 ? "item" : "items"} in. No cluster yet.`,
+      body: "A cluster fires when 3 sources cover the same story within 72 hours, from at least 2 distinct domains. Add another feed in this beat to bring convergence forward.",
+    },
+  }[stage];
+
   return (
     <div className="fp-card-feature p-10 text-center" style={{ background: "var(--surface)" }}>
       <div
@@ -332,19 +370,19 @@ function EmptyClusters() {
         </svg>
       </div>
       <h2 className="fp-h1-serif" style={{ fontSize: 22 }}>
-        Sources are polling. Clusters fire automatically.
+        {copy.title}
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm" style={{ color: "var(--fg-muted)" }}>
-        A cluster fires when 3 or more sources cover the same story within 72 hours, from at least 2
-        distinct domains. Want it now? Hit "Poll all" on Sources.
+        {copy.body}
       </p>
-      <div className="mt-5 flex justify-center gap-2">
-        <Link href="/sources" className="fp-btn fp-btn-ghost">
-          Manage sources
-        </Link>
-        <Link href="/voice" className="fp-btn fp-btn-primary">
-          Voice & Publishing →
-        </Link>
+      <div className="mt-5 flex justify-center">
+        {stage === "first-poll" ? (
+          <PollAllButton />
+        ) : (
+          <Link href="/sources" className="fp-btn fp-btn-primary">
+            {stage === "no-items" ? "Open sources →" : "Add a source →"}
+          </Link>
+        )}
       </div>
     </div>
   );
