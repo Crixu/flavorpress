@@ -86,6 +86,7 @@ export default async function EditorPage({ params }: PageProps) {
         }))}
         traceId={traceId}
         sourceCount={sourceCount}
+        wpEditLink={d.wp_edit_link ? String(d.wp_edit_link) : null}
       />
     );
   }

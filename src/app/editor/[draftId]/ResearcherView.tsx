@@ -14,6 +14,7 @@ import type {
   ResearchNotes,
   ResearchQuote,
 } from "@/lib/v1/researcher-generator";
+import { SendResearchToWpForm } from "./SendResearchToWpForm";
 
 interface SourceRow {
   id: string;
@@ -30,9 +31,18 @@ interface Props {
   sources: SourceRow[];
   traceId: string;
   sourceCount: number;
+  wpEditLink: string | null;
 }
 
-export function ResearcherView({ draftId, topic, notes, sources, traceId, sourceCount }: Props) {
+export function ResearcherView({
+  draftId,
+  topic,
+  notes,
+  sources,
+  traceId,
+  sourceCount,
+  wpEditLink,
+}: Props) {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -70,6 +80,19 @@ export function ResearcherView({ draftId, topic, notes, sources, traceId, source
           >
             {traceId.slice(0, 8) || "—"}
           </span>
+          {wpEditLink ? (
+            <a href={wpEditLink} target="_blank" rel="noreferrer" className="fp-btn fp-btn-primary">
+              Open in WordPress →
+            </a>
+          ) : (
+            <SendResearchToWpForm
+              draftId={draftId}
+              className="fp-btn fp-btn-primary"
+              pendingLabel="Saving draft"
+            >
+              Draft in WordPress →
+            </SendResearchToWpForm>
+          )}
         </div>
       </header>
 
