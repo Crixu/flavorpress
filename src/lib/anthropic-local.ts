@@ -151,9 +151,7 @@ function flattenSystem(system: CreateParams["system"]): string | undefined {
 
 function flattenUserMessage(messages: CreateParams["messages"]): string {
   if (messages.length !== 1 || messages[0]!.role !== "user") {
-    throw new Error(
-      "LocalClaudeClient: only single-user-message turns are supported.",
-    );
+    throw new Error("LocalClaudeClient: only single-user-message turns are supported.");
   }
   const c = messages[0]!.content;
   if (typeof c === "string") return c;
@@ -190,11 +188,7 @@ function throwIfErrorMessage(msg: unknown): void {
     const subtype = m.error as AssistantErrorSubtype;
     throw new LocalClaudeError(classifyAssistantError(subtype), subtype);
   }
-  if (
-    m.type === "auth_status" &&
-    typeof m.error === "string" &&
-    m.error.length > 0
-  ) {
+  if (m.type === "auth_status" && typeof m.error === "string" && m.error.length > 0) {
     throw new LocalClaudeError("auth", "auth_status_error", m.error);
   }
   if (m.type === "result" && typeof m.subtype === "string" && m.subtype !== "success") {
@@ -284,13 +278,9 @@ export class LocalClaudeClient implements AnthropicLike {
     stream: (params: StreamParams): AnthropicLikeStream => {
       const abortController = new AbortController();
       const response = query({
-        prompt: flattenUserMessage(
-          params.messages as CreateParams["messages"],
-        ),
+        prompt: flattenUserMessage(params.messages as CreateParams["messages"]),
         options: {
-          systemPrompt: flattenSystem(
-            params.system as CreateParams["system"],
-          ),
+          systemPrompt: flattenSystem(params.system as CreateParams["system"]),
           ...HERMETIC_OPTIONS,
           model: params.model,
           maxTurns: 1,
@@ -307,11 +297,7 @@ export class LocalClaudeClient implements AnthropicLike {
           abortController,
         },
       });
-      async function* iterate(): AsyncGenerator<
-        RawStreamEvent,
-        void,
-        void
-      > {
+      async function* iterate(): AsyncGenerator<RawStreamEvent, void, void> {
         for await (const msg of response) {
           // Throws synchronously on error states so the consumer's
           // `for await` raises instead of silently terminating with

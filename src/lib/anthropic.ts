@@ -22,8 +22,7 @@ export function extractJson<T>(text: string): T {
 
 export type AuthMode = "api" | "cli" | "none";
 
-export interface AnthropicLikeStream
-  extends AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
+export interface AnthropicLikeStream extends AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
   controller: { abort(): void };
 }
 
@@ -32,9 +31,7 @@ export interface AnthropicLike {
     create(
       params: Anthropic.Messages.MessageCreateParamsNonStreaming,
     ): Promise<Anthropic.Messages.Message>;
-    stream(
-      params: Anthropic.Messages.MessageStreamParams,
-    ): AnthropicLikeStream;
+    stream(params: Anthropic.Messages.MessageStreamParams): AnthropicLikeStream;
   };
 }
 

@@ -111,13 +111,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   );
 }
 
-function AuthModeRow({
-  mode,
-  hasApiKey,
-}: {
-  mode: AuthMode;
-  hasApiKey: boolean;
-}) {
+function AuthModeRow({ mode, hasApiKey }: { mode: AuthMode; hasApiKey: boolean }) {
   const config =
     mode === "api"
       ? {
