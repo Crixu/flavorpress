@@ -43,9 +43,7 @@ export default async function TodayPage() {
     sql: `SELECT outlet_id FROM voice_profiles WHERE user_id = ?`,
     args: [SINGLE_USER_ID],
   });
-  const profiledOutletIds = new Set(
-    voiceR.rows.map((row) => String(row.outlet_id)),
-  );
+  const profiledOutletIds = new Set(voiceR.rows.map((row) => String(row.outlet_id)));
 
   // Picker only offers outlets that are both connected AND have a voice
   // profile. Without a profile, the draft generator falls back to a generic
@@ -53,14 +51,10 @@ export default async function TodayPage() {
   // connection, the WP publish step has nothing to push to. A profile from
   // a since-disconnected outlet is preserved on disk for reconnect, but
   // doesn't count as draftable until that outlet is connected again.
-  const draftableOutlets = connectedOutlets.filter((o) =>
-    profiledOutletIds.has(o.id),
-  );
+  const draftableOutlets = connectedOutlets.filter((o) => profiledOutletIds.has(o.id));
   const hasDraftableOutlet = draftableOutlets.length > 0;
   const defaultOutletId =
-    draftableOutlets.find((o) => o.isDefault)?.id ??
-    draftableOutlets[0]?.id ??
-    null;
+    draftableOutlets.find((o) => o.isDefault)?.id ?? draftableOutlets[0]?.id ?? null;
   const outletOptions = draftableOutlets.map((o) => ({
     id: o.id,
     displayName: o.displayName ?? o.baseUrl,
@@ -68,11 +62,7 @@ export default async function TodayPage() {
 
   if (!hasOutlet || sourceCount < 5 || !hasDraftableOutlet) {
     return (
-      <Onboarding
-        hasSite={hasOutlet}
-        sourceCount={sourceCount}
-        hasVoice={hasDraftableOutlet}
-      />
+      <Onboarding hasSite={hasOutlet} sourceCount={sourceCount} hasVoice={hasDraftableOutlet} />
     );
   }
 
@@ -101,9 +91,7 @@ export default async function TodayPage() {
   const streams: TodayFolderStream[] = await Promise.all(
     folders.map(async (folder) => {
       const clusters = clustersByFolder.get(folder.id) ?? [];
-      const previews = await Promise.all(
-        clusters.map((c) => buildClusterPreview(c, folder)),
-      );
+      const previews = await Promise.all(clusters.map((c) => buildClusterPreview(c, folder)));
       return { id: folder.id, folderId: folder.id, name: folder.name, clusters: previews };
     }),
   );
@@ -115,10 +103,7 @@ export default async function TodayPage() {
     return bScore - aScore;
   });
 
-  const totalPreviews = nonEmptyStreams.reduce(
-    (acc, s) => acc + s.clusters.length,
-    0,
-  );
+  const totalPreviews = nonEmptyStreams.reduce((acc, s) => acc + s.clusters.length, 0);
 
   return (
     <div className="space-y-8">
@@ -129,11 +114,13 @@ export default async function TodayPage() {
             ? "No clusters yet"
             : totalPreviews === 1
             ? "One cluster worth your attention"
-            : `${totalPreviews} clusters across ${nonEmptyStreams.length} ${nonEmptyStreams.length === 1 ? "stream" : "streams"}`}
+            : `${totalPreviews} clusters across ${nonEmptyStreams.length} ${
+                nonEmptyStreams.length === 1 ? "stream" : "streams"
+              }`}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-          Each folder is a reading lane. Open the strongest cluster, ask for
-          more, or set that lane aside for now.
+          Each folder is a reading lane. Open the strongest cluster, ask for more, or set that lane
+          aside for now.
         </p>
       </header>
 
@@ -315,12 +302,21 @@ async function listTodayClustersByFolder(
 
 function EmptyClusters() {
   return (
-    <div
-      className="fp-card-feature p-10 text-center"
-      style={{ background: "var(--surface)" }}
-    >
-      <div className="mx-auto mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: "var(--indigo-tint)" }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--indigo)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="fp-card-feature p-10 text-center" style={{ background: "var(--surface)" }}>
+      <div
+        className="mx-auto mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl"
+        style={{ background: "var(--indigo-tint)" }}
+      >
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--indigo)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -329,9 +325,8 @@ function EmptyClusters() {
         Sources are polling. Clusters fire automatically.
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm" style={{ color: "var(--fg-muted)" }}>
-        A cluster fires when 3 or more sources cover the same story within 72
-        hours, from at least 2 distinct domains. Want it now? Hit "Poll all"
-        on Sources.
+        A cluster fires when 3 or more sources cover the same story within 72 hours, from at least 2
+        distinct domains. Want it now? Hit "Poll all" on Sources.
       </p>
       <div className="mt-5 flex justify-center gap-2">
         <Link href="/sources" className="fp-btn fp-btn-ghost">
@@ -424,14 +419,10 @@ function Onboarding({
         <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "18ch" }}>
           Your reading turns into your writing.
         </h1>
-        <p
-          className="max-w-xl text-base leading-relaxed"
-          style={{ color: "var(--fg-muted)" }}
-        >
-          Three steps from a blank slate to your first draft. Connect a
-          WordPress site, train the voice, plug in the feeds you already
-          read. Clusters surface when those feeds converge; you choose
-          which to draft.
+        <p className="max-w-xl text-base leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+          Three steps from a blank slate to your first draft. Connect a WordPress site, train the
+          voice, plug in the feeds you already read. Clusters surface when those feeds converge; you
+          choose which to draft.
         </p>
       </header>
 
@@ -451,8 +442,7 @@ function Onboarding({
             className="h-full rounded-full transition-all"
             style={{
               width: `${progress}%`,
-              background:
-                "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 100%)",
+              background: "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 100%)",
               transitionDuration: "400ms",
             }}
           />
@@ -466,11 +456,7 @@ function Onboarding({
               ? "var(--indigo)"
               : "var(--fg-subtle)";
             return (
-              <li
-                key={s.id}
-                className="flex items-center gap-1.5"
-                style={{ color: tone }}
-              >
+              <li key={s.id} className="flex items-center gap-1.5" style={{ color: tone }}>
                 <span
                   className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold tabular"
                   style={{
@@ -479,18 +465,12 @@ function Onboarding({
                       : isCurrent
                       ? "var(--indigo)"
                       : "var(--bg-subtle)",
-                    color: s.done
-                      ? "var(--emerald)"
-                      : isCurrent
-                      ? "#fff"
-                      : "var(--fg-subtle)",
+                    color: s.done ? "var(--emerald)" : isCurrent ? "#fff" : "var(--fg-subtle)",
                   }}
                 >
                   {s.done ? "✓" : s.id}
                 </span>
-                <span className={isCurrent ? "font-medium" : ""}>
-                  {s.shortLabel}
-                </span>
+                <span className={isCurrent ? "font-medium" : ""}>{s.shortLabel}</span>
               </li>
             );
           })}
@@ -513,32 +493,18 @@ function Onboarding({
             <div className="fp-eyebrow">
               Step {currentStep.id} of {steps.length}
             </div>
-            <h2
-              className="fp-h1-serif mt-2"
-              style={{ fontSize: 26, lineHeight: 1.15 }}
-            >
+            <h2 className="fp-h1-serif mt-2" style={{ fontSize: 26, lineHeight: 1.15 }}>
               {currentStep.title}
             </h2>
-            <p className="mt-3 max-w-2xl text-base leading-relaxed">
-              {currentStep.blurb}
-            </p>
-            <p
-              className="mt-2 max-w-2xl text-sm"
-              style={{ color: "rgba(0,0,0,0.62)" }}
-            >
+            <p className="mt-3 max-w-2xl text-base leading-relaxed">{currentStep.blurb}</p>
+            <p className="mt-2 max-w-2xl text-sm" style={{ color: "rgba(0,0,0,0.62)" }}>
               {currentStep.detail}
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              <Link
-                href={currentStep.href}
-                className="fp-btn fp-btn-primary"
-              >
+              <Link href={currentStep.href} className="fp-btn fp-btn-primary">
                 {currentStep.cta} →
               </Link>
-              <span
-                className="text-xs"
-                style={{ color: "rgba(0,0,0,0.55)" }}
-              >
+              <span className="text-xs" style={{ color: "rgba(0,0,0,0.55)" }}>
                 Takes about a minute.
               </span>
             </div>
@@ -569,15 +535,10 @@ function Onboarding({
                     <Icon />
                   </div>
                   <div>
-                    <div
-                      className="text-xs tabular"
-                      style={{ color: "var(--fg-subtle)" }}
-                    >
+                    <div className="text-xs tabular" style={{ color: "var(--fg-subtle)" }}>
                       Step {s.id}
                     </div>
-                    <div className="mt-0.5 text-sm font-medium">
-                      {s.title}
-                    </div>
+                    <div className="mt-0.5 text-sm font-medium">{s.title}</div>
                     <div
                       className="mt-1 text-xs leading-relaxed"
                       style={{ color: "var(--fg-muted)" }}
@@ -617,15 +578,7 @@ function Onboarding({
   );
 }
 
-function Step({
-  number,
-  label,
-  detail,
-}: {
-  number: string;
-  label: string;
-  detail: string;
-}) {
+function Step({ number, label, detail }: { number: string; label: string; detail: string }) {
   return (
     <div>
       <div
@@ -648,7 +601,16 @@ function Step({
 
 function ConnectIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
@@ -656,7 +618,16 @@ function ConnectIcon() {
 }
 function VoiceIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
       <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
       <line x1="12" y1="19" x2="12" y2="22" />
@@ -665,7 +636,16 @@ function VoiceIcon() {
 }
 function SourceIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M4 11a9 9 0 0 1 9 9" />
       <path d="M4 4a16 16 0 0 1 16 16" />
       <circle cx="5" cy="19" r="1" />

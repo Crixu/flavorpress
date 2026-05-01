@@ -6,26 +6,11 @@
  * doc. Keep this file synced with the libSQL schema in `src/lib/db.ts`.
  */
 
-export type SourceKind =
-  | "rss"
-  | "reddit"
-  | "podcast"
-  | "youtube"
-  | "newsletter"; // newsletter ingest deferred to v1.1; type kept for forward compat
+export type SourceKind = "rss" | "reddit" | "podcast" | "youtube" | "newsletter"; // newsletter ingest deferred to v1.1; type kept for forward compat
 
-export type ClusterState =
-  | "forming"
-  | "fired"
-  | "drafted"
-  | "published"
-  | "dismissed";
+export type ClusterState = "forming" | "fired" | "drafted" | "published" | "dismissed";
 
-export type DraftState =
-  | "pre-rendered"
-  | "shown"
-  | "edited"
-  | "published"
-  | "discarded";
+export type DraftState = "pre-rendered" | "shown" | "edited" | "published" | "discarded";
 
 export interface User {
   id: string;
@@ -163,7 +148,7 @@ export interface RankerCorrection {
  */
 export const RANKER_WEIGHTS = {
   archiveOverlap: 0.55,
-  beatMatch: 0.30,
+  beatMatch: 0.3,
   sourceTrust: 0.15,
 } as const;
 

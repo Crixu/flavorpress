@@ -30,9 +30,9 @@ export interface WPPost {
 }
 
 function authHeader(creds: WPCredentials): string {
-  const token = Buffer.from(
-    `${creds.username}:${creds.appPassword.replace(/\s+/g, "")}`,
-  ).toString("base64");
+  const token = Buffer.from(`${creds.username}:${creds.appPassword.replace(/\s+/g, "")}`).toString(
+    "base64",
+  );
   return `Basic ${token}`;
 }
 
@@ -52,10 +52,7 @@ export async function probeWordPress(creds: WPCredentials): Promise<WPProbeResul
     });
     if (res.status === 401 || res.status === 403) {
       const headers = res.headers;
-      if (
-        headers.get("x-jetpack") ||
-        headers.get("x-rest-allowed-schemes")?.includes("jetpack")
-      ) {
+      if (headers.get("x-jetpack") || headers.get("x-rest-allowed-schemes")?.includes("jetpack")) {
         return {
           ok: false,
           kind: "jetpack-managed",
@@ -192,9 +189,7 @@ export async function preflightWordPress(
     const gen = res.headers.get("x-wp-version");
     if (gen) result.wpVersion = gen;
   } catch (err) {
-    result.errors.push(
-      err instanceof Error ? err.message : String(err),
-    );
+    result.errors.push(err instanceof Error ? err.message : String(err));
     result.hint =
       "Site unreachable. Check the URL, your network, and that the site isn't behind a Cloudflare bot wall.";
     return result;
@@ -202,14 +197,11 @@ export async function preflightWordPress(
 
   // 3. Application Passwords endpoint (WP 5.6+).
   try {
-    const res = await fetch(
-      `${result.baseUrl}/wp-admin/authorize-application.php`,
-      {
-        method: "HEAD",
-        redirect: "follow",
-        signal: AbortSignal.timeout(8000),
-      },
-    );
+    const res = await fetch(`${result.baseUrl}/wp-admin/authorize-application.php`, {
+      method: "HEAD",
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+    });
     // 200, 302 (redirect to login), or 401 all mean the endpoint exists.
     result.hasApplicationPasswords = res.status < 500 && res.status !== 404;
     if (!result.hasApplicationPasswords) {
@@ -257,9 +249,11 @@ export async function preflightWordPress(
     result.errors.length === 0;
 
   if (result.ok && result.callbackSchemeMatch && !result.hasJetpack) {
-    result.hint = "All checks pass. The authorize flow will redirect you to your site's login, then back here.";
+    result.hint =
+      "All checks pass. The authorize flow will redirect you to your site's login, then back here.";
   } else if (result.ok && !result.callbackSchemeMatch) {
-    result.hint = "Site is ready, but the http→https callback might fail. If it does, use the manual paste flow.";
+    result.hint =
+      "Site is ready, but the http→https callback might fail. If it does, use the manual paste flow.";
   } else if (result.ok && result.hasJetpack) {
     result.hint = "Site is ready. If Jetpack SSO blocks the authorize, switch to manual paste.";
   }
@@ -319,9 +313,7 @@ export interface WPSiteIdentity {
  * tagline (`bloginfo('description')`), and the canonical home URL. All WP
  * sites with the REST API expose this; no app password needed.
  */
-export async function fetchSiteIdentity(
-  baseUrl: string,
-): Promise<WPSiteIdentity | null> {
+export async function fetchSiteIdentity(baseUrl: string): Promise<WPSiteIdentity | null> {
   const root = baseUrl.replace(/\/$/, "");
   try {
     const res = await fetch(`${root}/wp-json/`, {
@@ -350,10 +342,7 @@ export async function fetchSiteIdentity(
  * chars so a downstream summarizer has substance without paying for a
  * whole archive page.
  */
-export async function fetchHomepageProse(
-  homeUrl: string,
-  charBudget = 2000,
-): Promise<string> {
+export async function fetchHomepageProse(homeUrl: string, charBudget = 2000): Promise<string> {
   try {
     const res = await fetch(homeUrl, {
       headers: { Accept: "text/html" },
@@ -381,10 +370,7 @@ export async function fetchHomepageProse(
 }
 
 /** Pull the user's last N posts. Used by the voice profile build. */
-export async function listRecentPosts(
-  creds: WPCredentials,
-  count = 50,
-): Promise<WPPost[]> {
+export async function listRecentPosts(creds: WPCredentials, count = 50): Promise<WPPost[]> {
   const res = await fetch(
     `${root(creds)}/wp-json/wp/v2/posts?per_page=${count}&orderby=date&_fields=id,title,content,excerpt,link,date`,
     { headers: { Authorization: authHeader(creds) } },
@@ -498,17 +484,16 @@ export async function revokeAllAppPasswords(creds: WPCredentials): Promise<void>
   if (!meRes.ok) throw new Error(`me failed: ${meRes.status}`);
   const me = (await meRes.json()) as { id: number };
 
-  const listRes = await fetch(
-    `${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords`,
-    { headers: { Authorization: authHeader(creds) } },
-  );
+  const listRes = await fetch(`${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords`, {
+    headers: { Authorization: authHeader(creds) },
+  });
   if (!listRes.ok) return;
   const list = (await listRes.json()) as Array<{ uuid: string; name: string }>;
   for (const p of list) {
     if (!p.name.toLowerCase().includes("flavorpress")) continue;
-    await fetch(
-      `${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords/${p.uuid}`,
-      { method: "DELETE", headers: { Authorization: authHeader(creds) } },
-    );
+    await fetch(`${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords/${p.uuid}`, {
+      method: "DELETE",
+      headers: { Authorization: authHeader(creds) },
+    });
   }
 }

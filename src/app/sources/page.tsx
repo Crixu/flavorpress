@@ -14,10 +14,7 @@ import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
 import { addSourceAction } from "@/lib/v1/actions";
 import { PendingStages, SubmitButton } from "../_components/SubmitButton";
-import {
-  listOutlets,
-  resolveOutletSourceIds,
-} from "@/lib/v1/outlets";
+import { listOutlets, resolveOutletSourceIds } from "@/lib/v1/outlets";
 import { FolderChipBar } from "./_components/FolderChipBar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
 import { PollAllButton } from "./_components/PollAllButton";
@@ -57,9 +54,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   });
 
   const allRows = sourcesR.rows as unknown as SourceRow[];
-  const outletRows = inScopeIds
-    ? allRows.filter((r) => inScopeIds.has(String(r.id)))
-    : allRows;
+  const outletRows = inScopeIds ? allRows.filter((r) => inScopeIds.has(String(r.id))) : allRows;
 
   // Folder filter applies on top of outlet filter.
   const visibleRows = applyFolderFilter(outletRows, folderParam);
@@ -72,10 +67,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const folders = foldersR.rows as unknown as FolderRow[];
 
   const outletDisplayMap = new Map(
-    outlets.map((o) => [
-      o.id,
-      o.displayName ?? hostFromUrl(o.baseUrl),
-    ] as const),
+    outlets.map((o) => [o.id, o.displayName ?? hostFromUrl(o.baseUrl)] as const),
   );
 
   const stats = await db.execute({
@@ -105,17 +97,12 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     display_name: r.display_name === null ? null : String(r.display_name),
     folder_id: r.folder_id === null ? null : String(r.folder_id),
     trust_score: Number(r.trust_score ?? 0.5),
-    last_polled_at:
-      r.last_polled_at === null ? null : Number(r.last_polled_at),
+    last_polled_at: r.last_polled_at === null ? null : Number(r.last_polled_at),
     last_error: r.last_error === null ? null : String(r.last_error),
     paused_until:
-      r.paused_until === null || r.paused_until === undefined
-        ? null
-        : Number(r.paused_until),
+      r.paused_until === null || r.paused_until === undefined ? null : Number(r.paused_until),
     backoff_until:
-      r.backoff_until === null || r.backoff_until === undefined
-        ? null
-        : Number(r.backoff_until),
+      r.backoff_until === null || r.backoff_until === undefined ? null : Number(r.backoff_until),
     item_count: Number(r.item_count ?? 0),
     items_24h: Number(r.items_24h ?? 0),
   }));
@@ -168,24 +155,16 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-stone-500">
-            What you read
-          </div>
+          <div className="text-[11px] uppercase tracking-wider text-stone-500">What you read</div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
             Sources · {visibleRows.length}
             {headingScope ? (
-              <span
-                className="ml-2 text-sm font-normal"
-                style={{ color: "var(--fg-muted)" }}
-              >
+              <span className="ml-2 text-sm font-normal" style={{ color: "var(--fg-muted)" }}>
                 in {headingScope}
               </span>
             ) : null}
             {outletFilter ? (
-              <span
-                className="ml-2 text-sm font-normal"
-                style={{ color: "var(--fg-muted)" }}
-              >
+              <span className="ml-2 text-sm font-normal" style={{ color: "var(--fg-muted)" }}>
                 · outlet {outletDisplayMap.get(outletFilter) ?? "outlet"}
               </span>
             ) : null}
@@ -205,9 +184,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           </span>
           <Link
             href={sourcesHref(folderParam, null)}
-            className={`fp-chip ${
-              !outletFilter ? "fp-chip-indigo" : ""
-            } transition`}
+            className={`fp-chip ${!outletFilter ? "fp-chip-indigo" : ""} transition`}
           >
             All sources
           </Link>
@@ -246,15 +223,13 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           <div>
             <div className="text-sm font-semibold">Add sources</div>
             <div className="text-[11px] text-stone-500">
-              RSS / Atom feed URLs, Reddit subreddits, podcast feeds, YouTube
-              channel feeds. Paste many; one per line.
+              RSS / Atom feed URLs, Reddit subreddits, podcast feeds, YouTube channel feeds. Paste
+              many; one per line.
             </div>
           </div>
           <OpmlImportButton
             folders={folders.map((f) => ({ id: f.id, name: f.name }))}
-            currentFolderId={
-              folderParam && folderParam !== "ungrouped" ? folderParam : null
-            }
+            currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
           />
         </div>
         <form action={addSourceAction} className="mt-3 space-y-2">
@@ -276,15 +251,9 @@ https://hnrss.org/frontpage`}
             </SubmitButton>
             <FolderSelect
               folders={folders}
-              currentFolderId={
-                folderParam && folderParam !== "ungrouped"
-                  ? folderParam
-                  : null
-              }
+              currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
             />
-            <span className="text-[11px] text-stone-500">
-              kind auto-detected from URL pattern
-            </span>
+            <span className="text-[11px] text-stone-500">kind auto-detected from URL pattern</span>
           </div>
           <PendingStages
             title="Adding sources"
@@ -348,10 +317,9 @@ https://hnrss.org/frontpage`}
             />
           </div>
           <p className="text-xs text-stone-500">
-            Aim for 5+ feeds covering the same beat. Clusters fire when the{" "}
-            combined trust of distinct sources crosses 1.0 within 72 hours
-            from at least 2 distinct domains. New sources start at 0.5
-            trust, so two fresh feeds covering the same story already fire.
+            Aim for 5+ feeds covering the same beat. Clusters fire when the combined trust of
+            distinct sources crosses 1.0 within 72 hours from at least 2 distinct domains. New
+            sources start at 0.5 trust, so two fresh feeds covering the same story already fire.
           </p>
         </section>
       ) : filteredEmpty ? (
@@ -372,8 +340,8 @@ https://hnrss.org/frontpage`}
             </>
           ) : (
             <>
-              No sources assigned to this outlet yet. The outlet currently
-              inherits all sources by default.{" "}
+              No sources assigned to this outlet yet. The outlet currently inherits all sources by
+              default.{" "}
               <Link
                 href="/sources"
                 className="font-medium hover:underline"
@@ -403,14 +371,8 @@ https://hnrss.org/frontpage`}
           <div className="mt-4 grid grid-cols-4 gap-4 text-xs">
             <Stat label="items / 24h" value={String(stats.rows[0]!.items_24h)} />
             <Stat label="items total" value={String(stats.rows[0]!.items_total)} />
-            <Stat
-              label="clusters fired"
-              value={String(stats.rows[0]!.fired_clusters)}
-            />
-            <Stat
-              label="clusters total"
-              value={String(stats.rows[0]!.clusters_total)}
-            />
+            <Stat label="clusters fired" value={String(stats.rows[0]!.fired_clusters)} />
+            <Stat label="clusters total" value={String(stats.rows[0]!.clusters_total)} />
           </div>
         </details>
       ) : null}
@@ -439,9 +401,7 @@ function StarterPack({
         ))}
       </div>
       <details className="mt-2 text-[11px] text-stone-500">
-        <summary className="cursor-pointer hover:text-stone-900">
-          How to use
-        </summary>
+        <summary className="cursor-pointer hover:text-stone-900">How to use</summary>
         <div className="mt-1 leading-relaxed">
           Copy the list above and paste into the Add sources box.
         </div>
@@ -497,19 +457,13 @@ interface FolderGroup {
   rows: PlainSourceRow[];
 }
 
-function applyFolderFilter(
-  rows: SourceRow[],
-  folder: string | null,
-): SourceRow[] {
+function applyFolderFilter(rows: SourceRow[], folder: string | null): SourceRow[] {
   if (!folder) return rows;
   if (folder === "ungrouped") return rows.filter((r) => !r.folder_id);
   return rows.filter((r) => r.folder_id === folder);
 }
 
-function groupByFolder(
-  rows: PlainSourceRow[],
-  folders: FolderRow[],
-): FolderGroup[] {
+function groupByFolder(rows: PlainSourceRow[], folders: FolderRow[]): FolderGroup[] {
   const byId = new Map<string, FolderGroup>();
   for (const f of folders) {
     byId.set(f.id, { id: f.id, name: f.name, rows: [] });
@@ -568,10 +522,7 @@ function hostFromUrl(s: string): string {
   }
 }
 
-function sourcesHref(
-  folder: string | null,
-  outletId?: string | null,
-): string {
+function sourcesHref(folder: string | null, outletId?: string | null): string {
   const params = new URLSearchParams();
   if (folder) params.set("folder", folder);
   if (outletId) params.set("outlet", outletId);

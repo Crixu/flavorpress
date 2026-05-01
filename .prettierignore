@@ -1,0 +1,9 @@
+.next
+node_modules
+coverage
+.data
+.vercel
+.context
+macos/build
+package-lock.json
+*.log

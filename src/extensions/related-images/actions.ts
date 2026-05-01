@@ -8,11 +8,7 @@ import {
   runRelatedImageSearch,
   setLicenseFilter,
 } from "./server";
-import {
-  LICENSE_CODES,
-  type LicenseCode,
-  type RelatedImageResult,
-} from "./types";
+import { LICENSE_CODES, type LicenseCode, type RelatedImageResult } from "./types";
 
 export interface RelatedImagesPayload {
   results: RelatedImageResult[];
@@ -30,9 +26,7 @@ export interface RunError {
   error: string;
 }
 
-export async function loadRelatedImagesAction(
-  formData: FormData,
-): Promise<RunOk | RunError> {
+export async function loadRelatedImagesAction(formData: FormData): Promise<RunOk | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
   const [{ results, ranAt }, licenseFilter] = await Promise.all([
@@ -42,9 +36,7 @@ export async function loadRelatedImagesAction(
   return { ok: true, payload: { results, ranAt, licenseFilter } };
 }
 
-export async function runRelatedImagesAction(
-  formData: FormData,
-): Promise<RunOk | RunError> {
+export async function runRelatedImagesAction(formData: FormData): Promise<RunOk | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
   try {
@@ -72,17 +64,13 @@ export async function clearRelatedImagesAction(
   return { ok: true };
 }
 
-export async function setLicenseFilterAction(
-  formData: FormData,
-): Promise<RunOk | RunError> {
+export async function setLicenseFilterAction(formData: FormData): Promise<RunOk | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   const raw = String(formData.get("codes") ?? "");
   const codes = raw
     .split(",")
     .map((s) => s.trim().toLowerCase())
-    .filter((s): s is LicenseCode =>
-      (LICENSE_CODES as readonly string[]).includes(s),
-    );
+    .filter((s): s is LicenseCode => (LICENSE_CODES as readonly string[]).includes(s));
   const licenseFilter = await setLicenseFilter(codes);
   if (draftId) {
     const { results, ranAt } = await loadRelatedImages(draftId);

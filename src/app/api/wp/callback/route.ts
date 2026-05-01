@@ -14,11 +14,7 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, ensureSingleUser } from "@/lib/db";
 import { probeWordPress } from "@/lib/wordpress";
-import {
-  commitOutletCredentials,
-  recordOutletError,
-  getOutlet,
-} from "@/lib/v1/outlets";
+import { commitOutletCredentials, recordOutletError, getOutlet } from "@/lib/v1/outlets";
 
 export async function GET(req: Request) {
   await ensureSchema();
@@ -30,16 +26,12 @@ export async function GET(req: Request) {
   const password = url.searchParams.get("password") ?? "";
 
   if (!outletId || !baseUrl || !username || !password) {
-    return NextResponse.redirect(
-      new URL("/voice?wp_error=missing_params", url.origin),
-    );
+    return NextResponse.redirect(new URL("/voice?wp_error=missing_params", url.origin));
   }
 
   const outlet = await getOutlet(outletId);
   if (!outlet) {
-    return NextResponse.redirect(
-      new URL("/voice?wp_error=unknown_outlet", url.origin),
-    );
+    return NextResponse.redirect(new URL("/voice?wp_error=unknown_outlet", url.origin));
   }
 
   const probe = await probeWordPress({
@@ -50,15 +42,10 @@ export async function GET(req: Request) {
   if (!probe.ok) {
     await recordOutletError(outletId, probe.message, probe.kind);
     return NextResponse.redirect(
-      new URL(
-        `/voice?wp_error=${encodeURIComponent(probe.message)}`,
-        url.origin,
-      ),
+      new URL(`/voice?wp_error=${encodeURIComponent(probe.message)}`, url.origin),
     );
   }
 
   await commitOutletCredentials(outletId, username, password, probe.kind);
-  return NextResponse.redirect(
-    new URL(`/voice?wp_connected=${outletId}`, url.origin),
-  );
+  return NextResponse.redirect(new URL(`/voice?wp_connected=${outletId}`, url.origin));
 }

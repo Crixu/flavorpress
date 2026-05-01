@@ -19,11 +19,7 @@ import "server-only";
  */
 
 import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
-import {
-  getSetting,
-  setSetting,
-  SETTING_KEYS,
-} from "@/lib/v1/settings";
+import { getSetting, setSetting, SETTING_KEYS } from "@/lib/v1/settings";
 import type { ServerExtensionEntry } from "../types";
 import {
   DEFAULT_LICENSE_FILTER,
@@ -73,16 +69,13 @@ export async function getLicenseFilter(): Promise<LicenseCode[]> {
 }
 
 export async function setLicenseFilter(codes: LicenseCode[]): Promise<LicenseCode[]> {
-  const cleaned = Array.from(new Set(codes)).filter(
-    (x): x is LicenseCode => (LICENSE_CODES as readonly string[]).includes(x),
+  const cleaned = Array.from(new Set(codes)).filter((x): x is LicenseCode =>
+    (LICENSE_CODES as readonly string[]).includes(x),
   );
   // An empty filter would match nothing; treat it as "fall back to default"
   // so the user can't accidentally lock themselves out of search results.
   const effective = cleaned.length > 0 ? cleaned : [...DEFAULT_LICENSE_FILTER];
-  await setSetting(
-    SETTING_KEYS.relatedImagesLicenseFilter,
-    JSON.stringify(effective),
-  );
+  await setSetting(SETTING_KEYS.relatedImagesLicenseFilter, JSON.stringify(effective));
   // Prune cached results whose license is no longer permitted. Without
   // this, narrowing the filter would leave stale rows in the panel that
   // the chips claim are excluded; the reuse guidance the panel renders
@@ -145,12 +138,18 @@ export async function runRelatedImageSearch(
   });
   // Persist a run marker before any rows. A zero-hit search needs to be
   // distinguishable from "never searched" on reload; without this the
-  // loader has no per-draft timestamp to fall back on.
+  // loader has no per-draft timestamp to fall back on. The license
+  // filter goes on the row too so a later filter change can invalidate
+  // `ranAt` instead of leaving the panel claiming a search ran under
+  // the new filter.
+  const runFilterKey = encodeFilterKey(licenseFilter);
   await db.execute({
-    sql: `INSERT INTO related_image_runs (draft_id, searched_at)
-          VALUES (?, ?)
-          ON CONFLICT(draft_id) DO UPDATE SET searched_at = excluded.searched_at`,
-    args: [draftId, ranAt],
+    sql: `INSERT INTO related_image_runs (draft_id, searched_at, license_filter)
+          VALUES (?, ?, ?)
+          ON CONFLICT(draft_id) DO UPDATE SET
+            searched_at = excluded.searched_at,
+            license_filter = excluded.license_filter`,
+    args: [draftId, ranAt, runFilterKey],
   });
 
   const persisted: RelatedImageResult[] = [];
@@ -203,7 +202,7 @@ export async function loadRelatedImages(
   draftId: string,
 ): Promise<{ results: RelatedImageResult[]; ranAt: number | null }> {
   await ensureSchema();
-  const [r, runRow] = await Promise.all([
+  const [r, runRow, currentFilter] = await Promise.all([
     db.execute({
       sql: `SELECT id, draft_id, result_index, image_url, thumbnail_url, source_url,
                    source_provider, title, creator, creator_url,
@@ -215,9 +214,10 @@ export async function loadRelatedImages(
       args: [draftId],
     }),
     db.execute({
-      sql: `SELECT searched_at FROM related_image_runs WHERE draft_id = ?`,
+      sql: `SELECT searched_at, license_filter FROM related_image_runs WHERE draft_id = ?`,
       args: [draftId],
     }),
+    getLicenseFilter(),
   ]);
   const results: RelatedImageResult[] = r.rows.map((row) => ({
     id: String(row.id),
@@ -237,15 +237,34 @@ export async function loadRelatedImages(
     height: row.height !== null && row.height !== undefined ? Number(row.height) : null,
     searchedAt: Number(row.searched_at),
   }));
-  // Prefer the run-marker timestamp over the first row's timestamp. A
-  // zero-hit search has a run row but no result rows; without this the
-  // panel would look unsearched after reload even though Openverse was
-  // queried.
+  // The run row carries the license filter the search used. If the
+  // user has since changed the filter, no Openverse search has run
+  // under the active selection, so `ranAt` is null and the panel falls
+  // back to its initial "click Find images" copy. Without this, a
+  // filter narrowing that prunes every result would render a false
+  // "no images found under the current filter" line, and a zero-hit
+  // search reused under a broader filter would claim it had already
+  // ruled out images that were never queried.
+  //
+  // Legacy rows from before the license_filter column was added have
+  // it as NULL. Those keep the old behavior (use `searched_at` as-is)
+  // so an existing zero-hit search still looks like it ran on reload.
+  // Every fresh search writes the column, so the strict filter check
+  // applies to all post-migration data.
+  const runRowExists = runRow.rows.length > 0;
+  const runFilterRaw =
+    runRowExists && runRow.rows[0]!.license_filter !== null
+      ? String(runRow.rows[0]!.license_filter)
+      : null;
+  const isLegacyRunRow = runRowExists && runFilterRaw === null;
+  const filterMatches = runFilterRaw !== null && runFilterRaw === encodeFilterKey(currentFilter);
   const ranAt =
-    runRow.rows.length > 0
-      ? Number(runRow.rows[0]!.searched_at)
-      : (results[0]?.searchedAt ?? null);
+    runRowExists && (filterMatches || isLegacyRunRow) ? Number(runRow.rows[0]!.searched_at) : null;
   return { results, ranAt };
+}
+
+function encodeFilterKey(codes: readonly LicenseCode[]): string {
+  return [...codes].sort().join(",");
 }
 
 export async function clearRelatedImages(draftId: string): Promise<void> {
@@ -294,18 +313,12 @@ function buildQuery(headline: string, bodyText: string): string {
 
 function normalizeHit(
   hit: OpenverseHit,
-):
-  | (Omit<RelatedImageResult, "id" | "draftId" | "resultIndex" | "searchedAt">)
-  | null {
+): Omit<RelatedImageResult, "id" | "draftId" | "resultIndex" | "searchedAt"> | null {
   const imageUrl = typeof hit.url === "string" ? hit.url : null;
   const thumbnailUrl =
-    typeof hit.thumbnail === "string" && hit.thumbnail.length > 0
-      ? hit.thumbnail
-      : imageUrl;
-  const sourceUrl =
-    typeof hit.foreign_landing_url === "string" ? hit.foreign_landing_url : null;
-  const licenseRaw =
-    typeof hit.license === "string" ? hit.license.trim().toLowerCase() : "";
+    typeof hit.thumbnail === "string" && hit.thumbnail.length > 0 ? hit.thumbnail : imageUrl;
+  const sourceUrl = typeof hit.foreign_landing_url === "string" ? hit.foreign_landing_url : null;
+  const licenseRaw = typeof hit.license === "string" ? hit.license.trim().toLowerCase() : "";
   if (!imageUrl || !thumbnailUrl || !sourceUrl) return null;
   if (!(LICENSE_CODES as readonly string[]).includes(licenseRaw)) return null;
   return {
@@ -320,8 +333,7 @@ function normalizeHit(
     creator: typeof hit.creator === "string" ? hit.creator : null,
     creatorUrl: typeof hit.creator_url === "string" ? hit.creator_url : null,
     licenseCode: licenseRaw as LicenseCode,
-    licenseVersion:
-      typeof hit.license_version === "string" ? hit.license_version : null,
+    licenseVersion: typeof hit.license_version === "string" ? hit.license_version : null,
     licenseUrl: typeof hit.license_url === "string" ? hit.license_url : null,
     width: typeof hit.width === "number" ? hit.width : null,
     height: typeof hit.height === "number" ? hit.height : null,

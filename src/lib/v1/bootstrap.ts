@@ -55,10 +55,10 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
     costClass: "medium",
     tags: ["pipeline.ingest"],
     invoke: async (input, ctx) => {
-      const result = await handleItemIngested(
-        input as Parameters<typeof handleItemIngested>[0],
-        { traceId: ctx.traceId, userId: ctx.userId },
-      );
+      const result = await handleItemIngested(input as Parameters<typeof handleItemIngested>[0], {
+        traceId: ctx.traceId,
+        userId: ctx.userId,
+      });
       return result;
     },
   });
@@ -91,14 +91,13 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
       // the next pass; this lets the registry and event flow ship today.
       const { clusterId } = input as { clusterId: string };
       const items = await getClusterItems(clusterId);
-      const sample = items.map((i) => i.title).join(" / ").slice(0, 120);
+      const sample = items
+        .map((i) => i.title)
+        .join(" / ")
+        .slice(0, 120);
       const generated =
-        sample ||
-        "FlavorPress draft skeleton. Replace with streaming Anthropic call.";
-      const score = voiceMatchScore(
-        fingerprintText(generated),
-        fingerprintText(generated),
-      );
+        sample || "FlavorPress draft skeleton. Replace with streaming Anthropic call.";
+      const score = voiceMatchScore(fingerprintText(generated), fingerprintText(generated));
       return {
         draftId: `draft_skeleton_${clusterId}`,
         headline: sample.slice(0, 80) || "Untitled draft",
@@ -149,9 +148,7 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
     costClass: "expensive",
     tags: ["editor.extension", "pipeline.qa"],
     invoke: async (input) => {
-      const { runFactCheck } = await import(
-        "../../extensions/fact-check/server"
-      );
+      const { runFactCheck } = await import("../../extensions/fact-check/server");
       const { draftId } = input as { draftId: string };
       const result = await runFactCheck(draftId);
       return {
@@ -305,9 +302,7 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
           centroid: null,
           embeddingModel: null,
           embeddingVersion: null,
-          primaryEntities: row.primary_entities
-            ? JSON.parse(String(row.primary_entities))
-            : null,
+          primaryEntities: row.primary_entities ? JSON.parse(String(row.primary_entities)) : null,
           formedAt: Number(row.formed_at),
           firedAt: row.fired_at ? Number(row.fired_at) : null,
           sourceCount: Number(row.source_count),

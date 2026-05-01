@@ -31,10 +31,7 @@ export interface TodayClusterPreview {
     sourceUrl: string;
     displayName: string;
   }[];
-  draftsByOutlet: Record<
-    string,
-    { id: string; voiceMatch: number; wpEditLink: string | null }
-  >;
+  draftsByOutlet: Record<string, { id: string; voiceMatch: number; wpEditLink: string | null }>;
 }
 
 export interface OutletOption {
@@ -67,9 +64,7 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
   const visibleStreams = useMemo(() => {
     const result: TodayFolderStream[] = [];
     for (const stream of streams) {
-      const remaining = stream.clusters.filter(
-        (c) => !dismissedIds.has(c.cluster.id),
-      );
+      const remaining = stream.clusters.filter((c) => !dismissedIds.has(c.cluster.id));
       if (remaining.length === 0) continue;
       result.push({ ...stream, clusters: remaining });
     }
@@ -113,9 +108,7 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
         const peekPreviews = expanded
           ? stream.clusters.slice(1)
           : stream.clusters.slice(1, 1 + PEEK_COUNT);
-        const hiddenCount = expanded
-          ? 0
-          : Math.max(0, stream.clusters.length - 1 - PEEK_COUNT);
+        const hiddenCount = expanded ? 0 : Math.max(0, stream.clusters.length - 1 - PEEK_COUNT);
 
         return (
           <section
@@ -123,10 +116,7 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
             className="space-y-3"
             style={{ viewTransitionName: laneTransitionName(stream.id) }}
           >
-            <FolderStreamHeader
-              stream={stream}
-              compact={compact}
-            />
+            <FolderStreamHeader stream={stream} compact={compact} />
             <div className="space-y-3">
               <ClusterCard
                 key={heroPreview.cluster.id}
@@ -193,8 +183,8 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
 function applyDismissalWithTransition(apply: () => void) {
   if (
     typeof document !== "undefined" &&
-    typeof (document as Document & { startViewTransition?: unknown })
-      .startViewTransition === "function"
+    typeof (document as Document & { startViewTransition?: unknown }).startViewTransition ===
+      "function"
   ) {
     (
       document as Document & {
@@ -220,13 +210,7 @@ function cssIdent(s: string) {
   return s.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-function FolderStreamHeader({
-  stream,
-  compact,
-}: {
-  stream: TodayFolderStream;
-  compact: boolean;
-}) {
+function FolderStreamHeader({ stream, compact }: { stream: TodayFolderStream; compact: boolean }) {
   const [, startTransition] = useTransition();
   const polling = useBackgroundPolling();
   const [lastCount, setLastCount] = useState<number | null>(null);
@@ -257,8 +241,8 @@ function FolderStreamHeader({
                 lastCount === null
                   ? "Refreshing"
                   : lastCount === 0
-                    ? "Nothing to poll"
-                    : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
+                  ? "Nothing to poll"
+                  : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
               }
             />
           ) : null}
@@ -284,7 +268,8 @@ function FolderStreamHeader({
         <div className="fp-eyebrow">Folder stream</div>
         <h2 className="mt-1 text-xl font-semibold tracking-tight">{stream.name}</h2>
         <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          {stream.clusters.length} ready {stream.clusters.length === 1 ? "cluster" : "clusters"} from this reading lane.
+          {stream.clusters.length} ready {stream.clusters.length === 1 ? "cluster" : "clusters"}{" "}
+          from this reading lane.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -294,16 +279,12 @@ function FolderStreamHeader({
               lastCount === null
                 ? "Refreshing"
                 : lastCount === 0
-                  ? "Nothing to poll"
-                  : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
+                ? "Nothing to poll"
+                : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
             }
           />
         ) : null}
-        <button
-          type="button"
-          className="fp-btn fp-btn-ghost"
-          onClick={refresh}
-        >
+        <button type="button" className="fp-btn fp-btn-ghost" onClick={refresh}>
           Refresh
         </button>
       </div>
@@ -390,18 +371,16 @@ function ClusterCard({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2 fp-eyebrow">
-            <span>#{rank} in {preview.folder.name}</span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {c.sourceCount} sources
+            <span>
+              #{rank} in {preview.folder.name}
             </span>
+            <span style={{ color: "var(--border-strong)" }}>·</span>
+            <span style={{ textTransform: "none", fontWeight: 400 }}>{c.sourceCount} sources</span>
             <span style={{ color: "var(--border-strong)" }}>·</span>
             <span style={{ textTransform: "none", fontWeight: 400 }}>
               {relativeTime(c.latestPublishedAt)}
             </span>
-            <span className="fp-chip fp-chip-emerald ml-1">
-              fit {fit.toFixed(2)}
-            </span>
+            <span className="fp-chip fp-chip-emerald ml-1">fit {fit.toFixed(2)}</span>
           </div>
           <h3
             className={`mt-2 leading-snug font-semibold ${
@@ -429,10 +408,7 @@ function ClusterCard({
           className="mt-4 grid grid-cols-1 gap-3 rounded-lg p-3 sm:grid-cols-3"
           style={{ background: "var(--bg-subtle)" }}
         >
-          <RankerSignal
-            label="Archive overlap"
-            value={c.signals.archiveOverlap}
-          />
+          <RankerSignal label="Archive overlap" value={c.signals.archiveOverlap} />
           <RankerSignal label="Beat match" value={c.signals.beatMatch} />
           <RankerSignal label="Source trust" value={c.signals.sourceTrust} />
         </div>
@@ -445,12 +421,7 @@ function ClusterCard({
           defaultOutletId={defaultOutletId}
           draftsByOutlet={preview.draftsByOutlet}
         />
-        <button
-          type="button"
-          className="fp-btn fp-btn-ghost"
-          onClick={dismiss}
-          disabled={pending}
-        >
+        <button type="button" className="fp-btn fp-btn-ghost" onClick={dismiss} disabled={pending}>
           {pending ? "Dismissing" : "Not now"}
         </button>
       </div>
@@ -563,7 +534,10 @@ function RankerSignal({ label, value }: { label: string; value: number }) {
   const pct = Math.round(value * 100);
   return (
     <div>
-      <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--fg-muted)" }}>
+      <div
+        className="flex items-center justify-between text-[11px]"
+        style={{ color: "var(--fg-muted)" }}
+      >
         <span>{label}</span>
         <span className="tabular font-medium" style={{ color: "var(--fg)" }}>
           {value.toFixed(2)}
@@ -577,8 +551,7 @@ function RankerSignal({ label, value }: { label: string; value: number }) {
           className="h-full rounded-full transition-all"
           style={{
             width: `${pct}%`,
-            background:
-              "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 200%)",
+            background: "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 200%)",
           }}
         />
       </div>
@@ -601,10 +574,7 @@ function dedupeSourceChips(
   items: TodayClusterPreview["items"],
 ): { sourceId: string; label: string; count: number }[] {
   const order: string[] = [];
-  const groups = new Map<
-    string,
-    { sourceId: string; label: string; count: number }
-  >();
+  const groups = new Map<string, { sourceId: string; label: string; count: number }>();
   for (const item of items) {
     const existing = groups.get(item.sourceId);
     if (existing) {

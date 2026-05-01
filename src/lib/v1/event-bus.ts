@@ -23,11 +23,7 @@ import { newTraceId } from "./trace";
 export type EventHandler<T = unknown> = (event: Event<T>) => Promise<void> | void;
 
 export interface EventBus {
-  emit<T = unknown>(
-    type: EventType,
-    payload: T,
-    opts?: EmitOptions,
-  ): Promise<Event<T>>;
+  emit<T = unknown>(type: EventType, payload: T, opts?: EmitOptions): Promise<Event<T>>;
   subscribe<T = unknown>(type: EventType, handler: EventHandler<T>): Unsubscribe;
   // Replay events from the persisted log for a given trace_id or user_id.
   replay(opts: { traceId?: string; userId?: string; sinceMs?: number }): Promise<Event[]>;
@@ -51,11 +47,7 @@ export type Unsubscribe = () => void;
 class LocalEventBus implements EventBus {
   private handlers = new Map<EventType, Set<EventHandler>>();
 
-  async emit<T = unknown>(
-    type: EventType,
-    payload: T,
-    opts: EmitOptions = {},
-  ): Promise<Event<T>> {
+  async emit<T = unknown>(type: EventType, payload: T, opts: EmitOptions = {}): Promise<Event<T>> {
     await ensureSchema();
     const event: Event<T> = {
       id: crypto.randomUUID(),
@@ -99,7 +91,6 @@ class LocalEventBus implements EventBus {
           try {
             await handler(event);
           } catch (err) {
-            // eslint-disable-next-line no-console
             console.error(`[event-bus] handler failed for ${type}`, err);
           }
         }),
@@ -116,11 +107,7 @@ class LocalEventBus implements EventBus {
     };
   }
 
-  async replay(opts: {
-    traceId?: string;
-    userId?: string;
-    sinceMs?: number;
-  }): Promise<Event[]> {
+  async replay(opts: { traceId?: string; userId?: string; sinceMs?: number }): Promise<Event[]> {
     await ensureSchema();
     const wheres: string[] = [];
     const args: (string | number)[] = [];

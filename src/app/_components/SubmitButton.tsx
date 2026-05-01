@@ -32,11 +32,7 @@ export function SubmitButton({
       aria-disabled={disabled || pending}
     >
       {pending ? <Spinner /> : null}
-      {pending ? (
-        pendingLabel ? <span>{pendingLabel}</span> : null
-      ) : (
-        <span>{children}</span>
-      )}
+      {pending ? pendingLabel ? <span>{pendingLabel}</span> : null : <span>{children}</span>}
     </button>
   );
 }
@@ -45,11 +41,7 @@ export function PendingMessage({ children }: { children: ReactNode }) {
   const { pending } = useFormStatus();
   if (!pending) return null;
   return (
-    <div
-      className="fp-pending-message"
-      role="status"
-      aria-live="polite"
-    >
+    <div className="fp-pending-message" role="status" aria-live="polite">
       <Spinner />
       <span>{children}</span>
     </div>
@@ -103,11 +95,7 @@ export function PendingStages({ title, stages }: PendingStagesProps) {
               key={stage}
               className="flex items-center gap-1.5"
               style={{
-                color: done
-                  ? "var(--emerald)"
-                  : active
-                    ? "var(--indigo)"
-                    : "var(--fg-subtle)",
+                color: done ? "var(--emerald)" : active ? "var(--indigo)" : "var(--fg-subtle)",
               }}
             >
               <span
@@ -149,10 +137,5 @@ export function DisableFormWhilePending() {
 }
 
 function Spinner() {
-  return (
-    <span
-      className="fp-spinner"
-      aria-hidden
-    />
-  );
+  return <span className="fp-spinner" aria-hidden />;
 }

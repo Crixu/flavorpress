@@ -15,42 +15,42 @@
 
 :root {
   /* Surfaces */
-  --bg: #F5F1EA;
-  --bg-subtle: #EFE9DD;
-  --surface: #FFFFFF;
-  --surface-elev: #FFFFFF;
+  --bg: #f5f1ea;
+  --bg-subtle: #efe9dd;
+  --surface: #ffffff;
+  --surface-elev: #ffffff;
 
   /* Ink */
-  --fg: #1A1814;
-  --fg-muted: #6E695F;
-  --fg-subtle: #A39A8B;
+  --fg: #1a1814;
+  --fg-muted: #6e695f;
+  --fg-subtle: #a39a8b;
 
   /* Border */
-  --border: #E5DECF;
-  --border-strong: #D5CDB9;
+  --border: #e5decf;
+  --border-strong: #d5cdb9;
 
   /* Brand & semantic
    * --indigo is repurposed as the primary CTA colour (ink). Keeping the
    * variable name avoids touching every existing call-site.
    * --rose is repurposed as the editorial accent (peach). Same reasoning.
    * --emerald is repurposed as the positive accent (mint). */
-  --indigo: #1A1814;
+  --indigo: #1a1814;
   --indigo-hover: #000000;
-  --indigo-tint: #F0EAE0;
-  --rose: #FF8B60;
-  --rose-tint: #FFE3C9;
-  --emerald: #6FB593;
-  --emerald-tint: #E2F0EA;
-  --amber: #874A1A;
-  --amber-tint: #FCE2C7;
-  --plum: #9F7AEA;
-  --plum-tint: #F0E5F5;
+  --indigo-tint: #f0eae0;
+  --rose: #ff8b60;
+  --rose-tint: #ffe3c9;
+  --emerald: #6fb593;
+  --emerald-tint: #e2f0ea;
+  --amber: #874a1a;
+  --amber-tint: #fce2c7;
+  --plum: #9f7aea;
+  --plum-tint: #f0e5f5;
 
   /* Elevation tokens — softer, more diffuse */
   --shadow-xs: 0 1px 2px rgba(26, 24, 20, 0.04);
   --shadow-sm: 0 1px 2px rgba(26, 24, 20, 0.04), 0 4px 12px rgba(26, 24, 20, 0.05);
   --shadow-md: 0 1px 2px rgba(26, 24, 20, 0.04), 0 8px 24px rgba(26, 24, 20, 0.06);
-  --shadow-lg: 0 4px 12px rgba(26, 24, 20, 0.08), 0 24px 48px rgba(26, 24, 20, 0.10);
+  --shadow-lg: 0 4px 12px rgba(26, 24, 20, 0.08), 0 24px 48px rgba(26, 24, 20, 0.1);
   --shadow-glow: 0 0 0 4px rgba(255, 139, 96, 0.18);
 
   /* Radii — chunkier */
@@ -65,20 +65,28 @@
   --duration: 240ms;
 }
 
-html, body {
+html,
+body {
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  font-feature-settings: 'ss01', 'cv11', 'cv02', 'cv03', 'cv04';
+  font-family:
+    var(--font-sans),
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-feature-settings: "ss01", "cv11", "cv02", "cv03", "cv04";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
 /* Editorial serif for the draft body inside /editor and editorial H1 */
-.serif, .prose-serif, .fp-h1-serif {
-  font-family: var(--font-serif), 'Georgia', serif;
-  font-feature-settings: 'liga', 'kern';
+.serif,
+.prose-serif,
+.fp-h1-serif {
+  font-family: var(--font-serif), "Georgia", serif;
+  font-feature-settings: "liga", "kern";
 }
 
 /* Tabular numerals everywhere data shows up */
@@ -92,9 +100,10 @@ html, body {
   border: 1px solid transparent;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
-  transition: transform var(--duration) var(--ease),
-              box-shadow var(--duration) var(--ease),
-              border-color var(--duration) var(--ease);
+  transition:
+    transform var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .fp-card-hover:hover {
@@ -121,7 +130,7 @@ html, body {
 }
 
 .fp-card-feature {
-  background: linear-gradient(135deg, #FFE3C9 0%, #FFD0B0 60%, #F7B98C 100%);
+  background: linear-gradient(135deg, #ffe3c9 0%, #ffd0b0 60%, #f7b98c 100%);
   border: 1px solid transparent;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
@@ -134,7 +143,7 @@ html, body {
  * is left transparent so any prior `fp-card-feature` markup stays visually
  * clean if it gets nested elsewhere. */
 .fp-card-feature::before {
-  content: '';
+  content: "";
   display: none;
 }
 
@@ -142,7 +151,7 @@ html, body {
  * tile. In Canvas this is a peach-cream wash. */
 .fp-gradient-surface {
   background:
-    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(255, 139, 96, 0.10), transparent 60%),
+    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(255, 139, 96, 0.1), transparent 60%),
     radial-gradient(ellipse 60% 60% at 100% 100%, rgba(159, 122, 234, 0.08), transparent 70%),
     var(--surface);
 }
@@ -252,28 +261,45 @@ html, body {
   background: var(--bg-subtle);
   color: var(--fg-muted);
 }
-.fp-chip-emerald { background: var(--emerald-tint); color: #3F7556; }
-.fp-chip-rose    { background: var(--rose-tint);    color: #9C4A22; }
-.fp-chip-amber   { background: var(--amber-tint);   color: var(--amber); }
-.fp-chip-indigo  { background: var(--indigo-tint);  color: var(--fg); }
+.fp-chip-emerald {
+  background: var(--emerald-tint);
+  color: #3f7556;
+}
+.fp-chip-rose {
+  background: var(--rose-tint);
+  color: #9c4a22;
+}
+.fp-chip-amber {
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+.fp-chip-indigo {
+  background: var(--indigo-tint);
+  color: var(--fg);
+}
 
 /* Inputs */
-.fp-input, .fp-textarea {
+.fp-input,
+.fp-textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0.625rem 0.875rem;
   font-size: 14px;
   color: var(--fg);
-  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
   width: 100%;
 }
-.fp-input:focus, .fp-textarea:focus {
+.fp-input:focus,
+.fp-textarea:focus {
   outline: none;
   border-color: var(--rose);
   box-shadow: var(--shadow-glow);
 }
-.fp-input::placeholder, .fp-textarea::placeholder {
+.fp-input::placeholder,
+.fp-textarea::placeholder {
   color: var(--fg-subtle);
 }
 
@@ -298,7 +324,12 @@ html, body {
 /* Subtle dotted hairline divider */
 .fp-divider {
   height: 1px;
-  background-image: linear-gradient(to right, var(--border-strong) 0%, var(--border-strong) 50%, transparent 50%);
+  background-image: linear-gradient(
+    to right,
+    var(--border-strong) 0%,
+    var(--border-strong) 50%,
+    transparent 50%
+  );
   background-size: 6px 1px;
 }
 
@@ -317,7 +348,9 @@ html, body {
 
 /* Form feedback */
 @keyframes fp-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .fp-spinner {
   display: inline-block;
@@ -346,8 +379,12 @@ html, body {
 
 /* Skeleton */
 @keyframes fp-shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 .fp-skeleton {
   background: linear-gradient(90deg, var(--bg-subtle) 0%, var(--border) 50%, var(--bg-subtle) 100%);
@@ -358,8 +395,12 @@ html, body {
 
 /* Indeterminate progress bar (drafting state) */
 @keyframes fp-bar-slide {
-  0%   { transform: translateX(-110%); }
-  100% { transform: translateX(360%); }
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
 }
 .fp-bar-indeterminate {
   left: 0;
@@ -368,9 +409,18 @@ html, body {
 
 /* Pulsing ring (status dot + active stage glyph) */
 @keyframes fp-pulse-ring {
-  0%   { transform: scale(1);   opacity: 0.55; }
-  80%  { transform: scale(2.4); opacity: 0;    }
-  100% { transform: scale(2.4); opacity: 0;    }
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  80% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
 }
 .fp-pulse-ring {
   animation: fp-pulse-ring 1.5s var(--ease) infinite;
@@ -404,7 +454,9 @@ html, body {
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     transition-duration: 0ms !important;
     animation-duration: 0ms !important;
   }
@@ -423,7 +475,9 @@ mark[data-fp-ext] {
   padding: 0 1px;
   cursor: pointer;
   border-radius: 2px;
-  transition: box-shadow 120ms var(--ease), background 120ms var(--ease);
+  transition:
+    box-shadow 120ms var(--ease),
+    background 120ms var(--ease);
 }
 mark[data-fp-ext][data-fp-tone="positive"] {
   background: var(--emerald-tint);

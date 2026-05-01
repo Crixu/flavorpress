@@ -13,18 +13,17 @@ import type { InitialAnnotationsByExtension } from "./types";
 interface Props {
   draftId: string;
   initialAnnotationsByExt: InitialAnnotationsByExtension;
+  enabledExtensionIds: string[];
 }
 
-export function ExtensionsPanels({
-  draftId,
-  initialAnnotationsByExt,
-}: Props) {
+export function ExtensionsPanels({ draftId, initialAnnotationsByExt, enabledExtensionIds }: Props) {
   for (const [extId, payload] of Object.entries(initialAnnotationsByExt)) {
     hydrateSlice(draftId, extId, payload.annotations, payload.ranAt);
   }
+  const enabled = new Set(enabledExtensionIds);
   return (
     <>
-      {CLIENT_EXTENSIONS.map((ext) => (
+      {CLIENT_EXTENSIONS.filter((ext) => enabled.has(ext.id)).map((ext) => (
         <ext.Panel key={ext.id} draftId={draftId} />
       ))}
     </>

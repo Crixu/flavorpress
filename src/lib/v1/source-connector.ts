@@ -13,12 +13,7 @@ import { db, ensureSchema } from "../db";
 import { getBus } from "./event-bus";
 import { BackoffError } from "./polite-fetch";
 import { traceLogger, newTraceId } from "./trace";
-import type {
-  Item,
-  ItemIngestedPayload,
-  Source,
-  SourceKind,
-} from "./types";
+import type { Item, ItemIngestedPayload, Source, SourceKind } from "./types";
 
 export interface RawItem {
   externalId: string; // unique within source (e.g., RSS guid, Reddit permalink)
@@ -186,10 +181,7 @@ export async function runConnector<TRaw>(
   return { ingested: ingestedCount, traceId };
 }
 
-async function defaultDedupe(
-  items: RawItem[],
-  ctx: ConnectorContext,
-): Promise<RawItem[]> {
+async function defaultDedupe(items: RawItem[], ctx: ConnectorContext): Promise<RawItem[]> {
   if (items.length === 0) return items;
   const canonicalUrls = items.map((i) => canonicalize(i.url));
   const placeholders = canonicalUrls.map(() => "?").join(",");

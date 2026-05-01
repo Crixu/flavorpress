@@ -76,9 +76,7 @@ async function main() {
     const titles = items.rows
       .map((r) => `${String(r.display_name)}: ${String(r.title).slice(0, 60)}`)
       .join("\n      ");
-    console.log(
-      `  cluster ${String(c.id).slice(0, 8)} state=${c.state} sources=${c.source_count}`,
-    );
+    console.log(`  cluster ${String(c.id).slice(0, 8)} state=${c.state} sources=${c.source_count}`);
     if (items.rows.length > 0) {
       console.log(`      ${titles}`);
     }

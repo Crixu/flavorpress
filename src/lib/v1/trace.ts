@@ -23,8 +23,7 @@ const TRACE_PREFIX = "tr_";
  * Stable enough for human reference in URLs and logs.
  */
 export function newTraceId(): string {
-  const chars =
-    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   let out = TRACE_PREFIX;
   for (let i = 0; i < 10; i++) {
     out += chars[Math.floor(Math.random() * chars.length)];
@@ -41,10 +40,7 @@ export interface TraceLogger {
   error(span: string, message: string, data?: Record<string, unknown>): Promise<void>;
 }
 
-export function traceLogger(
-  traceId: string,
-  userId: string | null = null,
-): TraceLogger {
+export function traceLogger(traceId: string, userId: string | null = null): TraceLogger {
   const write = async (
     level: LogLevel,
     span: string,
@@ -55,15 +51,7 @@ export function traceLogger(
     await db.execute({
       sql: `INSERT INTO trace_log (trace_id, user_id, span, level, message, data, occurred_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        traceId,
-        userId,
-        span,
-        level,
-        message,
-        data ? JSON.stringify(data) : null,
-        Date.now(),
-      ],
+      args: [traceId, userId, span, level, message, data ? JSON.stringify(data) : null, Date.now()],
     });
     // Also mirror to stderr for live tailing during dev.
     if (process.env.NODE_ENV !== "production") {

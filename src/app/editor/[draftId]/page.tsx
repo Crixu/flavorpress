@@ -11,9 +11,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
 import { deleteDraftAction } from "@/lib/v1/actions";
-import { loadAllAnnotations } from "@/extensions/server";
+import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
+import { getDisabledExtensionIds } from "@/lib/v1/settings";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { PublishToWpForm } from "./PublishToWpForm";
 
@@ -52,6 +53,10 @@ export default async function EditorPage({ params }: PageProps) {
     (n, payload) => n + payload.annotations.length,
     0,
   );
+  const disabledExtensionIds = await getDisabledExtensionIds();
+  const enabledExtensionIds = SERVER_EXTENSIONS.map((ext) => ext.id).filter(
+    (id) => !disabledExtensionIds.has(id),
+  );
 
   const headlineAlternates = d.headline_alternates
     ? (JSON.parse(String(d.headline_alternates)) as string[])
@@ -75,11 +80,7 @@ export default async function EditorPage({ params }: PageProps) {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1.5">
           <div className="fp-eyebrow">
-            <Link
-              href="/"
-              className="hover:underline"
-              style={{ color: "var(--fg-subtle)" }}
-            >
+            <Link href="/" className="hover:underline" style={{ color: "var(--fg-subtle)" }}>
               ← Today
             </Link>
             <span className="mx-2" style={{ color: "var(--border-strong)" }}>
@@ -157,9 +158,7 @@ export default async function EditorPage({ params }: PageProps) {
               }}
             />
             <span style={{ fontWeight: 600 }}>voice-match {voiceScore}</span>
-            <span style={{ opacity: 0.75 }}>
-              {voiceOk ? "sounds like you" : "below threshold"}
-            </span>
+            <span style={{ opacity: 0.75 }}>{voiceOk ? "sounds like you" : "below threshold"}</span>
           </span>
           <span
             className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px]"
@@ -181,7 +180,14 @@ export default async function EditorPage({ params }: PageProps) {
               className="hidden font-mono tabular text-[11px] md:inline"
               style={{ color: "var(--fg-subtle)" }}
             >
-              {String(d.body ?? "").replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length} words
+              {
+                String(d.body ?? "")
+                  .replace(/<[^>]+>/g, " ")
+                  .trim()
+                  .split(/\s+/)
+                  .filter(Boolean).length
+              }{" "}
+              words
             </span>
           </span>
         </div>
@@ -189,10 +195,7 @@ export default async function EditorPage({ params }: PageProps) {
         {/* Three panes — soft cream rails, white centre, no hard borders */}
         <div className="grid grid-cols-12">
           {/* Left rail */}
-          <aside
-            className="col-span-12 p-5 lg:col-span-3"
-            style={{ background: "#FAF7F1" }}
-          >
+          <aside className="col-span-12 p-5 lg:col-span-3" style={{ background: "#FAF7F1" }}>
             <div className="fp-eyebrow mb-3">Sources · {itemsR.rows.length}</div>
             <ul className="space-y-2 text-xs">
               {itemsR.rows.map((row) => (
@@ -207,10 +210,16 @@ export default async function EditorPage({ params }: PageProps) {
                   <div className="text-[12.5px] font-medium" style={{ color: "var(--fg)" }}>
                     {String(row.display_name ?? hostFromUrl(String(row.source_url)))}
                   </div>
-                  <div className="mt-0.5 font-mono text-[10px]" style={{ color: "var(--fg-subtle)" }}>
+                  <div
+                    className="mt-0.5 font-mono text-[10px]"
+                    style={{ color: "var(--fg-subtle)" }}
+                  >
                     {relativeTime(Number(row.published_at))}
                   </div>
-                  <div className="mt-1.5 line-clamp-3 leading-snug" style={{ color: "var(--fg-muted)" }}>
+                  <div
+                    className="mt-1.5 line-clamp-3 leading-snug"
+                    style={{ color: "var(--fg-muted)" }}
+                  >
                     {String(row.title)}
                   </div>
                 </li>
@@ -232,13 +241,11 @@ export default async function EditorPage({ params }: PageProps) {
                 draftId={String(d.id)}
                 bodyHtml={String(d.body ?? "")}
                 initialAnnotationsByExt={initialAnnotationsByExt}
+                enabledExtensionIds={enabledExtensionIds}
               />
 
               {quotes.length > 0 ? (
-                <div
-                  className="mt-10 pt-6"
-                  style={{ borderTop: "1px solid var(--border)" }}
-                >
+                <div className="mt-10 pt-6" style={{ borderTop: "1px solid var(--border)" }}>
                   <div className="fp-eyebrow">Citations · {quotes.length}</div>
                   <ol
                     className="mt-3 list-decimal space-y-1.5 pl-5 text-[12px]"
@@ -262,6 +269,7 @@ export default async function EditorPage({ params }: PageProps) {
             <ExtensionsPanels
               draftId={String(d.id)}
               initialAnnotationsByExt={initialAnnotationsByExt}
+              enabledExtensionIds={enabledExtensionIds}
             />
 
             {/* Voice match */}
@@ -300,10 +308,7 @@ export default async function EditorPage({ params }: PageProps) {
                       }}
                     />
                   </div>
-                  <div
-                    className="mt-1 text-[10px]"
-                    style={{ color: "var(--fg-subtle)" }}
-                  >
+                  <div className="mt-1 text-[10px]" style={{ color: "var(--fg-subtle)" }}>
                     Burrows' Delta on function-word distribution
                   </div>
                 </span>
@@ -339,9 +344,7 @@ export default async function EditorPage({ params }: PageProps) {
                       }}
                     >
                       <div className="font-semibold">Archive habit</div>
-                      <div className="mt-0.5 text-[11px]">
-                        {String(d.angle_archive)}
-                      </div>
+                      <div className="mt-0.5 text-[11px]">{String(d.angle_archive)}</div>
                     </button>
                   ) : null}
                   {d.angle_gap ? (
@@ -353,10 +356,7 @@ export default async function EditorPage({ params }: PageProps) {
                       }}
                     >
                       <div className="font-semibold">Cluster-gap</div>
-                      <div
-                        className="mt-0.5 text-[11px]"
-                        style={{ color: "var(--fg-muted)" }}
-                      >
+                      <div className="mt-0.5 text-[11px]" style={{ color: "var(--fg-muted)" }}>
                         {String(d.angle_gap)}
                       </div>
                     </button>
@@ -374,9 +374,7 @@ export default async function EditorPage({ params }: PageProps) {
                   boxShadow: "var(--shadow-xs)",
                 }}
               >
-                <div className="fp-eyebrow">
-                  Quote pool · {quotes.length} in draft
-                </div>
+                <div className="fp-eyebrow">Quote pool · {quotes.length} in draft</div>
                 <ul className="mt-3 space-y-2 text-[12px]">
                   {quotes.map((q, i) => (
                     <li
@@ -400,8 +398,7 @@ export default async function EditorPage({ params }: PageProps) {
             <div
               className="rounded-2xl p-4"
               style={{
-                background:
-                  "linear-gradient(135deg, var(--plum-tint) 0%, #E9DEF4 100%)",
+                background: "linear-gradient(135deg, var(--plum-tint) 0%, #E9DEF4 100%)",
               }}
             >
               <div className="flex items-center justify-between">
@@ -412,12 +409,8 @@ export default async function EditorPage({ params }: PageProps) {
                   v1.1+
                 </span>
               </div>
-              <p
-                className="mt-2 text-[11.5px] leading-snug"
-                style={{ color: "#3F2360" }}
-              >
-                Research, scheduling, plagiarism, analytics. Capabilities plug
-                in here in v1.1.
+              <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "#3F2360" }}>
+                Research, scheduling, plagiarism, analytics. Capabilities plug in here in v1.1.
               </p>
             </div>
 
@@ -442,10 +435,7 @@ export default async function EditorPage({ params }: PageProps) {
                   Push to WordPress draft
                 </PublishToWpForm>
               )}
-              <button
-                className="w-full py-2 text-[12px]"
-                style={{ color: "var(--fg-subtle)" }}
-              >
+              <button className="w-full py-2 text-[12px]" style={{ color: "var(--fg-subtle)" }}>
                 Schedule for later
               </button>
               {!d.wp_post_id ? (

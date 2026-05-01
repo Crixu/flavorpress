@@ -11,10 +11,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
 import { HelpTrigger } from "@/components/Help";
-import {
-  PendingMessage,
-  SubmitButton,
-} from "@/app/_components/SubmitButton";
+import { PendingMessage, SubmitButton } from "@/app/_components/SubmitButton";
 import {
   deleteSourceAction,
   assignSourceOutletsAction,
@@ -67,10 +64,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
     ),
   );
 
-  const alsoCoveredMap = new Map<
-    string,
-    { display: string; url: string; sourceId: string }[]
-  >();
+  const alsoCoveredMap = new Map<string, { display: string; url: string; sourceId: string }[]>();
   if (clusterIds.length > 0) {
     const placeholders = clusterIds.map(() => "?").join(",");
     const others = await db.execute({
@@ -121,9 +115,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
         <div className="fp-eyebrow">{kindLabel(String(source.kind))} source</div>
         <SourceTitleEditor
           sourceId={id}
-          initialTitle={String(
-            source.display_name ?? hostFromUrl(String(source.url)),
-          )}
+          initialTitle={String(source.display_name ?? hostFromUrl(String(source.url)))}
         />
         <a
           href={String(source.url)}
@@ -142,13 +134,11 @@ export default async function SourceDetailPage({ params }: PageProps) {
           style={{
             background: "var(--amber-tint)",
             color: "var(--amber)",
-            border:
-              "1px solid color-mix(in srgb, var(--amber) 25%, var(--border))",
+            border: "1px solid color-mix(in srgb, var(--amber) 25%, var(--border))",
           }}
         >
-          Pending v1.1. Podcasts and YouTube need Whisper transcription before
-          the cluster engine can do anything with them. Source is saved; it
-          activates when v1.1 ships.
+          Pending v1.1. Podcasts and YouTube need Whisper transcription before the cluster engine
+          can do anything with them. Source is saved; it activates when v1.1 ships.
         </div>
       ) : null}
 
@@ -158,8 +148,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
           style={{
             background: "var(--rose-tint)",
             color: "var(--rose)",
-            border:
-              "1px solid color-mix(in srgb, var(--rose) 25%, var(--border))",
+            border: "1px solid color-mix(in srgb, var(--rose) 25%, var(--border))",
           }}
         >
           ⚠ {lastErr}
@@ -189,12 +178,10 @@ export default async function SourceDetailPage({ params }: PageProps) {
 
       <section className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-white px-4 py-3">
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-stone-500">
-            Boost trust
-          </div>
+          <div className="text-[11px] uppercase tracking-wider text-stone-500">Boost trust</div>
           <div className="text-[12px] text-stone-600">
-            Nudge ±0.1 per click. Higher = this source counts for more when
-            clusters fire; lower = noisier sources stop dragging the inbox.
+            Nudge ±0.1 per click. Higher = this source counts for more when clusters fire; lower =
+            noisier sources stop dragging the inbox.
           </div>
         </div>
         <div className="ml-auto">
@@ -208,13 +195,11 @@ export default async function SourceDetailPage({ params }: PageProps) {
           style={{
             background: "var(--amber-tint)",
             color: "var(--amber)",
-            border:
-              "1px solid color-mix(in srgb, var(--amber) 25%, var(--border))",
+            border: "1px solid color-mix(in srgb, var(--amber) 25%, var(--border))",
           }}
         >
-          Snoozed. Bulk polls will skip this source until{" "}
-          {new Date(pausedUntil!).toLocaleString()}. Resume anytime, or hit
-          Poll now to override the snooze just this once.
+          Snoozed. Bulk polls will skip this source until {new Date(pausedUntil!).toLocaleString()}.
+          Resume anytime, or hit Poll now to override the snooze just this once.
         </div>
       ) : null}
 
@@ -229,10 +214,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
         {isPaused ? (
           <form action={resumeSourceAction}>
             <input type="hidden" name="sourceId" value={id} />
-            <SubmitButton
-              className="fp-btn fp-btn-ghost"
-              pendingLabel="Resuming"
-            >
+            <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Resuming">
               ▶ Resume
             </SubmitButton>
           </form>
@@ -249,10 +231,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
               <option value="24">1 day</option>
               <option value="168">1 week</option>
             </select>
-            <SubmitButton
-              className="fp-btn fp-btn-ghost"
-              pendingLabel="Snoozing"
-            >
+            <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Snoozing">
               Snooze
             </SubmitButton>
           </form>
@@ -260,10 +239,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
         <form action={deleteSourceAction}>
           <input type="hidden" name="sourceId" value={id} />
           <input type="hidden" name="redirectTo" value="/sources" />
-          <SubmitButton
-            className="fp-btn fp-btn-danger"
-            pendingLabel="Removing source"
-          >
+          <SubmitButton className="fp-btn fp-btn-danger" pendingLabel="Removing source">
             Remove source
           </SubmitButton>
         </form>
@@ -274,12 +250,9 @@ export default async function SourceDetailPage({ params }: PageProps) {
         <section className="fp-card p-5">
           <div className="mb-2">
             <div className="fp-eyebrow">Reads into</div>
-            <p
-              className="text-[13px] leading-relaxed"
-              style={{ color: "var(--fg-muted)" }}
-            >
-              Pick which outlets see this source. Leave all unchecked to fall
-              back to the default: every outlet reads from this source.
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+              Pick which outlets see this source. Leave all unchecked to fall back to the default:
+              every outlet reads from this source.
             </p>
           </div>
           <form action={assignSourceOutletsAction} className="space-y-3">
@@ -287,8 +260,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
             <div className="grid gap-2 sm:grid-cols-2">
               {outlets.map((o) => {
                 const checked = assignedOutletIds.has(o.id);
-                const display =
-                  o.displayName ?? hostFromUrl(String(o.baseUrl));
+                const display = o.displayName ?? hostFromUrl(String(o.baseUrl));
                 return (
                   <label
                     key={o.id}
@@ -302,13 +274,8 @@ export default async function SourceDetailPage({ params }: PageProps) {
                       className="mt-0.5"
                     />
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">
-                        {display}
-                      </div>
-                      <div
-                        className="truncate text-[11px]"
-                        style={{ color: "var(--fg-muted)" }}
-                      >
+                      <div className="text-sm font-medium truncate">{display}</div>
+                      <div className="truncate text-[11px]" style={{ color: "var(--fg-muted)" }}>
                         {o.baseUrl}
                       </div>
                     </div>
@@ -317,26 +284,18 @@ export default async function SourceDetailPage({ params }: PageProps) {
               })}
             </div>
             <div className="flex items-center gap-3">
-              <SubmitButton
-                className="fp-btn fp-btn-primary"
-                pendingLabel="Saving assignment"
-              >
+              <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Saving assignment">
                 Save assignment
               </SubmitButton>
-              <span
-                className="text-[11px]"
-                style={{ color: "var(--fg-subtle)" }}
-              >
+              <span className="text-[11px]" style={{ color: "var(--fg-subtle)" }}>
                 {assignedOutletIds.size === 0
                   ? "Currently: All outlets (default)"
                   : `Currently assigned to ${assignedOutletIds.size} outlet${
                       assignedOutletIds.size === 1 ? "" : "s"
-                  }`}
+                    }`}
               </span>
             </div>
-            <PendingMessage>
-              Saving which outlet reads this source.
-            </PendingMessage>
+            <PendingMessage>Saving which outlet reads this source.</PendingMessage>
           </form>
         </section>
       ) : null}
@@ -349,7 +308,10 @@ export default async function SourceDetailPage({ params }: PageProps) {
         </div>
 
         {itemsR.rows.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[color:var(--border)] bg-white p-6 text-center text-sm" style={{ color: "var(--fg-muted)" }}>
+          <div
+            className="rounded-xl border border-dashed border-[color:var(--border)] bg-white p-6 text-center text-sm"
+            style={{ color: "var(--fg-muted)" }}
+          >
             No items yet. Hit "Poll now" to fetch.
           </div>
         ) : (
@@ -357,12 +319,9 @@ export default async function SourceDetailPage({ params }: PageProps) {
             {itemsR.rows.map((row) => {
               const itemId = String(row.id);
               const cid = row.cluster_id ? String(row.cluster_id) : null;
-              const others = cid ? alsoCoveredMap.get(cid) ?? [] : [];
+              const others = cid ? (alsoCoveredMap.get(cid) ?? []) : [];
               return (
-                <article
-                  key={itemId}
-                  className="fp-card fp-card-hover p-4"
-                >
+                <article key={itemId} className="fp-card fp-card-hover p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <a
@@ -391,9 +350,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
                   {others.length > 0 ? (
                     <div className="mt-3 border-t border-[color:var(--border)] pt-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="fp-eyebrow">
-                          Also covered by
-                        </span>
+                        <span className="fp-eyebrow">Also covered by</span>
                         <span className="fp-chip fp-chip-emerald">
                           cluster · {others.length + 1} sources
                         </span>
@@ -412,12 +369,9 @@ export default async function SourceDetailPage({ params }: PageProps) {
                     </div>
                   ) : (
                     <div className="mt-3 border-t border-[color:var(--border)] pt-3">
-                      <span
-                        className="text-[11px]"
-                        style={{ color: "var(--fg-subtle)" }}
-                      >
-                        Not yet in a cluster — needs 2+ other sources
-                        covering the same story within 72 hours.
+                      <span className="text-[11px]" style={{ color: "var(--fg-subtle)" }}>
+                        Not yet in a cluster — needs 2+ other sources covering the same story within
+                        72 hours.
                       </span>
                     </div>
                   )}
@@ -431,13 +385,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
   );
 }
 
-function Stat({
-  label,
-  value,
-}: {
-  label: React.ReactNode;
-  value: string;
-}) {
+function Stat({ label, value }: { label: React.ReactNode; value: string }) {
   return (
     <div className="fp-stat">
       <div className="text-2xl font-light tabular">{value}</div>

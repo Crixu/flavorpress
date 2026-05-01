@@ -16,10 +16,7 @@ import { notFound } from "next/navigation";
 import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
 import { getOutlet } from "@/lib/v1/outlets";
 import { HelpTrigger } from "@/components/Help";
-import {
-  PendingMessage,
-  SubmitButton,
-} from "@/app/_components/SubmitButton";
+import { PendingMessage, SubmitButton } from "@/app/_components/SubmitButton";
 import {
   addVoiceTermAction,
   removeVoiceTermAction,
@@ -55,16 +52,10 @@ export default async function VoiceDetailPage({ params }: PageProps) {
     ? (JSON.parse(String(profile.signature_terms ?? "[]")) as string[])
     : [];
   const styleYaml = profile ? String(profile.style_sheet_yaml ?? "") : "";
-  const description = profile
-    ? String((profile as Record<string, unknown>).description ?? "")
-    : "";
+  const description = profile ? String((profile as Record<string, unknown>).description ?? "") : "";
   const archiveSize = profile ? Number(profile.archive_index_size ?? 0) : 0;
-  const sentenceMean = profile
-    ? Number(profile.sentence_length_mean ?? 0)
-    : 0;
-  const sentenceVar = profile
-    ? Number(profile.sentence_length_variance ?? 0)
-    : 0;
+  const sentenceMean = profile ? Number(profile.sentence_length_mean ?? 0) : 0;
+  const sentenceVar = profile ? Number(profile.sentence_length_variance ?? 0) : 0;
   const emDash = profile ? Number(profile.em_dash_density ?? 0) : 0;
   const hedge = profile ? Number(profile.hedge_frequency ?? 0) : 0;
   const quoteDensity = profile ? Number(profile.quote_density ?? 0) : 0;
@@ -73,8 +64,7 @@ export default async function VoiceDetailPage({ params }: PageProps) {
   // Top function words (best effort: stored as packed Float64Array; show top
   // 10 indices ranked by frequency). For now we render archive size + flag
   // that fingerprint exists; the per-word view is v1.1.
-  const hasFingerprint =
-    profile && (profile.function_word_distribution as unknown) !== null;
+  const hasFingerprint = profile && (profile.function_word_distribution as unknown) !== null;
 
   return (
     <div className="space-y-6">
@@ -110,15 +100,11 @@ export default async function VoiceDetailPage({ params }: PageProps) {
         <section className="fp-card-feature p-6">
           <div className="text-base font-semibold">No voice profile yet.</div>
           <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-            Build the profile from your last 50 published posts. Takes about
-            30 seconds.
+            Build the profile from your last 50 published posts. Takes about 30 seconds.
           </p>
           <form action={buildVoiceProfileAction} className="mt-4">
             <input type="hidden" name="outletId" value={outletId} />
-            <SubmitButton
-              className="fp-btn fp-btn-primary"
-              pendingLabel="Building voice"
-            >
+            <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Building voice">
               Build voice profile
             </SubmitButton>
             <PendingMessage>
@@ -133,85 +119,45 @@ export default async function VoiceDetailPage({ params }: PageProps) {
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-semibold tracking-tight">
                 Fingerprint{" "}
-                <span
-                  className="ml-1 text-xs font-normal"
-                  style={{ color: "var(--fg-subtle)" }}
-                >
+                <span className="ml-1 text-xs font-normal" style={{ color: "var(--fg-subtle)" }}>
                   auto-derived · read-only
                 </span>
               </h2>
               <form action={buildVoiceProfileAction}>
                 <input type="hidden" name="outletId" value={outletId} />
-                <SubmitButton
-                  className="fp-btn fp-btn-ghost"
-                  pendingLabel="Re-training"
-                >
+                <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Re-training">
                   ↻ Re-train from archive
                 </SubmitButton>
               </form>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <Stat
-                label="Posts in archive"
-                value={String(archiveSize)}
-                hint="archive-overlap"
-              />
-              <Stat
-                label="Avg sentence"
-                value={`${sentenceMean.toFixed(1)}w`}
-              />
-              <Stat
-                label="Sentence variance"
-                value={sentenceVar.toFixed(1)}
-              />
-              <Stat
-                label="Em-dash / 1k"
-                value={emDash.toFixed(2)}
-              />
-              <Stat
-                label="Hedge / 1k"
-                value={hedge.toFixed(2)}
-              />
-              <Stat
-                label="Quote / 1k"
-                value={quoteDensity.toFixed(2)}
-              />
+              <Stat label="Posts in archive" value={String(archiveSize)} hint="archive-overlap" />
+              <Stat label="Avg sentence" value={`${sentenceMean.toFixed(1)}w`} />
+              <Stat label="Sentence variance" value={sentenceVar.toFixed(1)} />
+              <Stat label="Em-dash / 1k" value={emDash.toFixed(2)} />
+              <Stat label="Hedge / 1k" value={hedge.toFixed(2)} />
+              <Stat label="Quote / 1k" value={quoteDensity.toFixed(2)} />
             </div>
-            <div
-              className="mt-2 text-[11px]"
-              style={{ color: "var(--fg-muted)" }}
-            >
+            <div className="mt-2 text-[11px]" style={{ color: "var(--fg-muted)" }}>
               Last built {lastBuilt ? new Date(lastBuilt).toLocaleString() : "—"}
-              {hasFingerprint
-                ? " · function-word distribution captured"
-                : ""}
+              {hasFingerprint ? " · function-word distribution captured" : ""}
             </div>
           </section>
 
           {/* Editable: blog description */}
-          <BlogDescriptionEditor
-            outletId={outletId}
-            description={description}
-          />
+          <BlogDescriptionEditor outletId={outletId} description={description} />
 
           {/* Editable: signature terms */}
           <section>
             <h2 className="mb-2 text-base font-semibold tracking-tight">
               <HelpTrigger id="signature-terms">Signature terms</HelpTrigger>
-              <span
-                className="ml-2 text-xs font-normal"
-                style={{ color: "var(--fg-muted)" }}
-              >
+              <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
                 phrases this voice prefers
               </span>
             </h2>
-            <p
-              className="mb-3 text-[13px] leading-relaxed"
-              style={{ color: "var(--fg-muted)" }}
-            >
-              Words and phrases drafts should reach for. The model nudges
-              toward these when generating. Auto-detected from your archive;
-              add or remove freely.
+            <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+              Words and phrases drafts should reach for. The model nudges toward these when
+              generating. Auto-detected from your archive; add or remove freely.
             </p>
             <ChipEditor
               outletId={outletId}
@@ -226,19 +172,13 @@ export default async function VoiceDetailPage({ params }: PageProps) {
           <section>
             <h2 className="mb-2 text-base font-semibold tracking-tight">
               <HelpTrigger id="banned-terms">Banned terms</HelpTrigger>
-              <span
-                className="ml-2 text-xs font-normal"
-                style={{ color: "var(--fg-muted)" }}
-              >
+              <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
                 words drafts must avoid
               </span>
             </h2>
-            <p
-              className="mb-3 text-[13px] leading-relaxed"
-              style={{ color: "var(--fg-muted)" }}
-            >
-              The model rewrites around these. Useful for AI-slop words
-              ("leverage", "delve", "tapestry") or jargon you've outgrown.
+            <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+              The model rewrites around these. Useful for AI-slop words ("leverage", "delve",
+              "tapestry") or jargon you've outgrown.
             </p>
             <ChipEditor
               outletId={outletId}
@@ -254,10 +194,7 @@ export default async function VoiceDetailPage({ params }: PageProps) {
             <section>
               <h2 className="mb-2 text-base font-semibold tracking-tight">
                 Style sheet (YAML)
-                <span
-                  className="ml-2 text-xs font-normal"
-                  style={{ color: "var(--fg-muted)" }}
-                >
+                <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
                   what the model sees
                 </span>
               </h2>
@@ -266,8 +203,7 @@ export default async function VoiceDetailPage({ params }: PageProps) {
                 style={{
                   background: "var(--bg-subtle)",
                   border: "1px solid var(--border)",
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                 }}
               >
                 {styleYaml}
@@ -282,15 +218,7 @@ export default async function VoiceDetailPage({ params }: PageProps) {
   );
 }
 
-function Stat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="fp-stat">
       <div className="text-2xl font-light tabular">{value}</div>
@@ -312,25 +240,15 @@ function BlogDescriptionEditor({
     <section>
       <h2 className="mb-2 text-base font-semibold tracking-tight">
         Blog description
-        <span
-          className="ml-2 text-xs font-normal"
-          style={{ color: "var(--fg-muted)" }}
-        >
+        <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
           two or three sentences the drafter sees
         </span>
       </h2>
-      <p
-        className="mb-3 text-[13px] leading-relaxed"
-        style={{ color: "var(--fg-muted)" }}
-      >
-        What this blog is about. The model reads it before every draft so
-        clusters get framed in context, not as generic news. Auto-derive
-        pulls from your homepage; edit the result freely.
+      <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+        What this blog is about. The model reads it before every draft so clusters get framed in
+        context, not as generic news. Auto-derive pulls from your homepage; edit the result freely.
       </p>
-      <form
-        action={saveBlogDescriptionAction}
-        className="space-y-3"
-      >
+      <form action={saveBlogDescriptionAction} className="space-y-3">
         <input type="hidden" name="outletId" value={outletId} />
         <textarea
           name="description"
@@ -342,48 +260,29 @@ function BlogDescriptionEditor({
           style={{ fontSize: "14px", lineHeight: "1.5" }}
         />
         <div className="flex flex-wrap gap-2">
-          <SubmitButton
-            className="fp-btn fp-btn-primary"
-            pendingLabel="Saving"
-          >
+          <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Saving">
             Save description
           </SubmitButton>
         </div>
       </form>
       <form action={deriveBlogDescriptionAction} className="mt-2">
         <input type="hidden" name="outletId" value={outletId} />
-        <SubmitButton
-          className="fp-btn fp-btn-ghost"
-          pendingLabel="Reading homepage"
-        >
+        <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Reading homepage">
           ↻ Auto-derive from homepage
         </SubmitButton>
-        <PendingMessage>
-          Reading the site root and homepage to draft a description.
-        </PendingMessage>
+        <PendingMessage>Reading the site root and homepage to draft a description.</PendingMessage>
       </form>
     </section>
   );
 }
 
-function SeedFromSamples({
-  outletId,
-  hasProfile,
-}: {
-  outletId: string;
-  hasProfile: boolean;
-}) {
+function SeedFromSamples({ outletId, hasProfile }: { outletId: string; hasProfile: boolean }) {
   return (
     <section className="fp-card p-6">
       <div className="text-base font-semibold">
-        {hasProfile
-          ? "Reseed from sample writing."
-          : "Brand-new site? Seed from sample writing."}
+        {hasProfile ? "Reseed from sample writing." : "Brand-new site? Seed from sample writing."}
       </div>
-      <p
-        className="mt-1 text-sm leading-relaxed"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
         {hasProfile
           ? "Replace the current fingerprint by pasting fresh prose; an old post, a draft, an essay. Your signature and banned terms are recomputed from the new sample."
           : "Paste at least 200 words of your prose from anywhere; an old post, a draft, an essay. We extract the same fingerprint we would build from your archive."}{" "}
@@ -396,13 +295,10 @@ function SeedFromSamples({
           name="samples"
           required
           rows={10}
-          placeholder={
-            "Paste your prose here. Aim for 500+ words for a stable fingerprint."
-          }
+          placeholder={"Paste your prose here. Aim for 500+ words for a stable fingerprint."}
           className="fp-input w-full"
           style={{
-            fontFamily:
-              "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
             fontSize: "12px",
             lineHeight: "1.5",
           }}
@@ -436,10 +332,8 @@ function ChipEditor({
   placeholder: string;
   variant: "emerald" | "rose";
 }) {
-  const chipClass =
-    variant === "emerald" ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose";
-  const chipStyle =
-    variant === "rose" ? { textDecoration: "line-through" as const } : undefined;
+  const chipClass = variant === "emerald" ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose";
+  const chipStyle = variant === "rose" ? { textDecoration: "line-through" as const } : undefined;
   return (
     <div className="space-y-3">
       <form action={addVoiceTermAction} className="flex flex-wrap gap-2">
@@ -453,10 +347,7 @@ function ChipEditor({
           placeholder={placeholder}
           className="fp-input flex-1 min-w-[240px]"
         />
-        <SubmitButton
-          className="fp-btn fp-btn-ghost"
-          pendingLabel="Adding"
-        >
+        <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Adding">
           + Add
         </SubmitButton>
       </form>
@@ -470,11 +361,7 @@ function ChipEditor({
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {terms.map((t) => (
-            <form
-              action={removeVoiceTermAction}
-              key={`${list}-${t}`}
-              className="inline-flex"
-            >
+            <form action={removeVoiceTermAction} key={`${list}-${t}`} className="inline-flex">
               <input type="hidden" name="outletId" value={outletId} />
               <input type="hidden" name="list" value={list} />
               <input type="hidden" name="term" value={t} />

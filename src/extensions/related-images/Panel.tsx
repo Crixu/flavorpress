@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import type {
-  ClientExtensionEntry,
-  ExtensionPanelProps,
-} from "../types";
+import type { ClientExtensionEntry, ExtensionPanelProps } from "../types";
 import {
   clearRelatedImagesAction,
   loadRelatedImagesAction,
@@ -125,9 +122,7 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
       await navigator.clipboard.writeText(image.imageUrl);
       setState((s) => ({ ...s, copiedId: image.id }));
       setTimeout(() => {
-        setState((s) =>
-          s.copiedId === image.id ? { ...s, copiedId: null } : s,
-        );
+        setState((s) => (s.copiedId === image.id ? { ...s, copiedId: null } : s));
       }, 1500);
     } catch {
       // Some embedded surfaces block clipboard writes; we just no-op.
@@ -158,13 +153,14 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
         ) : null}
       </div>
 
-      <p
-        className="mt-2 text-[11.5px] leading-snug"
-        style={{ color: "var(--fg-muted)" }}
-      >
-        {state.results.length === 0
-          ? "Searches Openverse for licensed photographs that match the draft."
-          : `${state.results.length} licensed image${state.results.length === 1 ? "" : "s"} found.`}
+      <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "var(--fg-muted)" }}>
+        {isRunning
+          ? "Searching Openverse…"
+          : state.ranAt !== null && state.results.length === 0
+            ? "No images found under the current license filter. Widen the filter or try after the draft has more text."
+            : state.results.length === 0
+              ? "Searches Openverse for licensed photographs that match the draft."
+              : `${state.results.length} licensed image${state.results.length === 1 ? "" : "s"} found.`}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -189,9 +185,7 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
         </button>
         <button
           type="button"
-          onClick={() =>
-            setState((s) => ({ ...s, settingsOpen: !s.settingsOpen }))
-          }
+          onClick={() => setState((s) => ({ ...s, settingsOpen: !s.settingsOpen }))}
           className="text-[11px]"
           style={{ color: "var(--fg-subtle)" }}
         >
@@ -223,12 +217,9 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
           >
             Licenses to include
           </div>
-          <p
-            className="mt-1 text-[11px] leading-snug"
-            style={{ color: "var(--fg-muted)" }}
-          >
-            Defaults to commercial-use-OK licenses. Toggle others on if your
-            blog allows non-commercial reuse.
+          <p className="mt-1 text-[11px] leading-snug" style={{ color: "var(--fg-muted)" }}>
+            Defaults to commercial-use-OK licenses. Toggle others on if your blog allows
+            non-commercial reuse.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {LICENSE_CODES.map((code) => {
@@ -243,9 +234,7 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
                   style={{
                     background: enabled ? "var(--fg)" : "var(--surface)",
                     color: enabled ? "var(--surface)" : "var(--fg-muted)",
-                    border: enabled
-                      ? "1px solid var(--fg)"
-                      : "1px solid var(--border)",
+                    border: enabled ? "1px solid var(--fg)" : "1px solid var(--border)",
                   }}
                 >
                   {enabled ? "✓ " : ""}
@@ -264,6 +253,36 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
         >
           {state.error}
         </p>
+      ) : null}
+
+      {isRunning && state.results.length === 0 ? (
+        <ul aria-hidden className="mt-4 grid grid-cols-2 gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <li
+              key={i}
+              className="overflow-hidden rounded-xl"
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <div
+                className="h-24 w-full animate-pulse"
+                style={{ background: "var(--bg-subtle)" }}
+              />
+              <div className="p-2">
+                <div
+                  className="h-2.5 w-3/4 animate-pulse rounded-full"
+                  style={{ background: "var(--bg-subtle)" }}
+                />
+                <div
+                  className="mt-1.5 h-2 w-1/2 animate-pulse rounded-full"
+                  style={{ background: "var(--bg-subtle)" }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       {state.results.length > 0 ? (
@@ -296,10 +315,7 @@ function RelatedImagesPanel({ draftId }: ExtensionPanelProps) {
                   />
                 </a>
                 <div className="p-2">
-                  <div
-                    className="line-clamp-1 text-[11.5px]"
-                    style={{ color: "var(--fg)" }}
-                  >
+                  <div className="line-clamp-1 text-[11.5px]" style={{ color: "var(--fg)" }}>
                     {img.title ?? "Untitled"}
                   </div>
                   <div

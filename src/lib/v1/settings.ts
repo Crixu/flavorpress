@@ -13,6 +13,7 @@ export const SETTING_KEYS = {
   anthropicApiKey: "anthropic_api_key",
   anthropicDraftModel: "anthropic_draft_model",
   relatedImagesLicenseFilter: "related_images_license_filter",
+  disabledExtensions: "disabled_extensions",
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
@@ -32,10 +33,7 @@ export async function getSetting(key: SettingKey): Promise<string | null> {
   return s.length > 0 ? s : null;
 }
 
-export async function setSetting(
-  key: SettingKey,
-  value: string | null,
-): Promise<void> {
+export async function setSetting(key: SettingKey, value: string | null): Promise<void> {
   await ensureSchema();
   if (value === null || value.trim() === "") {
     await db.execute({
@@ -72,6 +70,35 @@ export async function getAnthropicDraftModel(): Promise<string> {
 export interface SettingsSnapshot {
   anthropicApiKey: { hasValue: boolean; source: "db" | "env" | "none"; preview: string | null };
   anthropicDraftModel: { value: string; source: "db" | "env" | "default" };
+  disabledExtensionIds: string[];
+}
+
+/**
+ * Disabled extensions are stored as a JSON array of extension IDs. An
+ * absent setting is treated as "all enabled," which keeps the default
+ * working without seeding a row, and means new extensions ship enabled.
+ */
+export async function getDisabledExtensionIds(): Promise<Set<string>> {
+  const raw = await getSetting(SETTING_KEYS.disabledExtensions);
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+export async function setExtensionEnabled(extensionId: string, enabled: boolean): Promise<void> {
+  const current = await getDisabledExtensionIds();
+  if (enabled) current.delete(extensionId);
+  else current.add(extensionId);
+  if (current.size === 0) {
+    await setSetting(SETTING_KEYS.disabledExtensions, null);
+    return;
+  }
+  await setSetting(SETTING_KEYS.disabledExtensions, JSON.stringify([...current].sort()));
 }
 
 function previewSecret(value: string): string {
@@ -81,31 +108,28 @@ function previewSecret(value: string): string {
 
 export async function loadSettingsSnapshot(): Promise<SettingsSnapshot> {
   await ensureSchema();
-  const [dbApiKey, dbModel] = await Promise.all([
+  const [dbApiKey, dbModel, disabled] = await Promise.all([
     getSetting(SETTING_KEYS.anthropicApiKey),
     getSetting(SETTING_KEYS.anthropicDraftModel),
+    getDisabledExtensionIds(),
   ]);
 
   const envApiKey = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY);
   const apiKeyValue = normalizeAnthropicKey(dbApiKey) ?? envApiKey;
 
-  const modelValue =
-    dbModel ?? process.env.ANTHROPIC_DRAFT_MODEL ?? DEFAULT_DRAFT_MODEL;
+  const modelValue = dbModel ?? process.env.ANTHROPIC_DRAFT_MODEL ?? DEFAULT_DRAFT_MODEL;
 
   return {
     anthropicApiKey: {
       hasValue: apiKeyValue !== null,
-      source: dbApiKey
-        ? "db"
-        : envApiKey
-          ? "env"
-          : "none",
+      source: dbApiKey ? "db" : envApiKey ? "env" : "none",
       preview: apiKeyValue ? previewSecret(apiKeyValue) : null,
     },
     anthropicDraftModel: {
       value: modelValue,
       source: dbModel ? "db" : process.env.ANTHROPIC_DRAFT_MODEL ? "env" : "default",
     },
+    disabledExtensionIds: [...disabled].sort(),
   };
 }
 
