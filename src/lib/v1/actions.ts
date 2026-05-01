@@ -756,6 +756,10 @@ export async function deleteDraftAction(formData: FormData) {
     args: [draftId],
   });
   await db.execute({
+    sql: `DELETE FROM fact_check_claims WHERE draft_id = ?`,
+    args: [draftId],
+  });
+  await db.execute({
     sql: `DELETE FROM originality_results WHERE draft_id = ?`,
     args: [draftId],
   });

@@ -235,6 +235,24 @@ export async function ensureSchema(): Promise<void> {
         UNIQUE(draft_id, capability_id, idempotency_key)
       )`,
 
+      // Per-claim fact-check rows. The aggregate run summary lives in
+      // fact_check_results; this table is what the editor renders as
+      // Google-Docs-style margin comments. claim_text is the verbatim
+      // substring lifted from the draft body so the client can highlight
+      // it without storing fragile DOM offsets.
+      `CREATE TABLE IF NOT EXISTS fact_check_claims (
+        id TEXT PRIMARY KEY,
+        draft_id TEXT NOT NULL,
+        claim_index INTEGER NOT NULL,
+        claim_text TEXT NOT NULL,
+        verdict TEXT NOT NULL,
+        comment TEXT NOT NULL,
+        source_url TEXT,
+        source_title TEXT,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_fact_check_claims_draft ON fact_check_claims(draft_id, claim_index)`,
+
       `CREATE TABLE IF NOT EXISTS originality_results (
         id TEXT PRIMARY KEY,
         draft_id TEXT NOT NULL,
