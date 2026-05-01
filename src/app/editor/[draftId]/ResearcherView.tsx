@@ -123,8 +123,38 @@ export function ResearcherView({
         </div>
 
         <div className="grid grid-cols-12">
-          <aside className="col-span-12 p-5 lg:col-span-3" style={{ background: "#FAF7F1" }}>
-            <div className="fp-eyebrow mb-3">Sources · {sources.length}</div>
+          <aside
+            className="col-span-12 p-5 lg:col-span-3"
+            style={{
+              background: "#FAF7F1",
+              borderRight: "1px solid var(--border)",
+            }}
+          >
+            <header
+              className="mb-4 flex items-baseline justify-between gap-2 pb-3"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <div className="flex items-baseline gap-2.5">
+                <span
+                  aria-hidden
+                  className="inline-block h-2.5 w-2.5 translate-y-[1px] rounded-full"
+                  style={{ background: "var(--fg-subtle)" }}
+                />
+                <span className="fp-eyebrow">Sources</span>
+                <span
+                  className="rounded-full px-2 py-0.5 font-mono text-[10.5px]"
+                  style={{ background: "var(--surface)", color: "var(--fg-muted)" }}
+                >
+                  {sources.length}
+                </span>
+              </div>
+            </header>
+            <p
+              className="-mt-2 mb-3 text-[11.5px] leading-snug"
+              style={{ color: "var(--fg-subtle)" }}
+            >
+              Where the notes came from. Open one to read the original.
+            </p>
             <ul className="space-y-2 text-xs">
               {sources.map((row) => (
                 <li
@@ -194,11 +224,53 @@ export function ResearcherView({
   );
 }
 
+function SectionHeader({
+  label,
+  count,
+  description,
+  dotColor,
+}: {
+  label: string;
+  count: number;
+  description: string;
+  dotColor: string;
+}) {
+  return (
+    <header
+      className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3"
+      style={{ borderBottom: "1px solid var(--border)" }}
+    >
+      <div className="flex items-baseline gap-2.5">
+        <span
+          aria-hidden
+          className="inline-block h-2.5 w-2.5 translate-y-[1px] rounded-full"
+          style={{ background: dotColor }}
+        />
+        <span className="fp-eyebrow">{label}</span>
+        <span
+          className="rounded-full px-2 py-0.5 font-mono text-[10.5px]"
+          style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+        >
+          {count}
+        </span>
+      </div>
+      <p className="text-[12px]" style={{ color: "var(--fg-subtle)", maxWidth: "40ch" }}>
+        {description}
+      </p>
+    </header>
+  );
+}
+
 function IdeasSection({ ideas }: { ideas: ResearchIdea[] }) {
   if (ideas.length === 0) return null;
   return (
-    <section className="space-y-3">
-      <div className="fp-eyebrow">Ideas · {ideas.length}</div>
+    <section className="space-y-4">
+      <SectionHeader
+        label="Ideas"
+        count={ideas.length}
+        description="Angles you might take. Pick one to write from."
+        dotColor="#9C4A22"
+      />
       <ul className="space-y-3">
         {ideas.map((idea, i) => (
           <li
@@ -223,8 +295,13 @@ function IdeasSection({ ideas }: { ideas: ResearchIdea[] }) {
 function QuotesSection({ quotes }: { quotes: ResearchQuote[] }) {
   if (quotes.length === 0) return null;
   return (
-    <section className="space-y-3">
-      <div className="fp-eyebrow">Quotes · {quotes.length}</div>
+    <section className="space-y-4">
+      <SectionHeader
+        label="Quotes"
+        count={quotes.length}
+        description="Verbatim from the source. Lift with attribution."
+        dotColor="var(--fg-muted)"
+      />
       <ul className="space-y-3">
         {quotes.map((q, i) => (
           <li
@@ -257,13 +334,13 @@ function QuotesSection({ quotes }: { quotes: ResearchQuote[] }) {
 function FactsSection({ facts }: { facts: ResearchFact[] }) {
   if (facts.length === 0) return null;
   return (
-    <section className="space-y-3">
-      <div className="flex items-baseline gap-2">
-        <div className="fp-eyebrow">Leads · {facts.length}</div>
-        <span className="text-[11px]" style={{ color: "var(--fg-subtle)" }}>
-          paraphrased; verify against the source before publishing
-        </span>
-      </div>
+    <section className="space-y-4">
+      <SectionHeader
+        label="Leads"
+        count={facts.length}
+        description="Paraphrased; verify against the source before publishing."
+        dotColor="var(--border-strong)"
+      />
       <ul className="space-y-2">
         {facts.map((f, i) => (
           <li
