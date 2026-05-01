@@ -248,6 +248,50 @@ function containsAny(text: string, set: Set<string>): boolean {
   return false;
 }
 
+export async function loadSignatureTermsByOutlet(
+  outletIds: string[],
+  userId: string,
+): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (outletIds.length === 0) return out;
+  const placeholders = outletIds.map(() => "?").join(",");
+  const r = await db.execute({
+    sql: `SELECT outlet_id, signature_terms FROM voice_profiles
+          WHERE user_id = ? AND outlet_id IN (${placeholders})`,
+    args: [userId, ...outletIds],
+  });
+  for (const row of r.rows) {
+    const terms = JSON.parse(String(row.signature_terms ?? "[]")) as string[];
+    out.set(String(row.outlet_id), new Set(terms.map((t) => t.toLowerCase())));
+  }
+  return out;
+}
+
+const PREFERRED_OUTLET_TIE_EPSILON = 0.05;
+
+export function pickPreferredOutletForCluster(
+  clusterEntities: string[],
+  outletIds: string[],
+  signatureTermsByOutlet: Map<string, Set<string>>,
+): string | null {
+  if (outletIds.length < 2 || clusterEntities.length === 0) return null;
+  const lowered = clusterEntities.map((e) => e.toLowerCase());
+  const scored = outletIds.map((outletId) => {
+    const sig = signatureTermsByOutlet.get(outletId);
+    if (!sig || sig.size === 0) return { outletId, score: 0 };
+    const hits = lowered.filter((e) => containsAny(e, sig)).length;
+    return { outletId, score: hits / lowered.length };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored[0]!;
+  const second = scored[1]!;
+  // Defer to caller default when no outlet matches, or when the lead is
+  // within noise of the runner-up; pre-selecting on a tie misleads.
+  if (top.score <= 0) return null;
+  if (top.score - second.score < PREFERRED_OUTLET_TIE_EPSILON) return null;
+  return top.outletId;
+}
+
 function zeroSignals(clusterId: string, userId: string): RankerSignals {
   return {
     clusterId,
