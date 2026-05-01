@@ -14,7 +14,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
-import { getOutlet } from "@/lib/v1/outlets";
+import { getOutlet, getOutletCredentials } from "@/lib/v1/outlets";
+import { getOutletPostCount, MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import { HelpTrigger } from "@/components/Help";
 import { PendingMessage, SubmitButton } from "@/app/_components/SubmitButton";
 import {
@@ -30,12 +31,14 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ outletId: string }>;
+  searchParams: Promise<{ thin?: string }>;
 }
 
-export default async function VoiceDetailPage({ params }: PageProps) {
+export default async function VoiceDetailPage({ params, searchParams }: PageProps) {
   await ensureSchema();
   await ensureSingleUser();
   const { outletId } = await params;
+  const sp = await searchParams;
   const outlet = await getOutlet(outletId);
   if (!outlet || outlet.userId !== SINGLE_USER_ID) notFound();
 
@@ -65,6 +68,28 @@ export default async function VoiceDetailPage({ params }: PageProps) {
   // 10 indices ranked by frequency). For now we render archive size + flag
   // that fingerprint exists; the per-word view is v1.1.
   const hasFingerprint = profile && (profile.function_word_distribution as unknown) !== null;
+
+  // Cold-start probe. If the outlet is connected and has no profile yet,
+  // count published posts so we can route to the right empty state. The
+  // ?thin=N override comes from buildVoiceProfileAction redirecting here
+  // when the archive is too thin to auto-train; honor it without re-probing.
+  const thinOverride = sp.thin !== undefined ? Number.parseInt(sp.thin, 10) : NaN;
+  let archivePostCount: number | null =
+    Number.isFinite(thinOverride) && thinOverride >= 0 ? thinOverride : null;
+  if (!profile && outlet.connected && archivePostCount === null) {
+    const creds = await getOutletCredentials(outletId);
+    if (creds) {
+      try {
+        archivePostCount = await getOutletPostCount(creds);
+      } catch {
+        // Probe failure (offline, transient WP error) falls through to the
+        // default archive-train empty state. The action itself rechecks
+        // before writing, so a thin archive can't sneak through.
+        archivePostCount = null;
+      }
+    }
+  }
+  const isThinArchive = archivePostCount !== null && archivePostCount < MIN_VOICE_TRAIN_POSTS;
 
   return (
     <div className="space-y-6">
@@ -96,22 +121,37 @@ export default async function VoiceDetailPage({ params }: PageProps) {
         </a>
       </header>
 
-      {!profile ? (
-        <section className="fp-card-feature p-6">
-          <div className="text-base font-semibold">No voice profile yet.</div>
-          <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-            Build the profile from your last 50 published posts. Takes about 30 seconds.
+      {profile && isThinArchive ? (
+        <section className="fp-card-feature p-4">
+          <div className="text-sm font-semibold">Archive still too thin to re-train.</div>
+          <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+            This outlet has {archivePostCount} {archivePostCount === 1 ? "post" : "posts"}. Archive
+            re-training needs at least {MIN_VOICE_TRAIN_POSTS} published posts, so the current
+            sample-seeded fingerprint is still active.
           </p>
-          <form action={buildVoiceProfileAction} className="mt-4">
-            <input type="hidden" name="outletId" value={outletId} />
-            <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Building voice">
-              Build voice profile
-            </SubmitButton>
-            <PendingMessage>
-              Pulling recent posts and extracting this outlet's voice.
-            </PendingMessage>
-          </form>
         </section>
+      ) : null}
+
+      {!profile ? (
+        isThinArchive ? (
+          <ThinArchiveEmptyState outletId={outletId} postCount={archivePostCount ?? 0} />
+        ) : (
+          <section className="fp-card-feature p-6">
+            <div className="text-base font-semibold">No voice profile yet.</div>
+            <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+              Build the profile from your last 50 published posts. Takes about 30 seconds.
+            </p>
+            <form action={buildVoiceProfileAction} className="mt-4">
+              <input type="hidden" name="outletId" value={outletId} />
+              <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Building voice">
+                Build voice profile
+              </SubmitButton>
+              <PendingMessage>
+                Pulling recent posts and extracting this outlet's voice.
+              </PendingMessage>
+            </form>
+          </section>
+        )
       ) : (
         <>
           {/* Stats grid */}
@@ -213,8 +253,55 @@ export default async function VoiceDetailPage({ params }: PageProps) {
         </>
       )}
 
-      <SeedFromSamples outletId={outletId} hasProfile={!!profile} />
+      {/* The thin-archive empty state already inlines the samples form, so
+          only render the standalone seed block when we aren't showing it. */}
+      {!profile && isThinArchive ? null : (
+        <SeedFromSamples outletId={outletId} hasProfile={!!profile} />
+      )}
     </div>
+  );
+}
+
+function ThinArchiveEmptyState({ outletId, postCount }: { outletId: string; postCount: number }) {
+  const isEmpty = postCount === 0;
+  return (
+    <section className="fp-card-feature p-6">
+      <div className="text-base font-semibold">
+        {isEmpty
+          ? "Brand-new site, no archive yet."
+          : `Archive too thin to auto-train (${postCount} ${postCount === 1 ? "post" : "posts"}).`}
+      </div>
+      <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+        Voice training needs at least {MIN_VOICE_TRAIN_POSTS} published posts to extract a stable
+        fingerprint; below that the model nudges drafts toward generic prose. Paste sample writing
+        instead; an old post, a draft, an essay. We extract the same fingerprint we would build from
+        your archive. Re-train from the archive later once you have {MIN_VOICE_TRAIN_POSTS}+ posts
+        on the site.
+      </p>
+      <p className="mt-3 text-xs" style={{ color: "var(--fg-muted)" }}>
+        Aim for 500+ words across one or more samples. Separate multiple samples with a line
+        containing only <code className="rounded bg-[color:var(--bg-subtle)] px-1">---</code>.
+      </p>
+      <form action={seedVoiceFromSamplesAction} className="mt-4 space-y-3">
+        <input type="hidden" name="outletId" value={outletId} />
+        <textarea
+          name="samples"
+          required
+          rows={10}
+          placeholder="Paste your prose here. Aim for 500+ words for a stable fingerprint."
+          className="fp-input w-full"
+          style={{
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: "12px",
+            lineHeight: "1.5",
+          }}
+        />
+        <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Seeding voice">
+          Seed voice from samples
+        </SubmitButton>
+        <PendingMessage>Extracting a voice fingerprint from your pasted samples.</PendingMessage>
+      </form>
+    </section>
   );
 }
 

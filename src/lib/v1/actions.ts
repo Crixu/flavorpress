@@ -18,6 +18,7 @@ import {
   fetchHomepageProse,
   fetchSiteIdentity,
   listRecentPosts,
+  MIN_VOICE_TRAIN_POSTS,
   preflightWordPress,
   probeWordPress,
   publishToWordPress,
@@ -840,12 +841,12 @@ export async function buildVoiceProfileAction(formData: FormData) {
   if (!creds) throw new Error("Outlet credentials missing.");
 
   const wpPosts = await listRecentPosts(creds, 50);
-  if (wpPosts.length === 0) {
-    // Brand-new site, no archive to fingerprint. Don't write a zero
-    // fingerprint; surface the seed-from-samples path on the detail page.
-    throw new Error(
-      "This outlet has no published posts yet. Seed the voice from sample writing on the detail page instead.",
-    );
+  if (wpPosts.length < MIN_VOICE_TRAIN_POSTS) {
+    // Thin archive: an auto-trained fingerprint from < 20 posts is noisy
+    // enough to nudge drafts toward generic output, which is the slop path
+    // we cut. Don't write a profile here; bounce to the detail page so the
+    // user lands on the sample-paste fallback with the count surfaced.
+    redirect(`/voice/${outletId}?thin=${wpPosts.length}`);
   }
 
   const posts = wpPosts.map((p) => ({
