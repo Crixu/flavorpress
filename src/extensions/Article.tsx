@@ -96,6 +96,7 @@ export function ExtensionsArticle({
   return (
     <article
       ref={articleRef}
+      data-fp-article-draft-id={draftId}
       className="prose prose-stone mt-7 max-w-none"
       style={{
         fontFamily: "var(--font-serif), Georgia, serif",
@@ -157,7 +158,9 @@ function collectTextStream(root: HTMLElement): {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode() as Text | null;
   while (node) {
-    if (node.parentElement?.closest("mark[data-fp-ext], script, style, noscript")) {
+    if (
+      node.parentElement?.closest("mark[data-fp-ext], script, style, noscript, .fp-para-rewrite")
+    ) {
       node = walker.nextNode() as Text | null;
       continue;
     }

@@ -11,6 +11,7 @@ import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
 import { rerollHeadlines } from "./headline-reroll";
+import { rewriteParagraph } from "./paragraph-rewrite";
 import { generateResearch } from "./researcher-generator";
 import { getRegistry } from "./capability-registry";
 import { extractStyleSheet } from "./style-sheet";
@@ -1191,6 +1192,27 @@ export async function rerollDraftHeadlinesAction(formData: FormData) {
   if (!draftId) throw new Error("draftId required.");
 
   await rerollHeadlines({ draftId, userId: SINGLE_USER_ID });
+  revalidatePath(`/editor/${draftId}`);
+}
+
+/**
+ * Rewrite a single paragraph of the draft body in the writer's voice,
+ * anchored on the same cluster source set the draft was generated from.
+ * Same anti-slop guardrails as initial drafting (banned terms, em-dash
+ * forbidden, source-grounded). Index is the 0-based position of the
+ * `<p>` block among top-level paragraphs.
+ */
+export async function rewriteDraftParagraphAction(formData: FormData) {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  const rawIndex = String(formData.get("paragraphIndex") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+  const paragraphIndex = Number.parseInt(rawIndex, 10);
+  if (!Number.isInteger(paragraphIndex) || paragraphIndex < 0) {
+    throw new Error("paragraphIndex must be a non-negative integer.");
+  }
+
+  await rewriteParagraph({ draftId, userId: SINGLE_USER_ID, paragraphIndex });
   revalidatePath(`/editor/${draftId}`);
 }
 
