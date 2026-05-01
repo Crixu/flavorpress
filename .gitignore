@@ -13,3 +13,4 @@ next-env.d.ts
 macos/build
 macos/.cache
 coverage
+.changelogs
