@@ -9,7 +9,9 @@
 
 import type { ClientExtensionEntry } from "./types";
 import { factCheckClientEntry } from "./fact-check";
+import { relatedImagesClientEntry } from "./related-images";
 
 export const CLIENT_EXTENSIONS: ClientExtensionEntry[] = [
   factCheckClientEntry,
+  relatedImagesClientEntry,
 ];

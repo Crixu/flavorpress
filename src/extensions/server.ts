@@ -14,9 +14,11 @@ import type {
   ServerExtensionEntry,
 } from "./types";
 import { factCheckServerEntry } from "./fact-check/server";
+import { relatedImagesServerEntry } from "./related-images/server";
 
 export const SERVER_EXTENSIONS: ServerExtensionEntry[] = [
   factCheckServerEntry,
+  relatedImagesServerEntry,
 ];
 
 /**
