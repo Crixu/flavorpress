@@ -27,12 +27,14 @@ interface Props {
   draftId: string;
   bodyHtml: string;
   initialAnnotationsByExt: InitialAnnotationsByExtension;
+  enabledExtensionIds: string[];
 }
 
 export function ExtensionsArticle({
   draftId,
   bodyHtml,
   initialAnnotationsByExt,
+  enabledExtensionIds,
 }: Props) {
   const articleRef = useRef<HTMLElement | null>(null);
 
@@ -43,20 +45,25 @@ export function ExtensionsArticle({
   const all = useAllAnnotations(draftId);
   const active = useActiveSelection(draftId);
 
-  // Re-wrap whenever the annotation set changes.
+  // Re-wrap whenever the annotation set changes. Filter by the enabled
+  // set so a slice left over in the module-scoped store from before the
+  // user disabled an extension stops painting highlights.
   useEffect(() => {
     const root = articleRef.current;
     if (!root) return;
     unwrapMarks(root);
-    const byShortestSpan = [...all].sort(
-      (a, b) =>
-        a.annotation.spanText.length - b.annotation.spanText.length ||
-        a.annotation.index - b.annotation.index,
-    );
+    const enabled = new Set(enabledExtensionIds);
+    const byShortestSpan = all
+      .filter((a) => enabled.has(a.extensionId))
+      .sort(
+        (a, b) =>
+          a.annotation.spanText.length - b.annotation.spanText.length ||
+          a.annotation.index - b.annotation.index,
+      );
     for (const { extensionId, annotation } of byShortestSpan) {
       wrapFirstOccurrence(root, extensionId, annotation);
     }
-  }, [all, bodyHtml]);
+  }, [all, bodyHtml, enabledExtensionIds]);
 
   // Toggle active-ring styling on the matching mark.
   useEffect(() => {

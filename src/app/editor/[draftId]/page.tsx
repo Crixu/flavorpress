@@ -11,9 +11,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
 import { deleteDraftAction } from "@/lib/v1/actions";
-import { loadAllAnnotations } from "@/extensions/server";
+import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
+import { getDisabledExtensionIds } from "@/lib/v1/settings";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { PublishToWpForm } from "./PublishToWpForm";
 
@@ -51,6 +52,10 @@ export default async function EditorPage({ params }: PageProps) {
   const totalAnnotations = Object.values(initialAnnotationsByExt).reduce(
     (n, payload) => n + payload.annotations.length,
     0,
+  );
+  const disabledExtensionIds = await getDisabledExtensionIds();
+  const enabledExtensionIds = SERVER_EXTENSIONS.map((ext) => ext.id).filter(
+    (id) => !disabledExtensionIds.has(id),
   );
 
   const headlineAlternates = d.headline_alternates
@@ -232,6 +237,7 @@ export default async function EditorPage({ params }: PageProps) {
                 draftId={String(d.id)}
                 bodyHtml={String(d.body ?? "")}
                 initialAnnotationsByExt={initialAnnotationsByExt}
+                enabledExtensionIds={enabledExtensionIds}
               />
 
               {quotes.length > 0 ? (
@@ -262,6 +268,7 @@ export default async function EditorPage({ params }: PageProps) {
             <ExtensionsPanels
               draftId={String(d.id)}
               initialAnnotationsByExt={initialAnnotationsByExt}
+              enabledExtensionIds={enabledExtensionIds}
             />
 
             {/* Voice match */}

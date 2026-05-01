@@ -15,8 +15,10 @@ import {
 import {
   clearSettingAction,
   saveSettingAction,
+  toggleExtensionAction,
 } from "@/lib/v1/settings-actions";
 import { ensureSchema } from "@/lib/db";
+import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +28,8 @@ interface PageProps {
     saved?: string;
     cleared?: string;
     error?: string;
+    extension?: string;
+    state?: string;
   }>;
 }
 
@@ -56,6 +60,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           ✓ Cleared {labelFor(sp.cleared)}. Falling back to .env.
         </Banner>
       ) : null}
+      {sp.extension && (sp.state === "enabled" || sp.state === "disabled") ? (
+        <Banner kind="success">
+          ✓ {sp.state === "enabled" ? "Enabled" : "Disabled"}{" "}
+          {extensionLabelFor(sp.extension)}.
+        </Banner>
+      ) : null}
       {sp.error === "anthropic_key_invalid" ? (
         <Banner kind="error">
           ⚠ Anthropic key didn't match the expected <code>sk-ant-…</code> format. Nothing was saved.
@@ -63,6 +73,9 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       ) : null}
       {sp.error === "invalid_key" ? (
         <Banner kind="error">⚠ Unknown setting key.</Banner>
+      ) : null}
+      {sp.error === "invalid_extension" ? (
+        <Banner kind="error">⚠ Unknown extension.</Banner>
       ) : null}
 
       <SettingForm
@@ -93,7 +106,81 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             : ""
         }
       />
+
+      <ExtensionsSection
+        disabledExtensionIds={snapshot.disabledExtensionIds}
+      />
     </div>
+  );
+}
+
+function ExtensionsSection({
+  disabledExtensionIds,
+}: {
+  disabledExtensionIds: string[];
+}) {
+  const disabled = new Set(disabledExtensionIds);
+  return (
+    <section className="fp-card p-5 space-y-4">
+      <div>
+        <div className="text-base font-semibold">Editor extensions</div>
+        <p
+          className="mt-1 text-[13px] leading-relaxed"
+          style={{ color: "var(--fg-muted)" }}
+        >
+          Toggle which inspectors run on each draft. Disabling an extension
+          stops loading its annotations and hides its right-rail panel; the
+          underlying data stays in the database so you can re-enable later.
+        </p>
+      </div>
+      <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
+        {EXTENSION_METADATA.map((ext) => {
+          const isEnabled = !disabled.has(ext.id);
+          return (
+            <li key={ext.id} className="flex items-start gap-4 py-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-semibold">
+                    {ext.label}
+                  </span>
+                  <span
+                    className={
+                      isEnabled
+                        ? "fp-chip fp-chip-emerald"
+                        : "fp-chip fp-chip-rose"
+                    }
+                  >
+                    {isEnabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <p
+                  className="text-[12.5px] leading-relaxed"
+                  style={{ color: "var(--fg-muted)" }}
+                >
+                  {ext.description}
+                </p>
+              </div>
+              <form action={toggleExtensionAction} className="shrink-0">
+                <input type="hidden" name="extensionId" value={ext.id} />
+                <input
+                  type="hidden"
+                  name="enabled"
+                  value={isEnabled ? "0" : "1"}
+                />
+                <SubmitButton
+                  className={
+                    isEnabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"
+                  }
+                  pendingLabel={isEnabled ? "Disabling" : "Enabling"}
+                >
+                  {isEnabled ? "Disable" : "Enable"}
+                </SubmitButton>
+              </form>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -200,6 +287,10 @@ function labelFor(key: string): string {
     default:
       return "setting";
   }
+}
+
+function extensionLabelFor(id: string): string {
+  return findExtensionMetadata(id)?.label ?? "extension";
 }
 
 function Banner({
