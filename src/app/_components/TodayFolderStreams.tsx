@@ -30,10 +30,7 @@ export interface TodayClusterPreview {
     sourceUrl: string;
     displayName: string;
   }[];
-  draftsByOutlet: Record<
-    string,
-    { id: string; voiceMatch: number; wpEditLink: string | null }
-  >;
+  draftsByOutlet: Record<string, { id: string; voiceMatch: number; wpEditLink: string | null }>;
 }
 
 export interface OutletOption {
@@ -154,7 +151,8 @@ function FolderStreamHeader({
         <div className="fp-eyebrow">Folder stream</div>
         <h2 className="mt-1 text-xl font-semibold tracking-tight">{stream.name}</h2>
         <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          {stream.clusters.length} ready {stream.clusters.length === 1 ? "cluster" : "clusters"} from this reading lane.
+          {stream.clusters.length} ready {stream.clusters.length === 1 ? "cluster" : "clusters"}{" "}
+          from this reading lane.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -174,11 +172,7 @@ function FolderStreamHeader({
             More
           </button>
         ) : null}
-        <button
-          type="button"
-          className="fp-btn fp-btn-ghost"
-          onClick={refresh}
-        >
+        <button type="button" className="fp-btn fp-btn-ghost" onClick={refresh}>
           Refresh
         </button>
       </div>
@@ -252,18 +246,16 @@ function ClusterCard({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2 fp-eyebrow">
-            <span>#{rank} in {preview.folder.name}</span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {c.sourceCount} sources
+            <span>
+              #{rank} in {preview.folder.name}
             </span>
+            <span style={{ color: "var(--border-strong)" }}>·</span>
+            <span style={{ textTransform: "none", fontWeight: 400 }}>{c.sourceCount} sources</span>
             <span style={{ color: "var(--border-strong)" }}>·</span>
             <span style={{ textTransform: "none", fontWeight: 400 }}>
               {relativeTime(c.latestPublishedAt)}
             </span>
-            <span className="fp-chip fp-chip-emerald ml-1">
-              fit {fit.toFixed(2)}
-            </span>
+            <span className="fp-chip fp-chip-emerald ml-1">fit {fit.toFixed(2)}</span>
           </div>
           <h3
             className={`mt-2 leading-snug font-semibold ${
@@ -291,10 +283,7 @@ function ClusterCard({
           className="mt-4 grid grid-cols-1 gap-3 rounded-lg p-3 sm:grid-cols-3"
           style={{ background: "var(--bg-subtle)" }}
         >
-          <RankerSignal
-            label="Archive overlap"
-            value={c.signals.archiveOverlap}
-          />
+          <RankerSignal label="Archive overlap" value={c.signals.archiveOverlap} />
           <RankerSignal label="Beat match" value={c.signals.beatMatch} />
           <RankerSignal label="Source trust" value={c.signals.sourceTrust} />
         </div>
@@ -307,12 +296,7 @@ function ClusterCard({
           defaultOutletId={defaultOutletId}
           draftsByOutlet={preview.draftsByOutlet}
         />
-        <button
-          type="button"
-          className="fp-btn fp-btn-ghost"
-          onClick={dismiss}
-          disabled={pending}
-        >
+        <button type="button" className="fp-btn fp-btn-ghost" onClick={dismiss} disabled={pending}>
           {pending ? "Dismissing" : "Not now"}
         </button>
       </div>
@@ -324,7 +308,10 @@ function RankerSignal({ label, value }: { label: string; value: number }) {
   const pct = Math.round(value * 100);
   return (
     <div>
-      <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--fg-muted)" }}>
+      <div
+        className="flex items-center justify-between text-[11px]"
+        style={{ color: "var(--fg-muted)" }}
+      >
         <span>{label}</span>
         <span className="tabular font-medium" style={{ color: "var(--fg)" }}>
           {value.toFixed(2)}
@@ -338,8 +325,7 @@ function RankerSignal({ label, value }: { label: string; value: number }) {
           className="h-full rounded-full transition-all"
           style={{
             width: `${pct}%`,
-            background:
-              "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 200%)",
+            background: "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 200%)",
           }}
         />
       </div>
@@ -362,10 +348,7 @@ function dedupeSourceChips(
   items: TodayClusterPreview["items"],
 ): { sourceId: string; label: string; count: number }[] {
   const order: string[] = [];
-  const groups = new Map<
-    string,
-    { sourceId: string; label: string; count: number }
-  >();
+  const groups = new Map<string, { sourceId: string; label: string; count: number }>();
   for (const item of items) {
     const existing = groups.get(item.sourceId);
     if (existing) {

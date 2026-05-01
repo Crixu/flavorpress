@@ -72,10 +72,7 @@ function notify(s: DraftStore): void {
   s.listeners.forEach((l) => l());
 }
 
-export function getSlice(
-  draftId: string,
-  extensionId: string,
-): ExtensionSlice {
+export function getSlice(draftId: string, extensionId: string): ExtensionSlice {
   const s = ensure(draftId);
   return s.byExtension[extensionId] ?? EMPTY_SLICE;
 }
@@ -91,10 +88,7 @@ export function setSlice(
   notify(s);
 }
 
-export function setActive(
-  draftId: string,
-  active: ActiveSelection | null,
-): void {
+export function setActive(draftId: string, active: ActiveSelection | null): void {
   const s = ensure(draftId);
   s.active = active;
   notify(s);
@@ -112,17 +106,12 @@ function useStoreSubscription(draftId: string): void {
   }, [draftId]);
 }
 
-export function useExtensionSlice(
-  draftId: string,
-  extensionId: string,
-): ExtensionSlice {
+export function useExtensionSlice(draftId: string, extensionId: string): ExtensionSlice {
   useStoreSubscription(draftId);
   return getSlice(draftId, extensionId);
 }
 
-export function useActiveSelection(
-  draftId: string,
-): ActiveSelection | null {
+export function useActiveSelection(draftId: string): ActiveSelection | null {
   useStoreSubscription(draftId);
   return ensure(draftId).active;
 }
@@ -137,8 +126,7 @@ export function useAllAnnotations(draftId: string): Array<{
 }> {
   useStoreSubscription(draftId);
   const s = ensure(draftId);
-  const out: Array<{ extensionId: string; annotation: ExtensionAnnotation }> =
-    [];
+  const out: Array<{ extensionId: string; annotation: ExtensionAnnotation }> = [];
   for (const [extensionId, slice] of Object.entries(s.byExtension)) {
     for (const annotation of slice.annotations) {
       out.push({ extensionId, annotation });

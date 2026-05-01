@@ -15,11 +15,7 @@
  */
 
 import { politeFetch } from "../polite-fetch";
-import type {
-  RawItem,
-  SourceConnector,
-  ConnectorContext,
-} from "../source-connector";
+import type { RawItem, SourceConnector, ConnectorContext } from "../source-connector";
 
 interface FetchedXml {
   raw: string;
@@ -84,35 +80,23 @@ export function parseFeed(xml: string): RawItem[] {
 
   for (const inner of itemMatches) {
     try {
-      const url =
-        getTag(inner, "link") ??
-        getAttr(inner, "link", "href") ??
-        getTag(inner, "guid");
+      const url = getTag(inner, "link") ?? getAttr(inner, "link", "href") ?? getTag(inner, "guid");
       const title = getTag(inner, "title");
       if (!url || !title) continue;
 
       const description =
-        getTag(inner, "description") ??
-        getTag(inner, "summary") ??
-        getTag(inner, "content") ??
-        "";
+        getTag(inner, "description") ?? getTag(inner, "summary") ?? getTag(inner, "content") ?? "";
 
       const lede = stripHtml(description).slice(0, 500).trim();
       if (!lede) continue;
 
       const body = stripHtml(description);
 
-      const authorRaw =
-        getTag(inner, "author") ??
-        getTag(inner, "dc:creator") ??
-        "";
+      const authorRaw = getTag(inner, "author") ?? getTag(inner, "dc:creator") ?? "";
       const authors = authorRaw ? [authorRaw] : [];
 
       const pubDate =
-        getTag(inner, "pubDate") ??
-        getTag(inner, "updated") ??
-        getTag(inner, "published") ??
-        "";
+        getTag(inner, "pubDate") ?? getTag(inner, "updated") ?? getTag(inner, "published") ?? "";
       const publishedAt = parseDate(pubDate) ?? Date.now();
 
       const externalId = getTag(inner, "guid") ?? url;
@@ -157,7 +141,9 @@ function getAttr(text: string, tag: string, attr: string): string | null {
 }
 
 function stripHtml(s: string): string {
-  return decodeEntities(s.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+  return decodeEntities(s.replace(/<[^>]+>/g, ""))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function decodeEntities(s: string): string {

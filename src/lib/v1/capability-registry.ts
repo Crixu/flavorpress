@@ -17,12 +17,7 @@
 
 import { db, ensureSchema } from "../db";
 import { getBus } from "./event-bus";
-import type {
-  CapabilityManifest,
-  CapabilityTier,
-  EventType,
-  InvocationContext,
-} from "./types";
+import type { CapabilityManifest, CapabilityTier, EventType, InvocationContext } from "./types";
 
 const TIER = (process.env.FLAVORPRESS_TIER ?? "both") as CapabilityTier | "both";
 
@@ -48,14 +43,12 @@ class LocalCapabilityRegistry implements CapabilityRegistry {
   // key = `${id}@${version}`
   private manifests = new Map<string, CapabilityManifest>();
 
-  async register<TInput, TOutput>(
-    manifest: CapabilityManifest<TInput, TOutput>,
-  ): Promise<void> {
+  async register<TInput, TOutput>(manifest: CapabilityManifest<TInput, TOutput>): Promise<void> {
     if (TIER !== "both" && manifest.tier !== "both" && manifest.tier !== TIER) {
       // Architect's call: tier is a build-time package boundary, not just a
       // runtime flag. We still enforce it in code so a misconfigured deploy
       // does not silently activate paid features.
-      // eslint-disable-next-line no-console
+
       console.warn(
         `[registry] refusing to register ${manifest.id}@${manifest.version}: tier ${manifest.tier} not allowed in current tier ${TIER}`,
       );
@@ -107,7 +100,6 @@ class LocalCapabilityRegistry implements CapabilityRegistry {
         try {
           await manifest.invoke(event.payload as TInput, ctx);
         } catch (err) {
-          // eslint-disable-next-line no-console
           console.error(
             `[registry] capability ${manifest.id}@${manifest.version} failed on ${event.type}`,
             err,

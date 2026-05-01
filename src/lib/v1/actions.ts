@@ -67,7 +67,9 @@ export async function preflightOutletAction(formData: FormData) {
 export async function connectOutletManualAction(formData: FormData) {
   await ensureSchema();
   await ensureSingleUser();
-  const baseUrl = String(formData.get("baseUrl") ?? "").trim().replace(/\/$/, "");
+  const baseUrl = String(formData.get("baseUrl") ?? "")
+    .trim()
+    .replace(/\/$/, "");
   const username = String(formData.get("username") ?? "").trim();
   const appPassword = String(formData.get("appPassword") ?? "").trim();
   if (!baseUrl || !username || !appPassword) {
@@ -97,7 +99,9 @@ export async function connectOutletManualAction(formData: FormData) {
 export async function startWPAuthorizeAction(formData: FormData) {
   await ensureSchema();
   await ensureSingleUser();
-  const baseUrl = String(formData.get("baseUrl") ?? "").trim().replace(/\/$/, "");
+  const baseUrl = String(formData.get("baseUrl") ?? "")
+    .trim()
+    .replace(/\/$/, "");
   if (!baseUrl) throw new Error("Site URL required.");
   const skipPreflight = formData.get("skipPreflight") === "1";
 
@@ -158,7 +162,12 @@ export async function addSourceAction(formData: FormData) {
 
   // Bulk paste support: split on newlines, commas, or spaces.
   const urls = Array.from(
-    new Set(raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)),
+    new Set(
+      raw
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
   );
 
   // Inserted rows that should get an LLM-generated display name in the
@@ -307,7 +316,10 @@ export async function parseOpmlAction(
 export async function importOpmlSelectionAction(formData: FormData) {
   await ensureSchema();
   await ensureSingleUser();
-  const urls = formData.getAll("url").map((v) => String(v).trim()).filter(Boolean);
+  const urls = formData
+    .getAll("url")
+    .map((v) => String(v).trim())
+    .filter(Boolean);
   const titles = formData.getAll("title").map((v) => String(v).trim());
   if (urls.length === 0) {
     throw new Error("Pick at least one feed to import.");
@@ -371,9 +383,7 @@ export async function importOpmlSelectionAction(formData: FormData) {
  * any row where the user has already renamed it (display_name no longer
  * matches the host placeholder we wrote on insert).
  */
-async function runBackgroundAutoTitling(
-  jobs: { id: string; url: string }[],
-): Promise<void> {
+async function runBackgroundAutoTitling(jobs: { id: string; url: string }[]): Promise<void> {
   await Promise.all(
     jobs.map(async ({ id, url }) => {
       try {
@@ -558,9 +568,7 @@ export async function dismissClusterAction(formData: FormData) {
  * Returns the count of sources we kicked off so the client can render
  * "Refreshing N sources" without round-tripping back.
  */
-export async function pollFolderAction(
-  formData: FormData,
-): Promise<{ sourceCount: number }> {
+export async function pollFolderAction(formData: FormData): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const folderId = String(formData.get("folderId") ?? "");
@@ -594,24 +602,25 @@ export async function pollFolderAction(
  * Whisper transcription; the user can see what they've added even though
  * the cluster engine ignores them for now.
  */
-function detectKind(
-  url: string,
-): "rss" | "reddit" | "podcast" | "youtube" {
+function detectKind(url: string): "rss" | "reddit" | "podcast" | "youtube" {
   const u = url.toLowerCase();
   if (u.includes("youtube.com/feeds/videos.xml")) return "youtube";
   if (u.includes("youtube.com/channel/") || u.includes("youtube.com/@") || u.includes("youtu.be")) {
     return "youtube";
   }
-  if (u.includes("/feed.mp3") || u.includes("anchor.fm") || u.includes("megaphone.fm") || u.includes("/rss/podcast")) {
+  if (
+    u.includes("/feed.mp3") ||
+    u.includes("anchor.fm") ||
+    u.includes("megaphone.fm") ||
+    u.includes("/rss/podcast")
+  ) {
     return "podcast";
   }
   if (u.includes("reddit.com/r/") || u.includes("reddit.com/.rss")) return "reddit";
   return "rss";
 }
 
-export async function pollSourceAction(
-  formData: FormData,
-): Promise<{ sourceCount: number }> {
+export async function pollSourceAction(formData: FormData): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const sourceId = String(formData.get("sourceId") ?? "");
@@ -641,10 +650,7 @@ export async function pollAllSourcesAction(): Promise<{ sourceCount: number }> {
  * the writer is most likely watching once the batch settles, so the next
  * `router.refresh()` from the client lands on fresh data.
  */
-async function runBackgroundPolls(
-  sourceIds: string[],
-  label: string,
-): Promise<void> {
+async function runBackgroundPolls(sourceIds: string[], label: string): Promise<void> {
   if (sourceIds.length === 0) {
     revalidatePath("/sources");
     revalidatePath("/");
@@ -687,10 +693,7 @@ export async function pauseSourceAction(formData: FormData) {
   if (!sourceId) throw new Error("sourceId required.");
 
   const preset = String(formData.get("durationHours") ?? "");
-  const hours =
-    preset === "custom"
-      ? Number(formData.get("customHours") ?? 0)
-      : Number(preset);
+  const hours = preset === "custom" ? Number(formData.get("customHours") ?? 0) : Number(preset);
   if (!Number.isFinite(hours) || hours <= 0) {
     throw new Error("Pick a snooze duration.");
   }
@@ -784,13 +787,9 @@ export async function deleteDraftAction(formData: FormData) {
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   if (r.rows[0]!.wp_post_id) {
-    throw new Error(
-      "Draft is already in WordPress. Delete it from your site instead.",
-    );
+    throw new Error("Draft is already in WordPress. Delete it from your site instead.");
   }
-  const clusterId = r.rows[0]!.cluster_id
-    ? String(r.rows[0]!.cluster_id)
-    : null;
+  const clusterId = r.rows[0]!.cluster_id ? String(r.rows[0]!.cluster_id) : null;
 
   await db.execute({
     sql: `DELETE FROM fact_check_results WHERE draft_id = ?`,
@@ -880,9 +879,7 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
 
   const wordCount = samples.split(/\s+/).filter(Boolean).length;
   if (wordCount < 200) {
-    throw new Error(
-      `Need at least 200 words to extract a voice fingerprint; got ${wordCount}.`,
-    );
+    throw new Error(`Need at least 200 words to extract a voice fingerprint; got ${wordCount}.`);
   }
 
   const chunks = samples
@@ -950,9 +947,7 @@ export async function deriveBlogDescriptionAction(formData: FormData) {
       "Could not read this site's WordPress root. Try saving a description manually.",
     );
   }
-  const prose = identity.homeUrl
-    ? await fetchHomepageProse(identity.homeUrl)
-    : "";
+  const prose = identity.homeUrl ? await fetchHomepageProse(identity.homeUrl) : "";
 
   const description = await summarizeBlogIdentity({
     name: identity.name,
@@ -1149,9 +1144,7 @@ export async function selectDraftHeadlineAction(formData: FormData) {
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
   if (row.wp_post_id) {
-    throw new Error(
-      "Headline already sent to WordPress. Edit the title in WordPress.",
-    );
+    throw new Error("Headline already sent to WordPress. Edit the title in WordPress.");
   }
   const current = String(row.headline ?? "");
   if (current === headline) return;
@@ -1173,13 +1166,7 @@ export async function selectDraftHeadlineAction(formData: FormData) {
     sql: `UPDATE drafts
           SET headline = ?, headline_alternates = ?, edited_at = ?
           WHERE id = ? AND user_id = ?`,
-    args: [
-      headline,
-      JSON.stringify(nextAlternates),
-      Date.now(),
-      draftId,
-      SINGLE_USER_ID,
-    ],
+    args: [headline, JSON.stringify(nextAlternates), Date.now(), draftId, SINGLE_USER_ID],
   });
   revalidatePath(`/editor/${draftId}`);
 }
@@ -1192,14 +1179,9 @@ export async function generateDraftAction(formData: FormData) {
 
   // Pick outlet: explicit > default > error.
   const explicitOutlet = String(formData.get("outletId") ?? "");
-  const outletId =
-    explicitOutlet ||
-    (await getDefaultOutlet(SINGLE_USER_ID))?.id ||
-    "";
+  const outletId = explicitOutlet || (await getDefaultOutlet(SINGLE_USER_ID))?.id || "";
   if (!outletId) {
-    throw new Error(
-      "No outlet connected. Connect a WordPress site on /voice first.",
-    );
+    throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
   }
 
   const wordCount = parseWordCount(formData.get("wordCount"));
@@ -1256,9 +1238,7 @@ function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
  * Persists wp_post_id and wp_edit_link on the drafts row so the editor
  * can show "Open in WordPress" instead of "Publish" on subsequent visits.
  */
-export async function publishDraftToWPAction(
-  formData: FormData,
-): Promise<{ editLink: string }> {
+export async function publishDraftToWPAction(formData: FormData): Promise<{ editLink: string }> {
   await ensureSchema();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
@@ -1328,7 +1308,10 @@ export async function publishDraftToWPAction(
 }
 
 function stripHtml(s: string): string {
-  return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return s
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function renderStyleYaml(s: ReturnType<typeof extractStyleSheet>): string {
@@ -1339,8 +1322,14 @@ function renderStyleYaml(s: ReturnType<typeof extractStyleSheet>): string {
     `hedge_frequency_per_1000: ${s.hedgeFrequency.toFixed(2)}`,
     `em_dash_density_per_1000: ${s.emDashDensity.toFixed(2)}`,
     `quote_density_per_1000: ${s.quoteDensity.toFixed(2)}`,
-    `signature_terms: [${s.signatureTerms.slice(0, 12).map((t) => JSON.stringify(t)).join(", ")}]`,
+    `signature_terms: [${s.signatureTerms
+      .slice(0, 12)
+      .map((t) => JSON.stringify(t))
+      .join(", ")}]`,
     `banned_terms: [${s.bannedTerms.map((t) => JSON.stringify(t)).join(", ")}]`,
-    `opener_patterns: [${s.openerPatterns.slice(0, 6).map((t) => JSON.stringify(t)).join(", ")}]`,
+    `opener_patterns: [${s.openerPatterns
+      .slice(0, 6)
+      .map((t) => JSON.stringify(t))
+      .join(", ")}]`,
   ].join("\n");
 }

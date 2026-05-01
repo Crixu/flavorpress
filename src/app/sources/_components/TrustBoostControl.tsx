@@ -31,14 +31,9 @@ export function TrustBoostControl({
     });
   }
 
-  const btn =
-    size === "md"
-      ? "h-7 w-7 text-sm"
-      : "h-6 w-6 text-xs";
+  const btn = size === "md" ? "h-7 w-7 text-sm" : "h-6 w-6 text-xs";
   const label =
-    size === "md"
-      ? "min-w-[3rem] text-sm tabular-nums"
-      : "min-w-[2.5rem] text-[11px] tabular-nums";
+    size === "md" ? "min-w-[3rem] text-sm tabular-nums" : "min-w-[2.5rem] text-[11px] tabular-nums";
 
   return (
     <div

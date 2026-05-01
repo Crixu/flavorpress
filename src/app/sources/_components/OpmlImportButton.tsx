@@ -1,11 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, useTransition, type ChangeEvent } from "react";
-import {
-  importOpmlSelectionAction,
-  parseOpmlAction,
-  type OpmlPickerFeed,
-} from "@/lib/v1/actions";
+import { importOpmlSelectionAction, parseOpmlAction, type OpmlPickerFeed } from "@/lib/v1/actions";
 import { OPML_IMPORT_CAP } from "@/lib/v1/opml";
 
 interface OpmlImportButtonProps {
@@ -22,10 +18,7 @@ interface OpmlImportButtonProps {
  * connectors. The picker preserves the OPML title as the seed display name
  * so background auto-titling does not clobber the user's chosen label.
  */
-export function OpmlImportButton({
-  folders,
-  currentFolderId,
-}: OpmlImportButtonProps) {
+export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const fileInputId = useId();
 
@@ -151,20 +144,14 @@ export function OpmlImportButton({
           >
             <header className="flex items-start justify-between gap-4 border-b border-stone-200 px-5 py-4">
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-stone-500">
-                  Import
-                </div>
-                <h2
-                  id="opml-title"
-                  className="mt-0.5 text-lg font-semibold tracking-tight"
-                >
+                <div className="text-[11px] uppercase tracking-wider text-stone-500">Import</div>
+                <h2 id="opml-title" className="mt-0.5 text-lg font-semibold tracking-tight">
                   Pick feeds from OPML
                 </h2>
                 <p className="mt-1 text-[12px] leading-relaxed text-stone-500">
-                  Choose up to {OPML_IMPORT_CAP} feeds you actually still
-                  read. Bulk-importing every feed in the file is the fastest
-                  path to slop; a tighter pick keeps the cluster engine
-                  honest.
+                  Choose up to {OPML_IMPORT_CAP} feeds you actually still read. Bulk-importing every
+                  feed in the file is the fastest path to slop; a tighter pick keeps the cluster
+                  engine honest.
                 </p>
               </div>
               <button
@@ -184,9 +171,7 @@ export function OpmlImportButton({
                     htmlFor={fileInputId}
                     className="cursor-pointer rounded border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-sm text-stone-600 hover:border-stone-400"
                   >
-                    {parsing
-                      ? "Parsing OPML…"
-                      : "Choose an .opml or .xml file"}
+                    {parsing ? "Parsing OPML…" : "Choose an .opml or .xml file"}
                     <input
                       ref={fileRef}
                       id={fileInputId}
@@ -198,9 +183,9 @@ export function OpmlImportButton({
                     />
                   </label>
                   <p className="text-[11px] text-stone-500">
-                    Most readers (Feedly, Inoreader, NetNewsWire, Reeder) can
-                    export their full subscription list as OPML. We parse it
-                    locally on the server; nothing is uploaded anywhere else.
+                    Most readers (Feedly, Inoreader, NetNewsWire, Reeder) can export their full
+                    subscription list as OPML. We parse it locally on the server; nothing is
+                    uploaded anywhere else.
                   </p>
                   {error ? (
                     <p
@@ -223,13 +208,7 @@ export function OpmlImportButton({
                         </>
                       ) : null}
                     </span>
-                    <span
-                      className={
-                        atCap
-                          ? "font-medium text-amber-700"
-                          : "text-stone-500"
-                      }
-                    >
+                    <span className={atCap ? "font-medium text-amber-700" : "text-stone-500"}>
                       {importableSelected} / {OPML_IMPORT_CAP} selected
                     </span>
                   </div>
@@ -245,8 +224,7 @@ export function OpmlImportButton({
                   <ul className="divide-y divide-stone-100 rounded border border-stone-200">
                     {visibleFeeds.map((feed) => {
                       const isSelected = selected.has(feed.url);
-                      const disabled =
-                        feed.alreadyAdded || (atCap && !isSelected);
+                      const disabled = feed.alreadyAdded || (atCap && !isSelected);
                       return (
                         <li
                           key={feed.url}
@@ -260,18 +238,14 @@ export function OpmlImportButton({
                             className="mt-1"
                             checked={isSelected}
                             disabled={feed.alreadyAdded}
-                            onChange={() =>
-                              toggle(feed.url, feed.alreadyAdded)
-                            }
+                            onChange={() => toggle(feed.url, feed.alreadyAdded)}
                           />
                           <label
                             htmlFor={`opml-${feed.url}`}
                             className="min-w-0 flex-1 cursor-pointer"
                           >
                             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                              <span className="text-sm font-medium">
-                                {feed.title}
-                              </span>
+                              <span className="text-sm font-medium">{feed.title}</span>
                               {feed.groupTitle ? (
                                 <span className="text-[11px] text-stone-500">
                                   in {feed.groupTitle}

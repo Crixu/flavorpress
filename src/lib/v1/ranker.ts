@@ -21,10 +21,7 @@ import { RANKER_WEIGHTS } from "./types";
 import { rowToItem, type ItemRow } from "./source-connector";
 import { CLUSTER_WINDOW_MS } from "./cluster-engine";
 
-export async function rankCluster(
-  cluster: Cluster,
-  userId: string,
-): Promise<RankerSignals> {
+export async function rankCluster(cluster: Cluster, userId: string): Promise<RankerSignals> {
   await ensureSchema();
 
   // Pull cluster items + their source trust scores.
@@ -64,8 +61,7 @@ export async function rankCluster(
   // archive_overlap: fraction of cluster entities in user's signature_terms.
   const archiveOverlap =
     clusterEntities.length > 0
-      ? clusterEntities.filter((e) => containsAny(e, sigSet)).length /
-        clusterEntities.length
+      ? clusterEntities.filter((e) => containsAny(e, sigSet)).length / clusterEntities.length
       : 0;
 
   // beat_match: top-50 archive entities (from items the user authored).
@@ -80,30 +76,21 @@ export async function rankCluster(
   // back to signature_terms if archive query is empty.
   const archiveEntities = new Set<string>();
   for (const row of archiveR.rows) {
-    const ents = row.entities
-      ? (JSON.parse(String(row.entities)) as string[])
-      : [];
+    const ents = row.entities ? (JSON.parse(String(row.entities)) as string[]) : [];
     for (const e of ents) archiveEntities.add(e.toLowerCase());
   }
-  const beatPool =
-    archiveEntities.size > 0 ? archiveEntities : sigSet;
+  const beatPool = archiveEntities.size > 0 ? archiveEntities : sigSet;
   const beatMatch =
     clusterEntities.length > 0
-      ? clusterEntities.filter((e) => beatPool.has(e)).length /
-        clusterEntities.length
+      ? clusterEntities.filter((e) => beatPool.has(e)).length / clusterEntities.length
       : 0;
 
   // source_trust: mean across cluster items.
   const sourceTrust =
-    trustScores.length > 0
-      ? trustScores.reduce((a, b) => a + b, 0) / trustScores.length
-      : 0.5;
+    trustScores.length > 0 ? trustScores.reduce((a, b) => a + b, 0) / trustScores.length : 0.5;
 
   // Apply ranker_corrections that match this cluster pattern.
-  const correctionDelta = await accumulateCorrections(
-    userId,
-    clusterEntities,
-  );
+  const correctionDelta = await accumulateCorrections(userId, clusterEntities);
 
   const composite = clamp(
     RANKER_WEIGHTS.archiveOverlap * archiveOverlap +
@@ -159,9 +146,7 @@ export async function topFiredClusters(
   userId: string,
   limit: number,
   folderId: string | null = null,
-): Promise<
-  Array<Cluster & { signals: RankerSignals | null; latestPublishedAt: number }>
-> {
+): Promise<Array<Cluster & { signals: RankerSignals | null; latestPublishedAt: number }>> {
   await ensureSchema();
   const folderClause =
     folderId === null
@@ -205,9 +190,7 @@ export async function topFiredClusters(
     userId: String(row.user_id),
     centroid: null,
     embeddingModel: row.embedding_model ? String(row.embedding_model) : null,
-    embeddingVersion: row.embedding_version
-      ? String(row.embedding_version)
-      : null,
+    embeddingVersion: row.embedding_version ? String(row.embedding_version) : null,
     primaryEntities: row.primary_entities
       ? (JSON.parse(String(row.primary_entities)) as string[])
       : null,
@@ -215,32 +198,28 @@ export async function topFiredClusters(
     firedAt: row.fired_at ? Number(row.fired_at) : null,
     sourceCount: Number(row.source_count),
     rankerScore: row.ranker_score ? Number(row.ranker_score) : null,
-    capabilityVersionPin: row.capability_version_pin
-      ? String(row.capability_version_pin)
-      : null,
+    capabilityVersionPin: row.capability_version_pin ? String(row.capability_version_pin) : null,
     state: String(row.state) as Cluster["state"],
     latestPublishedAt:
       row.latest_published_at !== null && row.latest_published_at !== undefined
         ? Number(row.latest_published_at)
         : Number(row.formed_at),
-    signals: row.composite !== null && row.composite !== undefined
-      ? {
-          clusterId: String(row.id),
-          userId: String(row.user_id),
-          archiveOverlap: Number(row.archive_overlap),
-          beatMatch: Number(row.beat_match),
-          sourceTrust: Number(row.source_trust),
-          composite: Number(row.composite),
-          computedAt: Number(row.computed_at),
-        }
-      : null,
+    signals:
+      row.composite !== null && row.composite !== undefined
+        ? {
+            clusterId: String(row.id),
+            userId: String(row.user_id),
+            archiveOverlap: Number(row.archive_overlap),
+            beatMatch: Number(row.beat_match),
+            sourceTrust: Number(row.source_trust),
+            composite: Number(row.composite),
+            computedAt: Number(row.computed_at),
+          }
+        : null,
   }));
 }
 
-async function accumulateCorrections(
-  userId: string,
-  clusterEntities: string[],
-): Promise<number> {
+async function accumulateCorrections(userId: string, clusterEntities: string[]): Promise<number> {
   if (clusterEntities.length === 0) return 0;
   const r = await db.execute({
     sql: `SELECT cluster_pattern, weight_delta FROM ranker_corrections WHERE user_id = ?`,
