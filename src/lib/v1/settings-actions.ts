@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { setSetting, SETTING_KEYS, type SettingKey } from "./settings";
+import {
+  setExtensionEnabled,
+  setSetting,
+  SETTING_KEYS,
+  type SettingKey,
+} from "./settings";
+import { findExtensionMetadata } from "@/extensions/registry";
 
 const ANTHROPIC_KEY_PATTERN = /^sk-ant-[a-zA-Z0-9_-]{10,}$/;
 
@@ -54,4 +60,25 @@ export async function clearSettingAction(formData: FormData): Promise<void> {
   await setSetting(key as SettingKey, null);
   revalidatePath("/settings");
   redirect(`/settings?cleared=${encodeURIComponent(key)}`);
+}
+
+/**
+ * Enable or disable a single editor extension. The form must include an
+ * `extensionId` matching a registered extension and an `enabled` flag
+ * ("1" to enable, anything else to disable). Editor and settings routes
+ * are revalidated so the right rail updates the next time the editor
+ * server-renders.
+ */
+export async function toggleExtensionAction(formData: FormData): Promise<void> {
+  const extensionId = String(formData.get("extensionId") ?? "");
+  if (!findExtensionMetadata(extensionId)) {
+    redirect("/settings?error=invalid_extension");
+  }
+  const enabled = String(formData.get("enabled") ?? "") === "1";
+  await setExtensionEnabled(extensionId, enabled);
+  revalidatePath("/settings");
+  revalidatePath("/editor", "layout");
+  redirect(
+    `/settings?extension=${encodeURIComponent(extensionId)}&state=${enabled ? "enabled" : "disabled"}`,
+  );
 }
