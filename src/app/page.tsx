@@ -80,10 +80,10 @@ export default async function TodayPage() {
     );
   }
 
-  // Today is a per-folder surface: each folder is a reading lane. We assign
-  // every eligible cluster to one lane before applying the per-folder cap so
-  // a noisy folder cannot crowd quieter ones out. Ungrouped is intentionally
-  // excluded; a lane with no shape isn't a writing brief.
+  // Today is a per-folder surface: each folder is a reading lane. A cluster
+  // surfaces in every lane it touches; the per-folder cap keeps any single
+  // lane bounded. Ungrouped is intentionally excluded; a lane with no shape
+  // isn't a writing brief.
   const folderRows = await db.execute({
     sql: `SELECT id, name FROM source_folders
           WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
@@ -94,12 +94,11 @@ export default async function TodayPage() {
     name: String(row.name),
   }));
 
-  // A cluster can have items from sources in multiple folders. Pin each
-  // cluster to the folder that contributed the most items, then keep at
-  // most PER_FOLDER_LIMIT clusters per folder. The query handles dominant
-  // assignment and the per-folder cap in SQL via window functions, so the
-  // result set is bounded at folders.length * PER_FOLDER_LIMIT regardless
-  // of how many fired clusters live in the freshness window.
+  // A cluster can have items from sources in multiple folders. Show it in
+  // every folder it touches so a quieter folder still surfaces clusters it
+  // contributed to, even when a noisier folder contributed more items. The
+  // per-folder cap of PER_FOLDER_LIMIT keeps each lane bounded, so the
+  // result set is still bounded at folders.length * PER_FOLDER_LIMIT.
   const clustersByFolder = await listTodayClustersByFolder(SINGLE_USER_ID);
 
   const draftableOutletIds = draftableOutlets.map((o) => o.id);
@@ -108,26 +107,43 @@ export default async function TodayPage() {
     SINGLE_USER_ID,
   );
 
-  const streams: TodayFolderStream[] = await Promise.all(
-    folders.map(async (folder) => {
-      const clusters = clustersByFolder.get(folder.id) ?? [];
-      const previews = await Promise.all(
-        clusters.map((c) =>
-          buildClusterPreview(c, folder, draftableOutletIds, signatureTermsByOutlet),
-        ),
-      );
-      return { id: folder.id, folderId: folder.id, name: folder.name, clusters: previews };
+  // Build each preview once per distinct cluster (a cluster may appear in
+  // multiple folders); attach the folder ref per-stream when composing.
+  const distinctClusters = new Map<string, TodayClusterCandidate>();
+  for (const list of clustersByFolder.values()) {
+    for (const c of list) if (!distinctClusters.has(c.id)) distinctClusters.set(c.id, c);
+  }
+  const previewsById = new Map<string, TodayClusterPreview>();
+  await Promise.all(
+    Array.from(distinctClusters.values()).map(async (c) => {
+      const preview = await buildClusterPreview(c, draftableOutletIds, signatureTermsByOutlet);
+      previewsById.set(c.id, preview);
     }),
   );
 
-  const nonEmptyStreams = streams.filter((s) => s.clusters.length > 0);
-  nonEmptyStreams.sort((a, b) => {
-    const aScore = a.clusters[0]?.cluster.signals?.composite ?? 0;
-    const bScore = b.clusters[0]?.cluster.signals?.composite ?? 0;
+  const streams: TodayFolderStream[] = folders.map((folder) => {
+    const clusters = clustersByFolder.get(folder.id) ?? [];
+    const previews = clusters.map((c) => ({
+      ...previewsById.get(c.id)!,
+      folder: { id: folder.id, name: folder.name },
+    }));
+    return { id: folder.id, folderId: folder.id, name: folder.name, clusters: previews };
+  });
+
+  // Stable order: folders with content first, ranked by their top cluster's
+  // composite, then empty lanes in the user's folder sort_order.
+  streams.sort((a, b) => {
+    const aHas = a.clusters.length > 0;
+    const bHas = b.clusters.length > 0;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+    if (!aHas) return 0;
+    const aScore = a.clusters[0]!.cluster.signals?.composite ?? 0;
+    const bScore = b.clusters[0]!.cluster.signals?.composite ?? 0;
     return bScore - aScore;
   });
 
-  const totalPreviews = nonEmptyStreams.reduce((acc, s) => acc + s.clusters.length, 0);
+  const totalPreviews = distinctClusters.size;
+  const streamsWithContent = streams.filter((s) => s.clusters.length > 0).length;
 
   return (
     <div className="space-y-8">
@@ -138,8 +154,8 @@ export default async function TodayPage() {
             ? "No clusters yet"
             : totalPreviews === 1
               ? "One cluster worth your attention"
-              : `${totalPreviews} clusters across ${nonEmptyStreams.length} ${
-                  nonEmptyStreams.length === 1 ? "stream" : "streams"
+              : `${totalPreviews} clusters across ${streamsWithContent} ${
+                  streamsWithContent === 1 ? "stream" : "streams"
                 }`}
         </h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
@@ -152,7 +168,7 @@ export default async function TodayPage() {
         <EmptyClusters polledSourceCount={polledSourceCount} itemsTotal={itemsTotal} />
       ) : (
         <TodayFolderStreams
-          streams={nonEmptyStreams}
+          streams={streams}
           outlets={outletOptions}
           defaultOutletId={defaultOutletId}
         />
@@ -163,7 +179,6 @@ export default async function TodayPage() {
 
 async function buildClusterPreview(
   c: TodayClusterCandidate,
-  folder: { id: string; name: string },
   draftableOutletIds: string[],
   signatureTermsByOutlet: Map<string, Set<string>>,
 ): Promise<TodayClusterPreview> {
@@ -238,7 +253,7 @@ async function buildClusterPreview(
           }
         : null,
     },
-    folder,
+    folder: { id: "", name: "" },
     items,
     draftsByOutlet,
     preferredOutletId,
@@ -246,48 +261,26 @@ async function buildClusterPreview(
 }
 
 /**
- * Top fired clusters per folder for the Today surface, bucketed by their
- * dominant folder. The query handles three things in one SQL pass so the
- * server doesn't have to materialize every fired cluster the user has
- * ever had:
- *
- *   1. Group every cluster's items by folder, pick the folder that owns
- *      the most items (ties broken by the user's own folder sort_order,
- *      then name) as the cluster's dominant folder.
- *   2. Order each folder's clusters by composite score, latest published,
- *      then fired_at.
- *   3. Cap each folder at PER_FOLDER_LIMIT rows via ROW_NUMBER().
- *
- * Result is bounded at folders.length * PER_FOLDER_LIMIT regardless of
- * how many clusters live in the freshness window, so neither the IN-list
- * variable limit (SQLite caps at SQLITE_MAX_VARIABLE_NUMBER) nor the
- * Node-side fan-out grows with archive size. Clusters whose entire item
- * set is ungrouped have no dominant folder and therefore don't appear on
- * Today, matching the existing rule for ungrouped sources.
+ * Top fired clusters per folder for the Today surface. A cluster is
+ * surfaced in every folder it has items in, so a quieter folder still
+ * sees the cluster it contributed to even when a noisier folder
+ * contributed more items. Per-folder ranking and the PER_FOLDER_LIMIT
+ * cap are applied via ROW_NUMBER(), so the result set is bounded at
+ * folders.length * PER_FOLDER_LIMIT regardless of how many clusters
+ * live in the freshness window. Sources without a folder still don't
+ * appear on Today; an ungrouped item is not a reading lane.
  */
 async function listTodayClustersByFolder(
   userId: string,
 ): Promise<Map<string, TodayClusterCandidate[]>> {
   const freshnessCutoff = Date.now() - CLUSTER_WINDOW_MS;
   const r = await db.execute({
-    sql: `WITH folder_item_counts AS (
-            SELECT i.cluster_id AS cid, s.folder_id AS fid, COUNT(*) AS n
+    sql: `WITH cluster_folders AS (
+            SELECT DISTINCT i.cluster_id AS cid, s.folder_id AS fid
             FROM items i
             JOIN sources s ON s.id = i.source_id
             JOIN clusters c ON c.id = i.cluster_id
             WHERE c.user_id = ? AND c.state = 'fired' AND s.folder_id IS NOT NULL
-            GROUP BY i.cluster_id, s.folder_id
-          ),
-          dominant_folder AS (
-            SELECT cid, fid FROM (
-              SELECT fic.cid, fic.fid,
-                     ROW_NUMBER() OVER (
-                       PARTITION BY fic.cid
-                       ORDER BY fic.n DESC, sf.sort_order ASC, sf.name ASC
-                     ) AS rn
-              FROM folder_item_counts fic
-              JOIN source_folders sf ON sf.id = fic.fid
-            ) WHERE rn = 1
           ),
           latest_per_cluster AS (
             SELECT cluster_id, MAX(published_at) AS latest_published_at
@@ -298,15 +291,15 @@ async function listTodayClustersByFolder(
             SELECT c.id, c.formed_at, c.fired_at, c.source_count, c.primary_entities,
                    rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite,
                    latest.latest_published_at,
-                   df.fid AS folder_id,
+                   cf.fid AS folder_id,
                    ROW_NUMBER() OVER (
-                     PARTITION BY df.fid
+                     PARTITION BY cf.fid
                      ORDER BY COALESCE(rs.composite, 0) DESC,
                               COALESCE(latest.latest_published_at, c.formed_at) DESC,
                               c.fired_at DESC
                    ) AS rn
             FROM clusters c
-            JOIN dominant_folder df ON df.cid = c.id
+            JOIN cluster_folders cf ON cf.cid = c.id
             LEFT JOIN ranker_signals rs ON rs.cluster_id = c.id AND rs.user_id = c.user_id
             LEFT JOIN latest_per_cluster latest ON latest.cluster_id = c.id
             WHERE c.user_id = ? AND c.state = 'fired'
