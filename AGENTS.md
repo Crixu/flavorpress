@@ -49,7 +49,7 @@ These were cut on 2026-04-28 and the test consistently rejects them. Do not slip
 - Admin portal, sudo / impersonation, staff roles
 - Anything tagged "enterprise" until an enterprise customer signs
 
-OPML, RSS, and forum/Reddit ingestion are deferred but not killed; revisit when newsletter forwarding has 2+ active prosumers.
+OPML (#34), multi-story RSS extraction (#64), X via Nitter (#62, #65), and Reddit ingestion shipped between 2026-04-28 and today under the SaaS direction set 2026-04-30, which supersedes the original prototype deferral. The 2026-04-28 reset rules in this file still guard against enterprise scope creep, but the previous "revisit at 2+ prosumers" gate on source ingestion is no longer load-bearing; new source kinds are evaluated against the seven-question test directly.
 
 ## Voice rules for any output you generate
 
@@ -81,6 +81,15 @@ If a proposed change pulls in any of those stricken pieces, the test should catc
 ## When in doubt
 
 Default to DEFER, not KEEP. The cost of leaving a feature out is one missed conversation; the cost of letting scope creep back is the entire 2026-04-28 reset.
+
+## Source plug-in paths
+
+Two registration paths exist for adding a new source kind; pick deliberately.
+
+- Built-in connector: a file in `src/lib/v1/connectors/<kind>.ts` implementing the `SourceConnector` contract from `src/lib/v1/source-connector.ts`, imported and registered in `src/lib/v1/bootstrap.ts`. Use this when the source ships on for every user by default. RSS and Reddit live here.
+- Editor extension: a directory in `src/extensions/<id>/` with metadata in `src/extensions/registry.ts` and live Panel components in `client.ts`. Use this when the source or surface is user-installable, toggled per site, or needs its own panel UI. X via Nitter, fact-check, related images, and comment courtroom live here.
+
+The default for a new source is the connector path. Switch to the extension path only if it needs opt-in per site or its own panel; do not split a source across both.
 
 ## Files worth knowing about
 
