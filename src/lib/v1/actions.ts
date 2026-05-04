@@ -703,11 +703,21 @@ async function runBackgroundPolls(sourceIds: string[], label: string): Promise<v
     return;
   }
   const registry = getRegistry();
+  const placeholders = sourceIds.map(() => "?").join(",");
+  const kindRows = await db.execute({
+    sql: `SELECT id, kind FROM sources WHERE id IN (${placeholders})`,
+    args: sourceIds,
+  });
+  const kindBySourceId = new Map(
+    kindRows.rows.map((row) => [String(row.id), String(row.kind ?? "rss")]),
+  );
   await Promise.all(
     sourceIds.map(async (sourceId) => {
+      const kind = kindBySourceId.get(sourceId) ?? "rss";
+      const capabilityId = kind === "reddit" ? "source-connector.reddit" : "source-connector.rss";
       try {
         await registry.invoke(
-          "source-connector.rss",
+          capabilityId,
           undefined,
           { sourceId },
           {

@@ -30,9 +30,10 @@ async function main() {
       console.log(`  skip ${display} (kind=${kind} not supported in v1)`);
       continue;
     }
+    const capabilityId = kind === "reddit" ? "source-connector.reddit" : "source-connector.rss";
     try {
       const result = (await registry.invoke(
-        "source-connector.rss",
+        capabilityId,
         undefined,
         { sourceId: id },
         {

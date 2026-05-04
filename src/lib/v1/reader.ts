@@ -31,8 +31,11 @@ export interface ReaderItem {
   canonicalUrl: string;
   sourceId: string;
   sourceName: string;
+  sourceKind: string;
   folderId: string | null;
   folderName: string | null;
+  score: number | null;
+  commentCount: number | null;
   /**
    * Display names of OTHER recent sources that have run an item sharing a
    * proper-noun phrase with this title. The current source is excluded.
@@ -70,7 +73,8 @@ export async function loadReaderQueue(
     : [userId, READER_QUEUE_LIMIT];
   const r = await db.execute({
     sql: `SELECT i.id, i.title, i.lede, i.published_at, i.canonical_url,
-                 s.id AS source_id, s.display_name AS source_name,
+                 i.score, i.comment_count,
+                 s.id AS source_id, s.display_name AS source_name, s.kind AS source_kind,
                  f.id AS folder_id, f.name AS folder_name
           FROM items i
           JOIN sources s ON s.id = i.source_id
@@ -93,8 +97,14 @@ export async function loadReaderQueue(
     canonicalUrl: String(row.canonical_url),
     sourceId: String(row.source_id),
     sourceName: String(row.source_name ?? ""),
+    sourceKind: String(row.source_kind ?? ""),
     folderId: row.folder_id ? String(row.folder_id) : null,
     folderName: row.folder_name ? String(row.folder_name) : null,
+    score: row.score === null || row.score === undefined ? null : Number(row.score),
+    commentCount:
+      row.comment_count === null || row.comment_count === undefined
+        ? null
+        : Number(row.comment_count),
   }));
   const alsoCoveredMap = await computeAlsoCoveredBy(userId, baseItems);
   const items: ReaderItem[] = baseItems.map((it) => ({
@@ -168,7 +178,8 @@ export async function listMarked(userId: string): Promise<ReaderItem[]> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT i.id, i.title, i.lede, i.published_at, i.canonical_url,
-                 s.id AS source_id, s.display_name AS source_name,
+                 i.score, i.comment_count,
+                 s.id AS source_id, s.display_name AS source_name, s.kind AS source_kind,
                  f.id AS folder_id, f.name AS folder_name
           FROM items i
           JOIN sources s ON s.id = i.source_id
@@ -188,8 +199,14 @@ export async function listMarked(userId: string): Promise<ReaderItem[]> {
     canonicalUrl: String(row.canonical_url),
     sourceId: String(row.source_id),
     sourceName: String(row.source_name ?? ""),
+    sourceKind: String(row.source_kind ?? ""),
     folderId: row.folder_id ? String(row.folder_id) : null,
     folderName: row.folder_name ? String(row.folder_name) : null,
+    score: row.score === null || row.score === undefined ? null : Number(row.score),
+    commentCount:
+      row.comment_count === null || row.comment_count === undefined
+        ? null
+        : Number(row.comment_count),
   }));
   const alsoCoveredMap = await computeAlsoCoveredBy(userId, baseItems);
   return baseItems.map((it) => ({

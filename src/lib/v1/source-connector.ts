@@ -24,6 +24,8 @@ export interface RawItem {
   authors: string[];
   publishedAt: number; // ms epoch
   raw: unknown; // original payload for debugging
+  score?: number | null;
+  commentCount?: number | null;
 }
 
 export interface ConnectorContext {
@@ -152,8 +154,8 @@ export async function runConnector<TRaw>(
     try {
       await db.execute({
         sql: `INSERT INTO items
-              (id, source_id, user_id, canonical_url, content_hash, title, lede, body, authors, published_at, fetched_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              (id, source_id, user_id, canonical_url, content_hash, title, lede, body, authors, published_at, fetched_at, score, comment_count)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id,
           source.id,
@@ -166,6 +168,8 @@ export async function runConnector<TRaw>(
           JSON.stringify(item.authors),
           item.publishedAt,
           Date.now(),
+          item.score ?? null,
+          item.commentCount ?? null,
         ],
       });
       ingestedCount++;
@@ -217,7 +221,26 @@ async function defaultDedupe(items: RawItem[], ctx: ConnectorContext): Promise<R
     args: [ctx.source.userId, ...canonicalUrls],
   });
   const seen = new Set(r.rows.map((row) => String(row.canonical_url)));
+  await refreshMutableFieldsForSeenItems(items, seen, ctx);
   return items.filter((i) => !seen.has(canonicalize(i.url)));
+}
+
+async function refreshMutableFieldsForSeenItems(
+  items: RawItem[],
+  seenCanonicalUrls: Set<string>,
+  ctx: ConnectorContext,
+): Promise<void> {
+  for (const item of items) {
+    const canonicalUrl = canonicalize(item.url);
+    if (!seenCanonicalUrls.has(canonicalUrl)) continue;
+    if (item.score === undefined && item.commentCount === undefined) continue;
+    await db.execute({
+      sql: `UPDATE items
+            SET score = ?, comment_count = ?
+            WHERE user_id = ? AND canonical_url = ?`,
+      args: [item.score ?? null, item.commentCount ?? null, ctx.source.userId, canonicalUrl],
+    });
+  }
 }
 
 /**

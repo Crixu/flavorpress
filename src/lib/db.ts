@@ -125,6 +125,8 @@ export async function ensureSchema(): Promise<void> {
         cluster_id TEXT,
         marked_at INTEGER,
         dismissed_at INTEGER,
+        score INTEGER,
+        comment_count INTEGER,
         UNIQUE(canonical_url, user_id)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_items_user_published ON items(user_id, published_at DESC)`,
@@ -483,6 +485,14 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("dismissed_at")) {
         console.info("[migrate] items: adding dismissed_at column");
         await db.execute("ALTER TABLE items ADD COLUMN dismissed_at INTEGER");
+      }
+      if (!cols.includes("score")) {
+        console.info("[migrate] items: adding score column");
+        await db.execute("ALTER TABLE items ADD COLUMN score INTEGER");
+      }
+      if (!cols.includes("comment_count")) {
+        console.info("[migrate] items: adding comment_count column");
+        await db.execute("ALTER TABLE items ADD COLUMN comment_count INTEGER");
       }
     }
   } catch {
