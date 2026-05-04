@@ -30,8 +30,11 @@ interface ReaderItem {
   canonicalUrl: string;
   sourceId: string;
   sourceName: string;
+  sourceKind: string;
   folderId: string | null;
   folderName: string | null;
+  score: number | null;
+  commentCount: number | null;
   alsoCoveredBy: string[];
 }
 
@@ -429,6 +432,23 @@ function Card({
       >
         {item.lede}
       </p>
+      {item.sourceKind === "reddit" && (item.score !== null || item.commentCount !== null) ? (
+        <div
+          className="mt-3 flex flex-wrap items-center gap-3 text-[11px] tabular"
+          style={{ color: "var(--fg-muted)" }}
+        >
+          {item.score !== null ? (
+            <span title={`${item.score.toLocaleString()} upvotes`}>
+              ↑ {compactNumber(item.score)}
+            </span>
+          ) : null}
+          {item.commentCount !== null ? (
+            <span title={`${item.commentCount.toLocaleString()} comments`}>
+              {compactNumber(item.commentCount)} {item.commentCount === 1 ? "comment" : "comments"}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="mt-4 flex items-center justify-between text-xs">
         <a
           href={item.canonicalUrl}
@@ -592,6 +612,14 @@ function relativeTime(ms: number): string {
   if (diff < hour) return `${Math.max(1, Math.round(diff / min))}m ago`;
   if (diff < day) return `${Math.round(diff / hour)}h ago`;
   return `${Math.round(diff / day)}d ago`;
+}
+
+function compactNumber(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (abs >= 10_000) return `${(n / 1000).toFixed(0)}k`;
+  if (abs >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return n.toLocaleString();
 }
 
 function hostname(url: string): string {

@@ -18,6 +18,7 @@ import { getRegistry } from "./capability-registry";
 import { handleItemIngested, getClusterItems } from "./cluster-engine";
 import { rankCluster } from "./ranker";
 import { fingerprintText, voiceMatchScore } from "./style-sheet";
+import { redditConnector } from "./connectors/reddit";
 import { rssConnectorExpanded } from "./connectors/rss";
 import { runConnector } from "./source-connector";
 import { db, ensureSchema } from "../db";
@@ -259,6 +260,49 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
         createdAt: Number(row.created_at ?? Date.now()),
       };
       return runConnector(rssConnectorExpanded, source);
+    },
+  });
+
+  // ----- source-connector.reddit -----
+  await registry.register({
+    id: "source-connector.reddit",
+    version: "1.0.0",
+    description:
+      "Polls a subreddit's JSON listing endpoint and emits item.ingested for each new post. Captures score and num_comments alongside the standard item fields so the reader can show engagement signal at swipe time.",
+    inputSchema: z.object({ sourceId: z.string() }),
+    outputSchema: z.object({ ingested: z.number(), traceId: z.string() }),
+    latencyBudgetMs: 8000,
+    tier: "both",
+    requiresAuth: false,
+    subscribesTo: ["source.poll_due"],
+    emits: ["item.ingested"],
+    costClass: "cheap",
+    tags: ["pipeline.ingest", "connector.reddit"],
+    invoke: async (input) => {
+      const { sourceId } = input as { sourceId: string };
+      const r = await db.execute({
+        sql: `SELECT * FROM sources WHERE id = ?`,
+        args: [sourceId],
+      });
+      if (r.rows.length === 0) throw new Error(`source not found: ${sourceId}`);
+      const row = r.rows[0]!;
+      const source: Source = {
+        id: String(row.id),
+        userId: String(row.user_id),
+        kind: row.kind as Source["kind"],
+        url: String(row.url),
+        displayName: row.display_name ? String(row.display_name) : null,
+        trustScore: Number(row.trust_score ?? 0.5),
+        pollIntervalSeconds: Number(row.poll_interval_seconds ?? 300),
+        lastPolledAt: row.last_polled_at ? Number(row.last_polled_at) : null,
+        lastError: row.last_error ? String(row.last_error) : null,
+        lastEtag: row.last_etag ? String(row.last_etag) : null,
+        lastModified: row.last_modified ? String(row.last_modified) : null,
+        backoffUntil: row.backoff_until ? Number(row.backoff_until) : null,
+        active: Number(row.active ?? 1) === 1,
+        createdAt: Number(row.created_at ?? Date.now()),
+      };
+      return runConnector(redditConnector, source);
     },
   });
 
