@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Inter, Newsreader } from "next/font/google";
 import { HelpFlyout, HelpIndexButton } from "@/components/Help";
+import { AgentationDev } from "./_components/Agentation";
 import { ShellNav } from "./_components/ShellNav";
 import "./globals.css";
 
@@ -67,6 +68,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Suspense fallback={null}>
           <HelpFlyout />
         </Suspense>
+        <AgentationDev />
       </body>
     </html>
   );
