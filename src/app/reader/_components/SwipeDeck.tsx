@@ -29,6 +29,7 @@ interface ReaderItem {
   sourceName: string;
   folderId: string | null;
   folderName: string | null;
+  alsoCoveredBy: string[];
 }
 
 interface Props {
@@ -361,6 +362,24 @@ function Card({
       <h2 className="fp-h1-serif mt-3" style={{ fontSize: 26, lineHeight: 1.2 }}>
         {item.title}
       </h2>
+      {item.alsoCoveredBy.length > 0 ? (
+        <div
+          className="mt-2 inline-flex max-w-full items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[11px]"
+          style={{
+            background: "var(--indigo-tint, var(--bg-subtle))",
+            border: "1px solid var(--border)",
+            color: "var(--fg-muted)",
+          }}
+          title={`Also covered by ${item.alsoCoveredBy.join(", ")}`}
+        >
+          <span className="uppercase tracking-wider" style={{ color: "var(--fg-subtle)" }}>
+            Also covered by
+          </span>
+          <span className="truncate font-medium" style={{ color: "var(--fg)" }}>
+            {item.alsoCoveredBy.join(", ")}
+          </span>
+        </div>
+      ) : null}
       <p
         className="mt-3 flex-1 overflow-hidden text-sm leading-relaxed"
         style={{ color: "var(--fg-muted)" }}

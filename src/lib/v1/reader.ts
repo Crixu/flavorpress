@@ -33,6 +33,14 @@ export interface ReaderItem {
   sourceName: string;
   folderId: string | null;
   folderName: string | null;
+  /**
+   * Display names of OTHER recent sources that have run an item sharing a
+   * proper-noun phrase with this title. The current source is excluded.
+   * Empty when this is a single-source story; used by the deck card to
+   * render an "Also covered by …" line so the user has a multi-source
+   * signal at swipe time.
+   */
+  alsoCoveredBy: string[];
 }
 
 export interface ReaderQueue {
@@ -45,9 +53,21 @@ export interface ReaderQueue {
  * Items waiting in the deck. Excludes anything dismissed, marked, or
  * already in a cluster. Most-recent first; capped so the page doesn't
  * have to load thousands of rows up front.
+ *
+ * When folderId is provided, only items from sources in that folder are
+ * returned; otherwise all foldered items are eligible. The marked count
+ * stays global so the cluster threshold behaves the same regardless of
+ * which folder the user is currently triaging.
  */
-export async function loadReaderQueue(userId: string): Promise<ReaderQueue> {
+export async function loadReaderQueue(
+  userId: string,
+  folderId?: string | null,
+): Promise<ReaderQueue> {
   await ensureSchema();
+  const folderClause = folderId ? "AND s.folder_id = ?" : "";
+  const args: (string | number)[] = folderId
+    ? [userId, folderId, READER_QUEUE_LIMIT]
+    : [userId, READER_QUEUE_LIMIT];
   const r = await db.execute({
     sql: `SELECT i.id, i.title, i.lede, i.published_at, i.canonical_url,
                  s.id AS source_id, s.display_name AS source_name,
@@ -60,11 +80,12 @@ export async function loadReaderQueue(userId: string): Promise<ReaderQueue> {
             AND i.marked_at IS NULL
             AND i.dismissed_at IS NULL
             AND s.folder_id IS NOT NULL
+            ${folderClause}
           ORDER BY i.published_at DESC
           LIMIT ?`,
-    args: [userId, READER_QUEUE_LIMIT],
+    args,
   });
-  const items: ReaderItem[] = r.rows.map((row) => ({
+  const baseItems = r.rows.map((row) => ({
     id: String(row.id),
     title: String(row.title),
     lede: String(row.lede),
@@ -75,12 +96,58 @@ export async function loadReaderQueue(userId: string): Promise<ReaderQueue> {
     folderId: row.folder_id ? String(row.folder_id) : null,
     folderName: row.folder_name ? String(row.folder_name) : null,
   }));
+  const alsoCoveredMap = await computeAlsoCoveredBy(userId, baseItems);
+  const items: ReaderItem[] = baseItems.map((it) => ({
+    ...it,
+    alsoCoveredBy: alsoCoveredMap.get(it.id) ?? [],
+  }));
   const markedCount = await countMarked(userId);
   return {
     items,
     markedCount,
     thresholdReached: markedCount >= READER_CLUSTER_THRESHOLD,
   };
+}
+
+export interface ReaderFolderOption {
+  id: string;
+  name: string;
+  queueCount: number;
+}
+
+/**
+ * Folders the reader can scope to, with the count of triage-eligible items
+ * in each. Folders with zero eligible items are still listed when they have
+ * sources, so the user can see why a folder is empty and not assume it
+ * vanished. Drives the chip bar above the swipe deck.
+ */
+export async function listReaderFolderOptions(userId: string): Promise<{
+  folders: ReaderFolderOption[];
+  totalCount: number;
+}> {
+  await ensureSchema();
+  const r = await db.execute({
+    sql: `SELECT f.id AS id, f.name AS name,
+                 (SELECT COUNT(*) FROM items i
+                  JOIN sources s2 ON s2.id = i.source_id
+                  WHERE i.user_id = ?
+                    AND i.cluster_id IS NULL
+                    AND i.marked_at IS NULL
+                    AND i.dismissed_at IS NULL
+                    AND s2.folder_id = f.id) AS queue_count
+          FROM source_folders f
+          WHERE f.user_id = ?
+            AND EXISTS (SELECT 1 FROM sources s WHERE s.folder_id = f.id)
+          ORDER BY f.sort_order ASC, f.name ASC`,
+    args: [userId, userId],
+  });
+  const folders = r.rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    queueCount: Number(row.queue_count ?? 0),
+  }));
+  const totalCount = folders.reduce((sum, f) => sum + f.queueCount, 0);
+  return { folders, totalCount };
 }
 
 export async function countMarked(userId: string): Promise<number> {
@@ -113,7 +180,7 @@ export async function listMarked(userId: string): Promise<ReaderItem[]> {
           ORDER BY i.marked_at ASC`,
     args: [userId],
   });
-  return r.rows.map((row) => ({
+  const baseItems = r.rows.map((row) => ({
     id: String(row.id),
     title: String(row.title),
     lede: String(row.lede),
@@ -124,6 +191,126 @@ export async function listMarked(userId: string): Promise<ReaderItem[]> {
     folderId: row.folder_id ? String(row.folder_id) : null,
     folderName: row.folder_name ? String(row.folder_name) : null,
   }));
+  const alsoCoveredMap = await computeAlsoCoveredBy(userId, baseItems);
+  return baseItems.map((it) => ({
+    ...it,
+    alsoCoveredBy: alsoCoveredMap.get(it.id) ?? [],
+  }));
+}
+
+const ALSO_COVERED_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
+const ALSO_COVERED_MAX_NAMES = 4;
+const ALSO_COVERED_MAX_PHRASES = 80;
+const ALSO_COVERED_CANDIDATE_LIMIT = 500;
+
+interface BaseItemForOverlap {
+  id: string;
+  title: string;
+  sourceId: string;
+}
+
+/**
+ * For each given item, find recent items from OTHER sources whose title
+ * shares at least one proper-noun phrase, and return the deduped list of
+ * those source display names. Used by the reader card to flag multi-source
+ * stories without requiring an embedding pass.
+ *
+ * The phrase regex matches sequences of capitalised tokens (e.g.
+ * "Apple Vision Pro", "Reuters") which is a cheap proxy for entities. It
+ * misses lowercase named events and over-matches sentence-initial words;
+ * good enough for a swipe-time hint, not for ranking.
+ */
+async function computeAlsoCoveredBy(
+  userId: string,
+  items: BaseItemForOverlap[],
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (items.length === 0) return result;
+
+  const itemPhrases = new Map<string, Set<string>>();
+  const allPhrases = new Set<string>();
+  for (const it of items) {
+    const phrases = extractPhrases(it.title);
+    itemPhrases.set(it.id, phrases);
+    for (const p of phrases) allPhrases.add(p);
+  }
+  if (allPhrases.size === 0) return result;
+
+  const since = Date.now() - ALSO_COVERED_LOOKBACK_MS;
+  const phraseList = Array.from(allPhrases).slice(0, ALSO_COVERED_MAX_PHRASES);
+  const phraseClause = phraseList.map(() => "LOWER(i.title) LIKE ?").join(" OR ");
+  const candidates = await db.execute({
+    sql: `SELECT i.id, i.title, i.source_id, s.display_name
+          FROM items i
+          JOIN sources s ON s.id = i.source_id
+          WHERE i.user_id = ?
+            AND i.published_at > ?
+            AND (${phraseClause})
+          ORDER BY i.published_at DESC
+          LIMIT ?`,
+    args: [userId, since, ...phraseList.map((p) => `%${p}%`), ALSO_COVERED_CANDIDATE_LIMIT],
+  });
+
+  // Index candidates by phrase so each queue item costs one set lookup
+  // per phrase rather than a full-table scan.
+  const phraseIndex = new Map<
+    string,
+    Array<{ id: string; sourceId: string; sourceName: string }>
+  >();
+  for (const row of candidates.rows) {
+    const cid = String(row.id);
+    const sourceId = String(row.source_id);
+    const sourceName = String(row.display_name ?? "").trim();
+    if (!sourceName) continue;
+    const phrases = extractPhrases(String(row.title));
+    for (const p of phrases) {
+      if (!allPhrases.has(p)) continue;
+      let bucket = phraseIndex.get(p);
+      if (!bucket) {
+        bucket = [];
+        phraseIndex.set(p, bucket);
+      }
+      bucket.push({ id: cid, sourceId, sourceName });
+    }
+  }
+
+  for (const it of items) {
+    const phrases = itemPhrases.get(it.id);
+    if (!phrases || phrases.size === 0) {
+      result.set(it.id, []);
+      continue;
+    }
+    const seenSources = new Set<string>();
+    const names: string[] = [];
+    for (const p of phrases) {
+      const bucket = phraseIndex.get(p);
+      if (!bucket) continue;
+      for (const c of bucket) {
+        if (c.id === it.id) continue;
+        if (c.sourceId === it.sourceId) continue;
+        if (seenSources.has(c.sourceId)) continue;
+        seenSources.add(c.sourceId);
+        names.push(c.sourceName);
+        if (names.length >= ALSO_COVERED_MAX_NAMES) break;
+      }
+      if (names.length >= ALSO_COVERED_MAX_NAMES) break;
+    }
+    result.set(it.id, names);
+  }
+  return result;
+}
+
+function extractPhrases(title: string): Set<string> {
+  const matches = title.match(/\b[A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+){0,2}\b/g) ?? [];
+  const out = new Set<string>();
+  for (const m of matches) {
+    const norm = m.toLowerCase();
+    // Drop very short tokens; "A", "I", "On" trigger noise. Keep multi-word
+    // phrases regardless of length because they're already specific.
+    if (!norm.includes(" ") && norm.length < 4) continue;
+    out.add(norm);
+  }
+  return out;
 }
 
 export async function markItem(itemId: string, userId: string): Promise<void> {
