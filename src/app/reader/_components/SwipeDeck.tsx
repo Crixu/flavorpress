@@ -4,10 +4,14 @@
  * Tinder-style swipe deck.
  *
  * One card at a time, drag to throw it off-screen. Threshold for a
- * commit is 30% of card width. Right = mark, left = dismiss. Keyboard
- * shortcuts (← / →) mirror the gesture for desk users. Server actions
- * fire optimistically; if the action returns a formed cluster batch we
- * surface a banner and let the user keep triaging.
+ * commit is 110px. Right = mark, left = dismiss. Keyboard shortcuts
+ * (← / →) mirror the gesture. Server actions fire optimistically; if
+ * the action returns a formed cluster batch we surface a banner.
+ *
+ * The deck renders three cards stacked back-to-front to give a "pile
+ * of stories" feel: when the top card flies away, the cards behind
+ * animate up to take its place. The leaving card is detached from the
+ * queue immediately so the rise feels continuous, not a pop.
  */
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -34,7 +38,6 @@ interface ReaderItem {
 interface Props {
   initialItems: ReaderItem[];
   initialMarkedCount: number;
-  threshold: number;
 }
 
 type Direction = "left" | "right";
@@ -44,27 +47,37 @@ interface HistoryEntry {
   direction: Direction;
 }
 
-const SWIPE_COMMIT_PX = 110;
-const FLY_DURATION_MS = 220;
+interface LeavingCard {
+  item: ReaderItem;
+  direction: Direction;
+  startX: number;
+  startY: number;
+  startAngle: number;
+  fly: boolean;
+}
 
-export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props) {
+const SWIPE_COMMIT_PX = 110;
+const FLY_DURATION_MS = 260;
+const STACK_TRANSITION_MS = 260;
+
+export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
   const [queue, setQueue] = useState<ReaderItem[]>(initialItems);
   const [markedCount, setMarkedCount] = useState(initialMarkedCount);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
-  const [flyout, setFlyout] = useState<Direction | null>(null);
+  const [leaving, setLeaving] = useState<LeavingCard | null>(null);
   const [pendingClustering, startClustering] = useTransition();
   const [bannerMsg, setBannerMsg] = useState<string | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const top = queue[0] ?? null;
   const next = queue[1] ?? null;
+  const nextNext = queue[2] ?? null;
 
   // Keyboard support. Bind once, scoped to whatever card is on top.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!top || flyout) return;
+      if (!top || leaving) return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
         commitSwipe("right");
@@ -79,10 +92,10 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [top?.id, flyout, history.length]);
+  }, [top?.id, leaving, history.length]);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (!top || flyout) return;
+    if (!top || leaving) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragStartRef.current = { x: e.clientX, y: e.clientY };
     setDrag({ x: 0, y: 0 });
@@ -105,17 +118,30 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
   }
 
   function commitSwipe(direction: Direction) {
-    if (!top || flyout) return;
+    if (!top || leaving) return;
     const swiped = top;
-    setFlyout(direction);
-    // Wait for the fly-out animation to clear visually before mutating
-    // the queue. The card unmounts; the stack shifts forward.
+    // Detach the swiped card immediately. The cards behind animate up
+    // because their CSS transitions on transform/opacity kick in once
+    // their stack depth changes. The leaving card keeps animating out
+    // as a separate overlay until FLY_DURATION_MS.
+    const startX = drag?.x ?? 0;
+    const startY = drag?.y ?? 0;
+    const startAngle = drag ? drag.x / 14 : 0;
+    setLeaving({ item: swiped, direction, startX, startY, startAngle, fly: false });
+    setQueue((q) => q.slice(1));
+    setHistory((h) => [...h, { item: swiped, direction }]);
+    setDrag(null);
+    // Two rAFs so the element paints at its starting transform before
+    // the CSS transition target is applied. One is enough in most
+    // browsers; two is defensive against React batching.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setLeaving((l) => (l && l.item.id === swiped.id ? { ...l, fly: true } : l));
+      });
+    });
     window.setTimeout(() => {
-      setQueue((q) => q.slice(1));
-      setHistory((h) => [...h, { item: swiped, direction }]);
-      setDrag(null);
-      setFlyout(null);
-    }, FLY_DURATION_MS);
+      setLeaving((l) => (l && l.item.id === swiped.id ? null : l));
+    }, FLY_DURATION_MS + 50);
 
     if (direction === "right") {
       void (async () => {
@@ -139,7 +165,7 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
 
   function undo() {
     const last = history[history.length - 1];
-    if (!last) return;
+    if (!last || leaving) return;
     setHistory((h) => h.slice(0, -1));
     setQueue((q) => [last.item, ...q]);
     void (async () => {
@@ -163,7 +189,7 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
   }
 
   const angle = drag ? drag.x / 14 : 0;
-  const opacity = drag ? Math.max(0.6, 1 - Math.abs(drag.x) / 600) : 1;
+  const dragOpacity = drag ? Math.max(0.6, 1 - Math.abs(drag.x) / 600) : 1;
   const overlayDirection: Direction | null = drag
     ? drag.x > 40
       ? "right"
@@ -172,25 +198,51 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
         : null
     : null;
 
-  const cardTransform = useMemo(() => {
-    if (flyout) {
-      const offset = flyout === "right" ? 600 : -600;
-      const rot = flyout === "right" ? 22 : -22;
-      return `translate(${offset}px, 60px) rotate(${rot}deg)`;
-    }
+  const topTransform = useMemo(() => {
     if (drag) return `translate(${drag.x}px, ${drag.y}px) rotate(${angle}deg)`;
     return "translate(0, 0) rotate(0deg)";
-  }, [drag, flyout, angle]);
+  }, [drag, angle]);
+
+  const leavingStyle = useMemo(() => {
+    if (!leaving) return null;
+    if (!leaving.fly) {
+      return {
+        transform: `translate(${leaving.startX}px, ${leaving.startY}px) rotate(${leaving.startAngle}deg)`,
+        opacity: 1,
+      };
+    }
+    const offset = leaving.direction === "right" ? 640 : -640;
+    const rot = leaving.direction === "right" ? 24 : -24;
+    return {
+      transform: `translate(${offset}px, 60px) rotate(${rot}deg)`,
+      opacity: 0,
+    };
+  }, [leaving]);
 
   return (
     <div className="space-y-5">
-      <StatusBar
-        markedCount={markedCount}
-        threshold={threshold}
-        remaining={queue.length}
-        onCluster={formClustersNow}
-        clustering={pendingClustering}
-      />
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <div className="min-w-0" style={{ color: "var(--fg-muted)" }}>
+          <span>
+            {queue.length} left in deck · {markedCount} marked
+          </span>
+          {history.length > 0 ? (
+            <span style={{ color: "var(--fg-subtle)" }}> · {history.length} triaged</span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={formClustersNow}
+          disabled={markedCount === 0 || pendingClustering}
+          className="fp-btn shrink-0"
+          style={{
+            opacity: markedCount === 0 ? 0.5 : 1,
+            color: markedCount > 0 ? "var(--fg)" : "var(--fg-muted)",
+          }}
+        >
+          {pendingClustering ? "Forming…" : "Form clusters"}
+        </button>
+      </div>
 
       {bannerMsg ? (
         <div
@@ -206,32 +258,23 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
       ) : null}
 
       <div className="relative mx-auto" style={{ height: 460, maxWidth: 540, touchAction: "none" }}>
-        {next ? (
-          <div className="absolute inset-0" style={{ transform: "scale(0.96)", opacity: 0.85 }}>
-            <Card item={next} muted />
-          </div>
-        ) : null}
-        {top ? (
-          <div
-            ref={cardRef}
-            className="absolute inset-0 cursor-grab active:cursor-grabbing"
-            style={{
-              transform: cardTransform,
-              opacity,
-              transition: flyout
-                ? `transform ${FLY_DURATION_MS}ms ease-in, opacity ${FLY_DURATION_MS}ms ease-in`
-                : drag
-                  ? "none"
-                  : "transform 200ms ease-out",
-            }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-          >
-            <Card item={top} overlay={overlayDirection} />
-          </div>
-        ) : (
+        {[top, next, nextNext].map((item, depth) =>
+          item ? (
+            <DeckCard
+              key={item.id}
+              item={item}
+              depth={depth as 0 | 1 | 2}
+              topTransform={topTransform}
+              topOpacity={dragOpacity}
+              topOverlay={overlayDirection}
+              dragging={Boolean(drag)}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+            />
+          ) : null,
+        )}
+        {!top && !leaving ? (
           <div
             className="fp-card-feature absolute inset-0 flex flex-col items-center justify-center p-8 text-center"
             style={{ background: "var(--surface)" }}
@@ -255,12 +298,25 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
               </button>
             ) : null}
           </div>
-        )}
+        ) : null}
+        {leaving && leavingStyle ? (
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              transform: leavingStyle.transform,
+              opacity: leavingStyle.opacity,
+              transition: `transform ${FLY_DURATION_MS}ms ease-in, opacity ${FLY_DURATION_MS}ms ease-in`,
+              zIndex: 4,
+            }}
+          >
+            <Card item={leaving.item} overlay={leaving.direction} />
+          </div>
+        ) : null}
       </div>
 
       <ActionBar
-        canSwipe={Boolean(top) && !flyout}
-        canUndo={history.length > 0}
+        canSwipe={Boolean(top) && !leaving}
+        canUndo={history.length > 0 && !leaving}
         onLeft={() => commitSwipe("left")}
         onRight={() => commitSwipe("right")}
         onUndo={undo}
@@ -269,59 +325,51 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
   );
 }
 
-function StatusBar({
-  markedCount,
-  threshold,
-  remaining,
-  onCluster,
-  clustering,
+function DeckCard({
+  item,
+  depth,
+  topTransform,
+  topOpacity,
+  topOverlay,
+  dragging,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
 }: {
-  markedCount: number;
-  threshold: number;
-  remaining: number;
-  onCluster: () => void;
-  clustering: boolean;
+  item: ReaderItem;
+  depth: 0 | 1 | 2;
+  topTransform: string;
+  topOpacity: number;
+  topOverlay: Direction | null;
+  dragging: boolean;
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
 }) {
-  const pct = Math.min(100, (markedCount / threshold) * 100);
-  const ready = markedCount >= threshold;
+  const isTop = depth === 0;
+  const scale = depth === 1 ? 0.96 : 0.92;
+  const ty = depth === 1 ? 10 : 20;
+  const stackOpacity = depth === 1 ? 0.9 : 0.7;
   return (
-    <div className="fp-card p-4">
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-medium">
-          {markedCount} marked · {remaining} left in deck
-        </span>
-        <button
-          type="button"
-          onClick={onCluster}
-          disabled={markedCount === 0 || clustering}
-          className="fp-btn"
-          style={{
-            background: ready ? "var(--indigo)" : "var(--bg-subtle)",
-            color: ready ? "#fff" : "var(--fg-muted)",
-            opacity: markedCount === 0 ? 0.5 : 1,
-          }}
-        >
-          {clustering ? "Forming…" : ready ? "Form clusters now →" : "Form clusters"}
-        </button>
-      </div>
-      <div
-        className="mt-3 h-1.5 overflow-hidden rounded-full"
-        style={{ background: "var(--border)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all"
-          style={{
-            width: `${pct}%`,
-            background: ready
-              ? "linear-gradient(90deg, var(--indigo), var(--emerald))"
-              : "linear-gradient(90deg, var(--indigo), var(--rose))",
-            transitionDuration: "300ms",
-          }}
-        />
-      </div>
-      <div className="mt-2 text-xs" style={{ color: "var(--fg-subtle)" }}>
-        Auto-clusters once {threshold} are marked. Or hit the button any time.
-      </div>
+    <div
+      className={`absolute inset-0 ${
+        isTop ? "cursor-grab active:cursor-grabbing" : "pointer-events-none"
+      }`}
+      style={{
+        transform: isTop ? topTransform : `translateY(${ty}px) scale(${scale})`,
+        opacity: isTop ? topOpacity : stackOpacity,
+        transition:
+          isTop && dragging
+            ? "none"
+            : `transform ${STACK_TRANSITION_MS}ms ease-out, opacity ${STACK_TRANSITION_MS}ms ease-out`,
+        zIndex: 3 - depth,
+      }}
+      onPointerDown={isTop ? onPointerDown : undefined}
+      onPointerMove={isTop ? onPointerMove : undefined}
+      onPointerUp={isTop ? onPointerUp : undefined}
+      onPointerCancel={isTop ? onPointerUp : undefined}
+    >
+      <Card item={item} overlay={isTop ? topOverlay : null} muted={!isTop} />
     </div>
   );
 }
