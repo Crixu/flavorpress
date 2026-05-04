@@ -62,7 +62,6 @@ export default async function ReaderPage({ searchParams }: PageProps) {
           key={activeFolder ?? "all"}
           initialItems={queue.items}
           initialMarkedCount={queue.markedCount}
-          threshold={READER_CLUSTER_THRESHOLD}
         />
       )}
     </div>
