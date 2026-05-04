@@ -55,7 +55,7 @@ interface HostLimit {
 
 const buckets = new Map<string, HostBucket>();
 
-const USER_AGENT = "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)";
+export const USER_AGENT = "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)";
 
 /**
  * Per-host limits. Reddit is the strict one; everything else gets a generic
@@ -83,7 +83,7 @@ function bucketFor(host: string): HostBucket {
   return b;
 }
 
-async function takeToken(host: string): Promise<void> {
+export async function takeToken(host: string): Promise<void> {
   const b = bucketFor(host);
   while (true) {
     const now = Date.now();
@@ -106,7 +106,7 @@ async function takeToken(host: string): Promise<void> {
  * eTLD+1 approximation. Good enough for RSS politeness; we'd reach for `psl`
  * if we started caring about exotic ccTLDs.
  */
-function registrableDomain(hostname: string): string {
+export function registrableDomain(hostname: string): string {
   const parts = hostname.split(".");
   if (parts.length <= 2) return hostname;
   const twoLabel = new Set(["co.uk", "co.jp", "co.kr", "com.au", "com.br", "co.za", "co.in"]);
