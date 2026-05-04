@@ -7,11 +7,10 @@
  * commit is 30% of card width. Right = mark, left = dismiss. Keyboard
  * shortcuts (← / →) mirror the gesture for desk users. Server actions
  * fire optimistically; if the action returns a formed cluster batch we
- * route the user to Today so they see the payoff immediately.
+ * surface a banner and let the user keep triaging.
  */
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   clusterMarkedAction,
   dismissItemAction,
@@ -49,7 +48,6 @@ const SWIPE_COMMIT_PX = 110;
 const FLY_DURATION_MS = 220;
 
 export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props) {
-  const router = useRouter();
   const [queue, setQueue] = useState<ReaderItem[]>(initialItems);
   const [markedCount, setMarkedCount] = useState(initialMarkedCount);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -127,10 +125,8 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
           setBannerMsg(
             `Formed ${res.formed.length} ${
               res.formed.length === 1 ? "cluster" : "clusters"
-            }. Heading to Today.`,
+            }. View them on Today.`,
           );
-          // Route after a short beat so the banner is readable.
-          window.setTimeout(() => router.push("/"), 900);
         }
       })();
     } else {
@@ -159,10 +155,9 @@ export function SwipeDeck({ initialItems, initialMarkedCount, threshold }: Props
         setBannerMsg(
           `Formed ${res.formed.length} ${
             res.formed.length === 1 ? "cluster" : "clusters"
-          }. Heading to Today.`,
+          }. View them on Today.`,
         );
         setMarkedCount(0);
-        window.setTimeout(() => router.push("/"), 900);
       }
     });
   }
