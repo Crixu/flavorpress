@@ -260,8 +260,8 @@ function FolderStreamHeader({ stream, compact }: { stream: TodayFolderStream; co
           ) : null}
           <button
             type="button"
-            className="text-xs underline-offset-2 hover:underline"
-            style={{ color: "var(--fg-muted)" }}
+            className="fp-btn fp-btn-ghost"
+            style={{ fontSize: "12px", padding: "0.3rem 0.7rem" }}
             onClick={refresh}
           >
             Refresh
