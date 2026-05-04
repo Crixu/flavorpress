@@ -14,8 +14,27 @@
  *   - Redirect chains capped at 5
  */
 
+import { decideCrawl } from "../crawl-decision";
+import { extractFullArticle, looksLikeTeaser } from "../extract-article";
+import type { ExtractedArticle } from "../extract-article";
 import { politeFetch } from "../polite-fetch";
+import { segmentStories } from "../segment-stories";
+import type { StorySegment } from "../segment-stories";
 import type { RawItem, SourceConnector, ConnectorContext } from "../source-connector";
+
+type Extractor = (url: string) => Promise<ExtractedArticle | null>;
+let extractor: Extractor = extractFullArticle;
+
+/**
+ * Test seam: swap the article extractor without monkey-patching modules.
+ * Production callers never touch this.
+ */
+export function _setExtractorForTests(fn: Extractor): void {
+  extractor = fn;
+}
+export function _resetExtractorForTests(): void {
+  extractor = extractFullArticle;
+}
 
 interface FetchedXml {
   raw: string;
@@ -63,7 +82,152 @@ export const rssConnectorExpanded: SourceConnector<RawItem> = {
   parse(raw: RawItem): RawItem | null {
     return raw;
   },
+
+  async enrich(item: RawItem, ctx: ConnectorContext): Promise<RawItem[]> {
+    const feedSegments = segmentStories(feedHtml(item), item.url);
+    if (feedSegments) return expandSegments(item, feedSegments, ctx);
+
+    if (!looksLikeTeaser(item.body)) return [item];
+
+    const article = await extractor(item.url);
+    if (!article) {
+      await ctx.log.info("connector.enrich", "extraction failed; kept feed body", {
+        url: item.url,
+      });
+      return [item];
+    }
+
+    const segments = segmentStories(article.html, item.url);
+    if (!segments) {
+      // Single-story post. Use the extracted body if it's an upgrade.
+      if (article.length <= (item.body?.length ?? 0)) {
+        await ctx.log.info("connector.enrich", "kept feed body", {
+          url: item.url,
+          feedBodyLen: item.body?.length ?? 0,
+          extractedLen: article.length,
+        });
+        return [item];
+      }
+      await ctx.log.info("connector.enrich", "swapped in extracted body", {
+        url: item.url,
+        feedBodyLen: item.body?.length ?? 0,
+        extractedLen: article.length,
+      });
+      return [
+        {
+          ...item,
+          body: article.textContent,
+          lede: item.lede || article.excerpt?.slice(0, 500).trim() || item.lede,
+        },
+      ];
+    }
+
+    return expandSegments(item, segments, ctx);
+  },
 };
+
+async function expandSegments(
+  item: RawItem,
+  segments: StorySegment[],
+  ctx: ConnectorContext,
+): Promise<RawItem[]> {
+  // Multi-story post: fan out into per-story items, deciding per segment
+  // whether to crawl the linked source or trust the inline summary.
+  await ctx.log.info("connector.enrich", "multi-story split", {
+    url: item.url,
+    segments: segments.length,
+  });
+
+  const children: RawItem[] = [];
+  const seenUrls = new Set<string>();
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    const decision = decideCrawl(seg);
+
+    await ctx.log.info("connector.crawl-decision", decision.reason, {
+      action: decision.action,
+      target: decision.targetUrl,
+      title: seg.title,
+      words: seg.wordCount,
+    });
+
+    if (decision.action === "skip") continue;
+
+    let storyUrl: string;
+    let storyBody: string;
+    let storyTitle: string;
+    let storyExternalId: string;
+    let storyLede: string;
+
+    if (decision.action === "crawl" && decision.targetUrl) {
+      const sub = await extractor(decision.targetUrl);
+      if (sub && sub.length > seg.body.length) {
+        storyUrl = decision.targetUrl;
+        storyBody = sub.textContent;
+        storyTitle = seg.title || sub.title || `${item.title} — story ${i + 1}`;
+        storyExternalId = decision.targetUrl;
+        storyLede = sub.excerpt?.slice(0, 500).trim() || seg.body.slice(0, 500).trim();
+      } else {
+        // Crawl failed or returned less than the inline summary. Use inline.
+        storyUrl = decision.targetUrl;
+        storyBody = seg.body;
+        storyTitle = seg.title || `${item.title} — story ${i + 1}`;
+        storyExternalId = decision.targetUrl;
+        storyLede = seg.body.slice(0, 500).trim();
+      }
+    } else {
+      storyUrl = decision.targetUrl ?? appendStoryParam(item.url, i + 1);
+      storyBody = seg.body;
+      storyTitle = seg.title || `${item.title} — story ${i + 1}`;
+      storyExternalId = decision.targetUrl ?? `${item.externalId}#story-${i + 1}`;
+      storyLede = seg.body.slice(0, 500).trim();
+    }
+
+    if (seenUrls.has(storyUrl)) continue;
+    seenUrls.add(storyUrl);
+
+    children.push({
+      externalId: storyExternalId,
+      url: storyUrl,
+      title: storyTitle,
+      lede: storyLede || storyTitle,
+      body: storyBody,
+      authors: item.authors,
+      publishedAt: item.publishedAt,
+      raw: { parentExternalId: item.externalId, segment: i + 1, decision: decision.reason },
+    });
+  }
+
+  if (children.length === 0) {
+    // All segments skipped. Fall back to single-item behavior.
+    return [item];
+  }
+
+  return children;
+}
+
+function feedHtml(item: RawItem): string {
+  if (typeof item.raw !== "string") return "";
+  return (
+    getTag(item.raw, "content:encoded") ??
+    getTag(item.raw, "content") ??
+    getTag(item.raw, "description") ??
+    getTag(item.raw, "summary") ??
+    ""
+  );
+}
+
+function appendStoryParam(url: string, index: number): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("fp_story", String(index));
+    return u.toString();
+  } catch {
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}fp_story=${index}`;
+  }
+}
 
 /**
  * Parse RSS 2.0 or Atom into RawItem[]. Tolerant: missing fields don't

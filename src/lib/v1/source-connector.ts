@@ -48,6 +48,14 @@ export interface SourceConnector<TRaw = unknown> {
    * Override for kind-specific dedupe (e.g., podcast episodes by GUID).
    */
   dedupe?(items: RawItem[], ctx: ConnectorContext): Promise<RawItem[]>;
+  /**
+   * Optional second pass that runs after dedupe and before insert. A 1→N
+   * rewrite: a surviving item can be returned unchanged ([item]), dropped
+   * ([]), or expanded into multiple items (e.g., a multi-story newsletter
+   * post split into per-story items). Runs sequentially so connectors can
+   * rely on the per-host token bucket for rate limiting on any sub-fetches.
+   */
+  enrich?(item: RawItem, ctx: ConnectorContext): Promise<RawItem[]>;
 }
 
 /**
@@ -117,9 +125,27 @@ export async function runConnector<TRaw>(
     ? await connector.dedupe(parsed, ctx)
     : await defaultDedupe(parsed, ctx);
 
+  const enriched: RawItem[] = [];
+  if (connector.enrich) {
+    for (const item of deduped) {
+      try {
+        const out = await connector.enrich(item, ctx);
+        for (const child of out) enriched.push(child);
+      } catch (err) {
+        await log.warn("connector.enrich", "enrich failed; falling back", {
+          url: item.url,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        enriched.push(item);
+      }
+    }
+  } else {
+    enriched.push(...deduped);
+  }
+
   // Insert items, then emit ingest events so the cluster engine sees them.
   let ingestedCount = 0;
-  for (const item of deduped) {
+  for (const item of enriched) {
     const id = crypto.randomUUID();
     const canonicalUrl = canonicalize(item.url);
     const contentHash = hashContent(item.lede + (item.body ?? ""));
