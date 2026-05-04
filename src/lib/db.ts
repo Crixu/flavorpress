@@ -123,10 +123,13 @@ export async function ensureSchema(): Promise<void> {
         fetched_at INTEGER NOT NULL,
         entities TEXT,
         cluster_id TEXT,
+        marked_at INTEGER,
+        dismissed_at INTEGER,
         UNIQUE(canonical_url, user_id)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_items_user_published ON items(user_id, published_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_cluster ON items(cluster_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_items_marked ON items(user_id, marked_at) WHERE marked_at IS NOT NULL`,
 
       `CREATE TABLE IF NOT EXISTS embedding_cache (
         canonical_url TEXT NOT NULL,
@@ -429,6 +432,28 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("wp_content_hash")) {
         console.info("[migrate] drafts: adding wp_content_hash column");
         await db.execute("ALTER TABLE drafts ADD COLUMN wp_content_hash TEXT");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // items: reader-mode mark/dismiss columns. Reader is a triage surface
+  // where the user swipes through unclustered items; marked items are
+  // the seeds for LLM-formed clusters, dismissed items drop out of the
+  // queue. Both nullable so they can re-enter the queue if the user
+  // un-marks (clearing on cluster-formation) or we add an "undo" later.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(items)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("marked_at")) {
+        console.info("[migrate] items: adding marked_at column");
+        await db.execute("ALTER TABLE items ADD COLUMN marked_at INTEGER");
+      }
+      if (!cols.includes("dismissed_at")) {
+        console.info("[migrate] items: adding dismissed_at column");
+        await db.execute("ALTER TABLE items ADD COLUMN dismissed_at INTEGER");
       }
     }
   } catch {
