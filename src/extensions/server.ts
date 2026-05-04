@@ -10,6 +10,7 @@ import "server-only";
  */
 
 import type { InitialAnnotationsByExtension, ServerExtensionEntry } from "./types";
+import { commentCourtroomServerEntry } from "./comment-courtroom/server";
 import { factCheckServerEntry } from "./fact-check/server";
 import { relatedImagesServerEntry } from "./related-images/server";
 import { getDisabledExtensionIds } from "@/lib/v1/settings";
@@ -17,6 +18,7 @@ import { getDisabledExtensionIds } from "@/lib/v1/settings";
 export const SERVER_EXTENSIONS: ServerExtensionEntry[] = [
   factCheckServerEntry,
   relatedImagesServerEntry,
+  commentCourtroomServerEntry,
 ];
 
 /**

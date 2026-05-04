@@ -347,6 +347,35 @@ export async function ensureSchema(): Promise<void> {
         license_filter TEXT
       )`,
 
+      // Comment-courtroom extension — simulated reader thread.
+      // The user runs a fixed jury of personas against a draft and gets
+      // a nested comment thread back, so they can anticipate how the post
+      // might land before publishing. Comments are stored flat with a
+      // parent_id pointer; sort_order controls sibling ordering inside
+      // each parent. depth is denormalized so the panel can render
+      // indentation without recomputing it from the parent chain.
+      `CREATE TABLE IF NOT EXISTS comment_courtroom_comments (
+        id TEXT PRIMARY KEY,
+        draft_id TEXT NOT NULL,
+        parent_id TEXT,
+        persona_key TEXT NOT NULL,
+        depth INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_comment_courtroom_draft ON comment_courtroom_comments(draft_id, sort_order)`,
+      `CREATE INDEX IF NOT EXISTS idx_comment_courtroom_parent ON comment_courtroom_comments(parent_id)`,
+
+      // Per-draft run marker for the comment-courtroom extension. A run
+      // that produced zero comments still has a row here so the panel can
+      // show "ran Xm ago" and distinguish a successful empty thread from
+      // "never run".
+      `CREATE TABLE IF NOT EXISTS comment_courtroom_runs (
+        draft_id TEXT PRIMARY KEY,
+        ran_at INTEGER NOT NULL
+      )`,
+
       // App-level settings the user can edit from /settings instead of .env.
       // Single-user prototype so we keep this keyed only by `key`; values are
       // stored as TEXT (matches the v1-alpha plaintext approach used for
