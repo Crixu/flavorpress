@@ -293,7 +293,7 @@ function SettingForm({
           </SubmitButton>
           {source === "db" ? (
             <button type="submit" formAction={clearSettingAction} className="fp-btn fp-btn-ghost">
-              Clear & use .env
+              Clear setting
             </button>
           ) : null}
           <PendingMessage>Writing to local FlavorPress database.</PendingMessage>
