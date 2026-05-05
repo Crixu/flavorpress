@@ -16,7 +16,7 @@ import {
   READER_CLUSTER_THRESHOLD,
   type ReaderFolderOption,
 } from "@/lib/v1/reader";
-import { SwipeDeck } from "./_components/SwipeDeck";
+import { ReaderClient } from "./_components/ReaderClient";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,7 @@ export default async function ReaderPage({ searchParams }: PageProps) {
       {queue.items.length === 0 ? (
         <EmptyDeck markedCount={queue.markedCount} activeFolder={activeFolder} />
       ) : (
-        <SwipeDeck
+        <ReaderClient
           key={activeFolder ?? "all"}
           initialItems={queue.items}
           initialMarkedCount={queue.markedCount}
