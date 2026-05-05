@@ -5,6 +5,7 @@ import { Inter, Newsreader } from "next/font/google";
 import { HelpFlyout, HelpIndexButton } from "@/components/Help";
 import { AgentationDev } from "./_components/Agentation";
 import { ShellNav } from "./_components/ShellNav";
+import { PublishToastBridge, ToastProvider } from "./_components/Toast";
 import "./globals.css";
 
 const inter = Inter({
@@ -31,44 +32,47 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body>
-        <header className="fp-pill-nav">
-          <div className="fp-pill-nav-inner">
-            <Link href="/" className="group flex items-center gap-3">
-              <BrandMark />
-              <span className="text-[15px] font-semibold tracking-tight">FlavorPress</span>
-              <span
-                className="ml-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]"
-                style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
-              >
-                v1 alpha
-              </span>
-            </Link>
-            <ShellNav />
-            <div className="flex items-center gap-2">
-              <Link
-                href="/settings"
-                aria-label="Settings"
-                title="Settings"
-                className="rounded-full px-3 py-1 text-[12px] font-medium transition hover:scale-105"
-                style={{
-                  background: "var(--bg-subtle)",
-                  color: "var(--fg-muted)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                Settings
+        <ToastProvider>
+          <header className="fp-pill-nav">
+            <div className="fp-pill-nav-inner">
+              <Link href="/" className="group flex items-center gap-3">
+                <BrandMark />
+                <span className="text-[15px] font-semibold tracking-tight">FlavorPress</span>
+                <span
+                  className="ml-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]"
+                  style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+                >
+                  v1 alpha
+                </span>
               </Link>
-              <Suspense fallback={null}>
-                <HelpIndexButton />
-              </Suspense>
+              <ShellNav />
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/settings"
+                  aria-label="Settings"
+                  title="Settings"
+                  className="rounded-full px-3 py-1 text-[12px] font-medium transition hover:scale-105"
+                  style={{
+                    background: "var(--bg-subtle)",
+                    color: "var(--fg-muted)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  Settings
+                </Link>
+                <Suspense fallback={null}>
+                  <HelpIndexButton />
+                </Suspense>
+              </div>
             </div>
-          </div>
-        </header>
-        <main className="mx-auto max-w-[1280px] px-6 pt-8 pb-16">{children}</main>
-        <Suspense fallback={null}>
-          <HelpFlyout />
-        </Suspense>
-        <AgentationDev />
+          </header>
+          <main className="mx-auto max-w-[1280px] px-6 pt-8 pb-16">{children}</main>
+          <Suspense fallback={null}>
+            <HelpFlyout />
+          </Suspense>
+          <AgentationDev />
+          <PublishToastBridge />
+        </ToastProvider>
       </body>
     </html>
   );
