@@ -612,7 +612,9 @@ export async function dismissClusterAction(formData: FormData) {
  * Returns the count of sources we kicked off so the client can render
  * "Refreshing N sources" without round-tripping back.
  */
-export async function pollFolderAction(formData: FormData): Promise<{ sourceCount: number }> {
+export async function pollFolderAction(
+  formData: FormData,
+): Promise<{ sourceCount: number; startedAt: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const folderId = String(formData.get("folderId") ?? "");
@@ -637,7 +639,183 @@ export async function pollFolderAction(formData: FormData): Promise<{ sourceCoun
   );
   const sourceIds = sources.rows.map((row) => String(row.id));
   after(() => runBackgroundPolls(sourceIds, "pollFolder"));
-  return { sourceCount: sourceIds.length };
+  return { sourceCount: sourceIds.length, startedAt: now };
+}
+
+/**
+ * Reports real-time progress of a folder poll started at `startedAt`.
+ * `completed` counts sources whose last_polled_at advanced past the
+ * start time; `total` is sourceIds.length at start. Used by the
+ * refresh toast to drive a determinate progress bar.
+ */
+export async function runReextractEntitiesAction(): Promise<{
+  jobId: string;
+  total: number;
+  alreadyRunning: boolean;
+}> {
+  await ensureSchema();
+  const { runReextractEntitiesJob } = await import("./maintenance");
+  const r = await runReextractEntitiesJob();
+  return { jobId: r.jobId, total: r.total, alreadyRunning: r.alreadyRunning ?? false };
+}
+
+export async function runReclusterAction(): Promise<{
+  jobId: string;
+  total: number;
+  alreadyRunning: boolean;
+}> {
+  await ensureSchema();
+  const { runReclusterJob } = await import("./maintenance");
+  const r = await runReclusterJob();
+  return { jobId: r.jobId, total: r.total, alreadyRunning: r.alreadyRunning ?? false };
+}
+
+export async function getJobProgressAction(jobId: string): Promise<{
+  completed: number;
+  total: number;
+  completedAt: number | null;
+  error: string | null;
+} | null> {
+  await ensureSchema();
+  const { getJobProgress } = await import("./maintenance");
+  const j = await getJobProgress(jobId);
+  if (!j) return null;
+  return {
+    completed: j.completed,
+    total: j.total,
+    completedAt: j.completedAt,
+    error: j.error,
+  };
+}
+
+/**
+ * Trim everything older than the cutoff.
+ *
+ * Default scope: clusters whose freshest item is older than `olderThanHours`,
+ * plus the items inside them, plus any orphan items (no cluster_id) older
+ * than the cutoff. Drafted clusters are preserved unconditionally so the
+ * user's published or in-progress work survives the cleanup. Reader-queue
+ * marked items follow their cluster: if the cluster goes, they go.
+ *
+ * The action runs in a single pass and returns the deleted counts so the
+ * UI can confirm what happened. preview=true just counts; no deletions.
+ */
+export async function cleanupLibraryAction(input: {
+  olderThanHours: number;
+  preview?: boolean;
+}): Promise<{ deletedClusters: number; deletedItems: number; preview: boolean }> {
+  await ensureSchema();
+  const hours = Math.max(1, Math.min(8760, Math.round(input.olderThanHours)));
+  const cutoff = Date.now() - hours * 60 * 60 * 1000;
+  const preview = input.preview === true;
+
+  const clustersR = await db.execute({
+    sql: `SELECT c.id FROM clusters c
+          WHERE c.user_id = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM drafts d
+              WHERE d.cluster_id = c.id AND d.user_id = ?
+            )
+            AND COALESCE(
+              (SELECT MAX(i.published_at) FROM items i WHERE i.cluster_id = c.id),
+              c.formed_at
+            ) < ?`,
+    args: [SINGLE_USER_ID, SINGLE_USER_ID, cutoff],
+  });
+  const clusterIds = clustersR.rows.map((r) => String(r.id));
+
+  // Count items that would be deleted: cluster items + orphan items.
+  let deletedItems = 0;
+  let clusterItemsCount = 0;
+  if (clusterIds.length > 0) {
+    const placeholders = clusterIds.map(() => "?").join(",");
+    const countR = await db.execute({
+      sql: `SELECT COUNT(*) AS n FROM items
+            WHERE user_id = ? AND cluster_id IN (${placeholders})`,
+      args: [SINGLE_USER_ID, ...clusterIds],
+    });
+    clusterItemsCount = Number(countR.rows[0]!.n);
+  }
+  const orphanCountR = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM items
+          WHERE user_id = ? AND cluster_id IS NULL AND published_at < ?`,
+    args: [SINGLE_USER_ID, cutoff],
+  });
+  const orphanItemsCount = Number(orphanCountR.rows[0]!.n);
+  deletedItems = clusterItemsCount + orphanItemsCount;
+
+  if (preview) {
+    return { deletedClusters: clusterIds.length, deletedItems, preview: true };
+  }
+
+  const cleanupStatements: Array<{ sql: string; args: (string | number)[] }> = [];
+  if (clusterIds.length > 0) {
+    const placeholders = clusterIds.map(() => "?").join(",");
+    cleanupStatements.push({
+      sql: `DELETE FROM items WHERE user_id = ? AND cluster_id IN (${placeholders})`,
+      args: [SINGLE_USER_ID, ...clusterIds],
+    });
+  }
+  cleanupStatements.push({
+    sql: `DELETE FROM items WHERE user_id = ? AND cluster_id IS NULL AND published_at < ?`,
+    args: [SINGLE_USER_ID, cutoff],
+  });
+  if (clusterIds.length > 0) {
+    const placeholders = clusterIds.map(() => "?").join(",");
+    cleanupStatements.push({
+      sql: `DELETE FROM clusters WHERE user_id = ? AND id IN (${placeholders})`,
+      args: [SINGLE_USER_ID, ...clusterIds],
+    });
+    // Orphaned ranker_signals rows for deleted clusters; nothing else
+    // FKs into clusters, but ranker_signals carries cluster_id. Leaving
+    // them stale is fine (they're never read for missing clusters), but
+    // a tidy delete keeps the table small.
+    cleanupStatements.push({
+      sql: `DELETE FROM ranker_signals WHERE cluster_id IN (${placeholders})`,
+      args: clusterIds,
+    });
+  }
+  await db.batch(cleanupStatements, "write");
+
+  return { deletedClusters: clusterIds.length, deletedItems, preview: false };
+}
+
+export async function getFolderPollProgressAction(input: {
+  folderId: string;
+  startedAt: number;
+}): Promise<{ completed: number; total: number }> {
+  await ensureSchema();
+  const { folderId, startedAt } = input;
+  const now = Date.now();
+  const folderSql = folderId
+    ? {
+        countSql: `SELECT COUNT(*) AS n FROM sources
+                   WHERE user_id = ? AND active = 1 AND folder_id = ?
+                     AND (paused_until IS NULL OR paused_until <= ?)`,
+        countArgs: [SINGLE_USER_ID, folderId, now],
+        doneSql: `SELECT COUNT(*) AS n FROM sources
+                  WHERE user_id = ? AND active = 1 AND folder_id = ?
+                    AND (paused_until IS NULL OR paused_until <= ?)
+                    AND last_polled_at IS NOT NULL AND last_polled_at >= ?`,
+        doneArgs: [SINGLE_USER_ID, folderId, now, startedAt],
+      }
+    : {
+        countSql: `SELECT COUNT(*) AS n FROM sources
+                   WHERE user_id = ? AND active = 1 AND folder_id IS NULL
+                     AND (paused_until IS NULL OR paused_until <= ?)`,
+        countArgs: [SINGLE_USER_ID, now],
+        doneSql: `SELECT COUNT(*) AS n FROM sources
+                  WHERE user_id = ? AND active = 1 AND folder_id IS NULL
+                    AND (paused_until IS NULL OR paused_until <= ?)
+                    AND last_polled_at IS NOT NULL AND last_polled_at >= ?`,
+        doneArgs: [SINGLE_USER_ID, now, startedAt],
+      };
+  const totalR = await db.execute({ sql: folderSql.countSql, args: folderSql.countArgs });
+  const doneR = await db.execute({ sql: folderSql.doneSql, args: folderSql.doneArgs });
+  return {
+    total: Number(totalR.rows[0]!.n ?? 0),
+    completed: Number(doneR.rows[0]!.n ?? 0),
+  };
 }
 
 /**

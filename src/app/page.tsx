@@ -16,11 +16,16 @@ import {
   type TodayClusterPreview,
   type TodayFolderStream,
 } from "./_components/TodayFolderStreams";
+import { TopicSearch } from "./_components/TopicSearch/TopicSearch";
 import { PollAllButton } from "./sources/_components/PollAllButton";
 
 export const dynamic = "force-dynamic";
 
-const PER_FOLDER_LIMIT = 5;
+// Finder-column layout shows the full content of the selected folder in
+// the right pane and the user scrolls the page. The 72h cluster window
+// already bounds the dataset; this cap is just defense in depth so a feed
+// surge can't render thousands of cards.
+const PER_FOLDER_LIMIT = 50;
 
 type TodayClusterCandidate = TodayClusterPreview["cluster"] & {
   primaryEntities: string[] | null;
@@ -164,15 +169,17 @@ export default async function TodayPage() {
         </p>
       </header>
 
-      {totalPreviews === 0 ? (
-        <EmptyClusters polledSourceCount={polledSourceCount} itemsTotal={itemsTotal} />
-      ) : (
-        <TodayFolderStreams
-          streams={streams}
-          outlets={outletOptions}
-          defaultOutletId={defaultOutletId}
-        />
-      )}
+      <TopicSearch outlets={outletOptions} defaultOutletId={defaultOutletId}>
+        {totalPreviews === 0 ? (
+          <EmptyClusters polledSourceCount={polledSourceCount} itemsTotal={itemsTotal} />
+        ) : (
+          <TodayFolderStreams
+            streams={streams}
+            outlets={outletOptions}
+            defaultOutletId={defaultOutletId}
+          />
+        )}
+      </TopicSearch>
     </div>
   );
 }

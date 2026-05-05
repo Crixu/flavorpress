@@ -21,6 +21,7 @@ import { ParagraphRewriter } from "./ParagraphRewriter";
 import { PublishToWpForm } from "./PublishToWpForm";
 import { ReceiptView } from "./ReceiptView";
 import { ResearcherView } from "./ResearcherView";
+import { SiblingArtifactLink } from "./SiblingArtifactLink";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,25 @@ export default async function EditorPage({ params }: PageProps) {
   const mode = String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
   const sourceCount = clusterR.rows[0] ? Number(clusterR.rows[0].source_count) : 0;
   const traceId = String(d.trace_id ?? "");
+
+  // Lookup the sibling artifact (same cluster + outlet, opposite mode).
+  // Used by SiblingArtifactLink to either link to it or commission it.
+  const otherMode = mode === "drafter" ? "researcher" : "drafter";
+  const siblingR = await db.execute({
+    sql: `SELECT id FROM drafts
+          WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = ?
+          ORDER BY created_at DESC LIMIT 1`,
+    args: [String(d.cluster_id), String(d.outlet_id ?? ""), SINGLE_USER_ID, otherMode],
+  });
+  const siblingDraftId = siblingR.rows.length > 0 ? String(siblingR.rows[0]!.id) : null;
+  const sibling = (
+    <SiblingArtifactLink
+      clusterId={String(d.cluster_id)}
+      outletId={String(d.outlet_id ?? "")}
+      currentMode={mode}
+      siblingDraftId={siblingDraftId}
+    />
+  );
 
   // Sent drafter drafts render a receipt, not the editor. The push is one-way:
   // editing happens in WordPress now, and this view is a record of what was
@@ -87,6 +107,7 @@ export default async function EditorPage({ params }: PageProps) {
         quotes={receiptQuotes.map((q) => ({ text: q.text, citation: q.citation }))}
         traceId={traceId}
         sourceCount={sourceCount}
+        sibling={sibling}
       />
     );
   }
@@ -124,6 +145,7 @@ export default async function EditorPage({ params }: PageProps) {
         traceId={traceId}
         sourceCount={sourceCount}
         wpEditLink={d.wp_edit_link ? String(d.wp_edit_link) : null}
+        sibling={sibling}
       />
     );
   }
@@ -169,6 +191,7 @@ export default async function EditorPage({ params }: PageProps) {
           <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "22ch" }}>
             {String(d.headline)}
           </h1>
+          <div className="pt-1">{sibling}</div>
         </div>
         <div className="flex items-center gap-2">
           <span

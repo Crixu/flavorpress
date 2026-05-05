@@ -4,29 +4,38 @@
  * 3-signal heuristic per engineer review (was 5-signal in the spec).
  * Voice fit and gap fill arrive in v1.1 once we have data to tune them.
  *
- *   archive_overlap (0.55): cosine of cluster centroid against the user's
- *     archive index centroid. Heuristic v1: fraction of cluster entities
- *     that appear in the user's signature_terms list, scaled.
- *   beat_match (0.30): fraction of cluster entities that appear in the
- *     user's top-50 archive entities.
- *   source_trust (0.15): mean of source.trust_score across cluster members.
+ *   archive_overlap (0.55): fraction of cluster items whose
+ *     primary_subject appears in the user's drafted-cluster subjects
+ *     (the things they have actually published). Falls back to
+ *     signature_terms overlap if there are no drafts yet.
+ *   beat_match (0.30): fraction of cluster items whose beat_tag is
+ *     among the user's top-10 most-frequent beat_tags across their
+ *     library. Measures "this is a lane you actively read in".
+ *   source_trust (0.15): mean of source.trust_score across cluster
+ *     members.
  *
  * Per-cluster down-weights (signal.downweighted events) persist in
  * ranker_corrections and are added to the composite at scoring time.
+ *
+ * Both archive_overlap and beat_match read from items.primary_subject
+ * and items.beat_tag respectively, populated by the LLM-at-ingest
+ * extractor (entity-extractor.ts). Items that haven't been re-extracted
+ * yet contribute nothing here, which is the right failure mode: better
+ * to score 0 than to fabricate signal from regex tags.
  */
 
 import { db, ensureSchema } from "../db";
 import type { Cluster, RankerSignals } from "./types";
 import { RANKER_WEIGHTS } from "./types";
-import { rowToItem, type ItemRow } from "./source-connector";
 import { CLUSTER_WINDOW_MS } from "./cluster-engine";
 
 export async function rankCluster(cluster: Cluster, userId: string): Promise<RankerSignals> {
   await ensureSchema();
 
-  // Pull cluster items + their source trust scores.
+  // Pull cluster items + their source trust scores + LLM-extracted tags.
   const r = await db.execute({
-    sql: `SELECT i.*, s.trust_score as source_trust_score
+    sql: `SELECT i.id, i.entities, i.primary_subject, i.beat_tag,
+                 s.trust_score as source_trust_score
           FROM items i
           JOIN sources s ON s.id = i.source_id
           WHERE i.cluster_id = ?`,
@@ -36,54 +45,35 @@ export async function rankCluster(cluster: Cluster, userId: string): Promise<Ran
     return zeroSignals(cluster.id, userId);
   }
 
-  const items = r.rows.map((row) => rowToItem(row as unknown as ItemRow));
   const trustScores = r.rows.map((row) => Number(row.source_trust_score ?? 0.5));
-
-  // Cluster entities (union of per-item entities, top 10).
-  const entityCounts = new Map<string, number>();
-  for (const item of items) {
-    for (const e of item.entities ?? []) {
-      entityCounts.set(e.toLowerCase(), (entityCounts.get(e.toLowerCase()) ?? 0) + 1);
+  const itemSubjects = r.rows
+    .map((row) => (row.primary_subject ? String(row.primary_subject).toLowerCase() : null))
+    .filter((s): s is string => s !== null);
+  const itemBeats = r.rows
+    .map((row) => (row.beat_tag ? String(row.beat_tag).toLowerCase() : null))
+    .filter((s): s is string => s !== null);
+  const itemEntities: string[] = [];
+  for (const row of r.rows) {
+    if (!row.entities) continue;
+    try {
+      const ents = JSON.parse(String(row.entities)) as unknown[];
+      for (const e of ents) {
+        if (typeof e === "string") itemEntities.push(e.toLowerCase());
+      }
+    } catch {
+      // Skip malformed entity blobs.
     }
   }
-  const clusterEntities = Array.from(entityCounts.keys());
+  const clusterEntities = Array.from(new Set(itemEntities));
 
-  // Voice profile: signature_terms gives us the user's interest fingerprint.
-  const vp = await db.execute({
-    sql: `SELECT signature_terms FROM voice_profiles WHERE user_id = ?`,
-    args: [userId],
-  });
-  const signatureTerms: string[] = vp.rows.length
-    ? (JSON.parse(String(vp.rows[0]!.signature_terms ?? "[]")) as string[])
-    : [];
-  const sigSet = new Set(signatureTerms.map((s) => s.toLowerCase()));
+  // archive_overlap: how often the cluster's primary subjects match
+  // subjects the user has already drafted. Falls back to signature_terms
+  // entity overlap when no drafts exist.
+  const archiveOverlap = await computeArchiveOverlap(userId, itemSubjects, clusterEntities);
 
-  // archive_overlap: fraction of cluster entities in user's signature_terms.
-  const archiveOverlap =
-    clusterEntities.length > 0
-      ? clusterEntities.filter((e) => containsAny(e, sigSet)).length / clusterEntities.length
-      : 0;
-
-  // beat_match: top-50 archive entities (from items the user authored).
-  // For v1 we proxy with: the user's connected WP archive items in `items`
-  // table, if any. If empty, fall back to signature_terms.
-  const archiveR = await db.execute({
-    sql: `SELECT entities FROM items WHERE user_id = ? AND source_id IS NULL LIMIT 200`,
-    args: [userId],
-  });
-  // Note: archive items don't ride sources_id; if the import job stores them
-  // with a synthetic source row, this query needs revisiting. For now, fall
-  // back to signature_terms if archive query is empty.
-  const archiveEntities = new Set<string>();
-  for (const row of archiveR.rows) {
-    const ents = row.entities ? (JSON.parse(String(row.entities)) as string[]) : [];
-    for (const e of ents) archiveEntities.add(e.toLowerCase());
-  }
-  const beatPool = archiveEntities.size > 0 ? archiveEntities : sigSet;
-  const beatMatch =
-    clusterEntities.length > 0
-      ? clusterEntities.filter((e) => beatPool.has(e)).length / clusterEntities.length
-      : 0;
+  // beat_match: how well the cluster's beat tags align with the user's
+  // most-frequent reading lanes across their library.
+  const beatMatch = await computeBeatMatch(userId, cluster.id, itemBeats);
 
   // source_trust: mean across cluster items.
   const sourceTrust =
@@ -217,6 +207,85 @@ export async function topFiredClusters(
           }
         : null,
   }));
+}
+
+// Window for "user's reading lanes" computation. 60 days of items gives
+// enough density to pick stable beat preferences without letting one
+// burst week dominate forever.
+const BEAT_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
+
+async function computeArchiveOverlap(
+  userId: string,
+  itemSubjects: string[],
+  clusterEntities: string[],
+): Promise<number> {
+  // Primary path: have any drafts? Use the primary_subjects of items in
+  // clusters the user has drafted. That measures "subjects the user
+  // actually publishes about", not just "subjects in their library".
+  const draftedR = await db.execute({
+    sql: `SELECT i.primary_subject, COUNT(*) AS n
+          FROM drafts d
+          JOIN items i ON i.cluster_id = d.cluster_id
+          WHERE d.user_id = ? AND i.primary_subject IS NOT NULL
+          GROUP BY i.primary_subject
+          ORDER BY n DESC LIMIT 16`,
+    args: [userId],
+  });
+  const draftedSubjects = new Set(
+    draftedR.rows.map((row) => String(row.primary_subject).toLowerCase()),
+  );
+
+  if (draftedSubjects.size > 0 && itemSubjects.length > 0) {
+    const hits = itemSubjects.filter((s) => draftedSubjects.has(s)).length;
+    return hits / itemSubjects.length;
+  }
+
+  // Fallback: signature_terms entity overlap. Same shape as before,
+  // kept as a soft signal until the user has drafted something.
+  const vp = await db.execute({
+    sql: `SELECT signature_terms FROM voice_profiles WHERE user_id = ? LIMIT 1`,
+    args: [userId],
+  });
+  if (vp.rows.length === 0 || clusterEntities.length === 0) return 0;
+  let signatureTerms: string[] = [];
+  try {
+    const parsed = JSON.parse(String(vp.rows[0]!.signature_terms ?? "[]")) as unknown;
+    if (Array.isArray(parsed)) {
+      signatureTerms = parsed.filter((s): s is string => typeof s === "string");
+    }
+  } catch {
+    return 0;
+  }
+  if (signatureTerms.length === 0) return 0;
+  const sigSet = new Set(signatureTerms.map((s) => s.toLowerCase()));
+  return clusterEntities.filter((e) => containsAny(e, sigSet)).length / clusterEntities.length;
+}
+
+async function computeBeatMatch(
+  userId: string,
+  clusterId: string,
+  itemBeats: string[],
+): Promise<number> {
+  if (itemBeats.length === 0) return 0;
+  // The user's top reading lanes by beat_tag frequency in the recent
+  // window. Anchored on published_at so a backfill doesn't reshape the
+  // user's preferences with months-old material. Exclude the cluster
+  // currently being ranked so a new one-off beat cannot vote itself
+  // into the user's top lanes.
+  const cutoff = Date.now() - BEAT_WINDOW_MS;
+  const r = await db.execute({
+    sql: `SELECT beat_tag, COUNT(*) AS n
+          FROM items
+          WHERE user_id = ? AND beat_tag IS NOT NULL AND published_at >= ?
+            AND (cluster_id IS NULL OR cluster_id != ?)
+          GROUP BY beat_tag
+          ORDER BY n DESC LIMIT 10`,
+    args: [userId, cutoff, clusterId],
+  });
+  if (r.rows.length === 0) return 0;
+  const userBeats = new Set(r.rows.map((row) => String(row.beat_tag).toLowerCase()));
+  const hits = itemBeats.filter((b) => userBeats.has(b)).length;
+  return hits / itemBeats.length;
 }
 
 async function accumulateCorrections(userId: string, clusterEntities: string[]): Promise<number> {
