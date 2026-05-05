@@ -141,10 +141,10 @@ function CommentCourtroomPanel({ draftId }: ExtensionPanelProps) {
 
       <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "var(--fg-muted)" }}>
         {isRunning
-          ? "Holding court…"
+          ? "Simulating…"
           : topLevelCount === 0
-            ? "Simulates a nested comment thread from a fixed jury, so you can feel the room before publishing."
-            : `${topLevelCount} top-level reaction${topLevelCount === 1 ? "" : "s"} from the jury.`}
+            ? "Simulates a nested comment thread from a fixed jury of reader personas, so you can feel the room before publishing. Nothing is posted anywhere."
+            : `${topLevelCount} top-level reaction${topLevelCount === 1 ? "" : "s"} from the simulated jury.`}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -160,12 +160,12 @@ function CommentCourtroomPanel({ draftId }: ExtensionPanelProps) {
           }}
         >
           {isRunning
-            ? "Holding court…"
+            ? "Simulating…"
             : isLoading
               ? "Loading…"
               : topLevelCount > 0
                 ? "Run again"
-                : "Hold court"}
+                : "Simulate comments"}
         </button>
         {topLevelCount > 0 && !isRunning ? (
           <button

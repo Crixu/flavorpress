@@ -1015,6 +1015,15 @@ export async function deleteDraftAction(formData: FormData) {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
+  await deleteDraftRows(draftId, { adjustTrust: true });
+  const redirectTo = String(formData.get("redirectTo") ?? "");
+  if (redirectTo === "/drafts") redirect("/drafts");
+}
+
+async function deleteDraftRows(
+  draftId: string,
+  opts: { adjustTrust: boolean },
+): Promise<{ deleted: boolean }> {
   const r = await db.execute({
     sql: `SELECT wp_post_id, cluster_id FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
@@ -1057,18 +1066,19 @@ export async function deleteDraftAction(formData: FormData) {
   });
 
   if (del.rowsAffected > 0 && clusterId && !wasSent) {
-    // Trust penalty applies to abandoned drafts. A sent draft already
-    // earned its trust bump on publish; pruning the local receipt later
-    // shouldn't reverse that, and the post is still live on WordPress.
-    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted);
+    if (opts.adjustTrust) {
+      // Trust penalty applies to abandoned drafts. A sent draft already
+      // earned its trust bump on publish; pruning the local receipt later
+      // shouldn't reverse that, and the post is still live on WordPress.
+      await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted);
+    }
     revalidatePath("/sources");
   }
 
   revalidatePath("/drafts");
   revalidatePath("/");
 
-  const redirectTo = String(formData.get("redirectTo") ?? "");
-  if (redirectTo === "/drafts") redirect("/drafts");
+  return { deleted: del.rowsAffected > 0 };
 }
 
 export async function buildVoiceProfileAction(formData: FormData) {
@@ -1507,6 +1517,71 @@ export async function generateDraftAction(formData: FormData) {
     outletId,
     wordCount,
   });
+  redirect(`/editor/${draft.draftId}`);
+}
+
+/**
+ * Regenerate an existing draft with a different angle, length, or both.
+ * Drops the old draft and replaces it with a fresh generation against the
+ * same cluster + outlet, so the editor shows one current draft per
+ * cluster/outlet/mode pair (matching the dedupe rule in generateDraftAction).
+ *
+ * Inputs (form fields):
+ *   draftId    — required
+ *   angleHint  — "archive" | "gap" | "custom" (defaults to current generator default)
+ *   customAngle — required when angleHint=custom; one-line user phrasing
+ *   wordCount  — optional integer in [100, 1500]
+ */
+export async function regenerateDraftAction(formData: FormData) {
+  await ensureSchema();
+  await ensureRegisteredCapabilities();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const r = await db.execute({
+    sql: `SELECT cluster_id, outlet_id, mode, wp_post_id, angle_hint, custom_angle FROM drafts
+          WHERE id = ? AND user_id = ?`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("Draft not found.");
+  const row = r.rows[0]!;
+  if (row.wp_post_id) {
+    throw new Error("This draft has been sent to WordPress and can no longer be regenerated.");
+  }
+  if (String(row.mode ?? "drafter") !== "drafter") {
+    throw new Error("Only drafter drafts can be regenerated; research notes don't take an angle.");
+  }
+
+  const submittedAngle = String(formData.get("angleHint") ?? "");
+  const previousAngle = String(row.angle_hint ?? "");
+  const rawAngle = submittedAngle || previousAngle;
+  const angleHint: "archive" | "gap" | undefined =
+    rawAngle === "archive" || rawAngle === "gap" ? rawAngle : undefined;
+  const submittedCustomAngle = String(formData.get("customAngle") ?? "").trim();
+  const previousCustomAngle = String(row.custom_angle ?? "").trim();
+  const customAngle =
+    rawAngle === "custom" ? (submittedCustomAngle || previousCustomAngle).slice(0, 200) : "";
+  if (rawAngle === "custom" && customAngle.length === 0) {
+    throw new Error("Custom angle text required when picking the custom angle.");
+  }
+  const wordCount = parseWordCount(formData.get("wordCount"));
+
+  const draft = await generateDraft({
+    clusterId: String(row.cluster_id),
+    userId: SINGLE_USER_ID,
+    outletId: String(row.outlet_id),
+    angleHint: rawAngle === "custom" ? undefined : angleHint,
+    customAngle: customAngle || undefined,
+    wordCount,
+  });
+
+  // Drop the previous draft so the editor doesn't accumulate stale rows for
+  // the same cluster/outlet/mode triple. The new draft already replaces it
+  // in the user's mental model: same cluster, same surface, fresh attempt.
+  if (draft.draftId !== draftId) {
+    await deleteDraftRows(draftId, { adjustTrust: true });
+  }
+
   redirect(`/editor/${draft.draftId}`);
 }
 
