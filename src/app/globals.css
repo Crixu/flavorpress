@@ -383,6 +383,34 @@ body {
   color: var(--fg-subtle);
 }
 
+/* Manuscript body. Tailwind's prose plugin sets a default leading and
+ * paragraph margin that runs tight; the editor body wants more breathing
+ * room because draft generation often produces dense quote-heavy paragraphs. */
+.fp-manuscript p {
+  margin-top: 1.15em;
+  margin-bottom: 1.15em;
+}
+.fp-manuscript p:first-child {
+  margin-top: 0;
+}
+.fp-manuscript blockquote {
+  margin-top: 1.4em;
+  margin-bottom: 1.4em;
+  padding-left: 1em;
+  border-left: 3px solid var(--border-strong);
+  color: var(--fg-muted);
+  font-style: italic;
+}
+.fp-manuscript a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.fp-manuscript a:hover {
+  text-decoration-color: var(--fg);
+}
+
 /* Page heading */
 .fp-eyebrow {
   font-size: 11px;

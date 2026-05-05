@@ -1,7 +1,7 @@
 export const COMMENT_COURTROOM_ID = "comment-courtroom";
-export const COMMENT_COURTROOM_LABEL = "Comment Courtroom";
+export const COMMENT_COURTROOM_LABEL = "Simulate comments";
 export const COMMENT_COURTROOM_DESCRIPTION =
-  "Runs a fixed jury of reader personas against the draft and returns a nested comment thread, so the writer can feel the room before publishing.";
+  "Simulates a comment thread from a fixed jury of reader personas, so the writer can feel the room before publishing.";
 
 export const PERSONA_KEYS = ["enthusiast", "skeptic", "nitpicker", "contrarian", "lurker"] as const;
 export type PersonaKey = (typeof PERSONA_KEYS)[number];

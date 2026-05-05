@@ -16,7 +16,9 @@ import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
 import { getDisabledExtensionIds } from "@/lib/v1/settings";
 import type { ResearchNotes } from "@/lib/v1/researcher-generator";
+import { AnglePicker } from "./AnglePicker";
 import { HeadlineSelector } from "./HeadlineSelector";
+import { LengthPicker } from "./LengthPicker";
 import { ParagraphRewriter } from "./ParagraphRewriter";
 import { PublishToWpForm } from "./PublishToWpForm";
 import { ReceiptView } from "./ReceiptView";
@@ -170,6 +172,11 @@ export default async function EditorPage({ params }: PageProps) {
         citation: string;
       }>)
     : [];
+  const draftWordCount = String(d.body ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
   return (
     <div className="space-y-6">
       {/* Page header — same eyebrow + serif h1 pattern as the rest of the app */}
@@ -216,9 +223,11 @@ export default async function EditorPage({ params }: PageProps) {
         </div>
       </header>
 
-      {/* Editor frame: a single Canvas card */}
+      {/* Editor frame: a single Canvas card.
+       *  overflow-hidden is intentionally absent: position:sticky on the
+       *  rails will not work inside an overflow:hidden ancestor. The inner
+       *  panes already use solid backgrounds that respect the card edges. */}
       <div
-        className="overflow-hidden"
         style={{
           background: "var(--surface)",
           borderRadius: "var(--radius-xl)",
@@ -267,35 +276,37 @@ export default async function EditorPage({ params }: PageProps) {
         <div className="grid grid-cols-12">
           {/* Left rail */}
           <aside className="col-span-12 p-5 lg:col-span-3" style={{ background: "#FAF7F1" }}>
-            <div className="fp-eyebrow mb-3">Sources · {itemsR.rows.length}</div>
-            <ul className="space-y-2 text-xs">
-              {itemsR.rows.map((row) => (
-                <li
-                  key={String(row.id)}
-                  className="rounded-2xl p-3"
-                  style={{
-                    background: "var(--surface)",
-                    boxShadow: "var(--shadow-xs)",
-                  }}
-                >
-                  <div className="text-[12.5px] font-medium" style={{ color: "var(--fg)" }}>
-                    {String(row.display_name ?? hostFromUrl(String(row.source_url)))}
-                  </div>
-                  <div
-                    className="mt-0.5 font-mono text-[10px]"
-                    style={{ color: "var(--fg-subtle)" }}
+            <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
+              <div className="fp-eyebrow mb-3">Sources · {itemsR.rows.length}</div>
+              <ul className="space-y-2 text-xs">
+                {itemsR.rows.map((row) => (
+                  <li
+                    key={String(row.id)}
+                    className="rounded-2xl p-3"
+                    style={{
+                      background: "var(--surface)",
+                      boxShadow: "var(--shadow-xs)",
+                    }}
                   >
-                    {relativeTime(Number(row.published_at))}
-                  </div>
-                  <div
-                    className="mt-1.5 line-clamp-3 leading-snug"
-                    style={{ color: "var(--fg-muted)" }}
-                  >
-                    {String(row.title)}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <div className="text-[12.5px] font-medium" style={{ color: "var(--fg)" }}>
+                      {String(row.display_name ?? hostFromUrl(String(row.source_url)))}
+                    </div>
+                    <div
+                      className="mt-0.5 font-mono text-[10px]"
+                      style={{ color: "var(--fg-subtle)" }}
+                    >
+                      {relativeTime(Number(row.published_at))}
+                    </div>
+                    <div
+                      className="mt-1.5 line-clamp-3 leading-snug"
+                      style={{ color: "var(--fg-muted)" }}
+                    >
+                      {String(row.title)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </aside>
 
           {/* Centre: manuscript */}
@@ -317,7 +328,10 @@ export default async function EditorPage({ params }: PageProps) {
 
               {quotes.length > 0 ? (
                 <div className="mt-10 pt-6" style={{ borderTop: "1px solid var(--border)" }}>
-                  <div className="fp-eyebrow">Citations · {quotes.length}</div>
+                  <div className="fp-eyebrow">
+                    Quotes lifted · {quotes.length} of {itemsR.rows.length} source
+                    {itemsR.rows.length === 1 ? "" : "s"}
+                  </div>
                   <ol
                     className="mt-3 list-decimal space-y-1.5 pl-5 text-[12px]"
                     style={{ color: "var(--fg-muted)" }}
@@ -332,131 +346,73 @@ export default async function EditorPage({ params }: PageProps) {
           </div>
 
           {/* Right rail: inspector */}
-          <aside
-            className="col-span-12 space-y-3 p-5 lg:col-span-3"
-            style={{ background: "#FAF7F1" }}
-          >
-            {/* Editor extensions (fact-check, originality, ...) */}
-            <ExtensionsPanels
-              draftId={String(d.id)}
-              initialAnnotationsByExt={initialAnnotationsByExt}
-              enabledExtensionIds={enabledExtensionIds}
-            />
-
-            {/* Angle */}
-            {d.angle_archive || d.angle_gap ? (
-              <div
-                className="rounded-2xl p-4"
-                style={{
-                  background: "var(--surface)",
-                  boxShadow: "var(--shadow-xs)",
-                }}
-              >
-                <div className="fp-eyebrow">Angle</div>
-                <div className="mt-2 space-y-1.5 text-[12px]">
-                  {d.angle_archive ? (
-                    <button
-                      className="w-full rounded-xl px-3 py-2 text-left"
-                      style={{
-                        background: "var(--rose-tint)",
-                        color: "#9C4A22",
-                      }}
-                    >
-                      <div className="font-semibold">Archive habit</div>
-                      <div className="mt-0.5 text-[11px]">{String(d.angle_archive)}</div>
-                    </button>
-                  ) : null}
-                  {d.angle_gap ? (
-                    <button
-                      className="w-full rounded-xl px-3 py-2 text-left"
-                      style={{
-                        background: "var(--bg-subtle)",
-                        color: "var(--fg)",
-                      }}
-                    >
-                      <div className="font-semibold">Cluster-gap</div>
-                      <div className="mt-0.5 text-[11px]" style={{ color: "var(--fg-muted)" }}>
-                        {String(d.angle_gap)}
-                      </div>
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            {/* Quote pool */}
-            {quotes.length > 0 ? (
-              <div
-                className="rounded-2xl p-4"
-                style={{
-                  background: "var(--surface)",
-                  boxShadow: "var(--shadow-xs)",
-                }}
-              >
-                <div className="fp-eyebrow">Quote pool · {quotes.length} in draft</div>
-                <ul className="mt-3 space-y-2 text-[12px]">
-                  {quotes.map((q, i) => (
-                    <li
-                      key={i}
-                      className="rounded-lg p-2.5 leading-snug"
-                      style={{
-                        background: "var(--bg-subtle)",
-                        color: "var(--fg)",
-                        fontFamily: "var(--font-serif), Georgia, serif",
-                      }}
-                    >
-                      {q.text.slice(0, 100)}
-                      {q.text.length > 100 ? "…" : ""}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {/* Agent slot — Canvas-styled placeholder */}
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: "linear-gradient(135deg, var(--plum-tint) 0%, #E9DEF4 100%)",
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <div className="fp-eyebrow" style={{ color: "#5D3A6E" }}>
-                  Agent slot
-                </div>
-                <span className="text-[10px]" style={{ color: "#5D3A6E" }}>
-                  v1.1+
-                </span>
-              </div>
-              <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "#3F2360" }}>
-                Research, scheduling, plagiarism, analytics. Capabilities plug in here in v1.1.
-              </p>
-            </div>
-
-            {/* Publish actions */}
-            <div className="space-y-2 pt-1">
-              <PublishToWpForm
+          <aside className="col-span-12 p-5 lg:col-span-3" style={{ background: "#FAF7F1" }}>
+            <div className="space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
+              {/* Editor extensions (fact-check, originality, ...) */}
+              <ExtensionsPanels
                 draftId={String(d.id)}
-                headline={String(d.headline)}
-                className="fp-btn fp-btn-primary w-full"
-                pendingLabel="Saving draft"
+                initialAnnotationsByExt={initialAnnotationsByExt}
+                enabledExtensionIds={enabledExtensionIds}
+              />
+
+              {/* Angle picker — interactive: pick archive, gap, or write your own,
+               *  then regenerate. Replaces the previous read-only display. */}
+              {d.angle_archive || d.angle_gap ? (
+                <AnglePicker
+                  draftId={String(d.id)}
+                  archive={d.angle_archive ? String(d.angle_archive) : null}
+                  gap={d.angle_gap ? String(d.angle_gap) : null}
+                  currentAngle={String(d.angle_hint ?? "")}
+                  customAngle={d.custom_angle ? String(d.custom_angle) : null}
+                  wordCount={draftWordCount}
+                />
+              ) : null}
+
+              {/* Length remix */}
+              <LengthPicker draftId={String(d.id)} currentWordCount={draftWordCount} />
+
+              {/* Agent slot — Canvas-styled placeholder */}
+              <div
+                className="rounded-2xl p-4"
+                style={{
+                  background: "linear-gradient(135deg, var(--plum-tint) 0%, #E9DEF4 100%)",
+                }}
               >
-                Push to WordPress draft
-              </PublishToWpForm>
-              <button className="w-full py-2 text-[12px]" style={{ color: "var(--fg-subtle)" }}>
-                Schedule for later
-              </button>
-              <form action={deleteDraftAction}>
-                <input type="hidden" name="draftId" value={String(d.id)} />
-                <input type="hidden" name="redirectTo" value="/drafts" />
-                <button
-                  type="submit"
-                  className="w-full py-2 text-[12px] transition hover:underline"
-                  style={{ color: "var(--fg-subtle)" }}
+                <div className="flex items-center justify-between">
+                  <div className="fp-eyebrow" style={{ color: "#5D3A6E" }}>
+                    Agent slot
+                  </div>
+                  <span className="text-[10px]" style={{ color: "#5D3A6E" }}>
+                    v1.1+
+                  </span>
+                </div>
+                <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "#3F2360" }}>
+                  Research, scheduling, plagiarism, analytics. Capabilities plug in here in v1.1.
+                </p>
+              </div>
+
+              {/* Publish actions */}
+              <div className="space-y-2 pt-1">
+                <PublishToWpForm
+                  draftId={String(d.id)}
+                  headline={String(d.headline)}
+                  className="fp-btn fp-btn-primary w-full"
+                  pendingLabel="Saving draft"
                 >
-                  Delete draft
-                </button>
-              </form>
+                  Push to WordPress draft
+                </PublishToWpForm>
+                <form action={deleteDraftAction}>
+                  <input type="hidden" name="draftId" value={String(d.id)} />
+                  <input type="hidden" name="redirectTo" value="/drafts" />
+                  <button
+                    type="submit"
+                    className="w-full py-2 text-[12px] transition hover:underline"
+                    style={{ color: "var(--fg-subtle)" }}
+                  >
+                    Delete draft
+                  </button>
+                </form>
+              </div>
             </div>
           </aside>
         </div>
