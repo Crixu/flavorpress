@@ -17,7 +17,8 @@
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm run typecheck && npm run test",
     "mac:build": "macos/build.sh",
-    "mac:run": "macos/build.sh && open macos/build/FlavorPress.app"
+    "mac:run": "macos/build.sh && open macos/build/FlavorPress.app",
+    "mac:dmg": "macos/build.sh && macos/dmg.sh"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.126",
