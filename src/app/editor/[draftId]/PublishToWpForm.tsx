@@ -1,11 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, type ReactNode } from "react";
+import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { publishDraftToWPAction } from "@/lib/v1/actions";
 import { SubmitButton } from "@/app/_components/SubmitButton";
+import { stashPublishToast } from "@/app/_components/Toast";
 
 interface Props {
   draftId: string;
+  headline: string;
   className?: string;
   pendingLabel: ReactNode;
   children: ReactNode;
@@ -16,17 +19,49 @@ interface State {
   nonce: number;
 }
 
-export function PublishToWpForm({ draftId, className, pendingLabel, children }: Props) {
+const HANDOFF_BEAT_MS = 800;
+
+export function PublishToWpForm({ draftId, headline, className, pendingLabel, children }: Props) {
+  const router = useRouter();
+  const [sent, setSent] = useState(false);
   const [state, formAction] = useActionState<State | null, FormData>(async (_prev, formData) => {
     const result = await publishDraftToWPAction(formData);
     return { editLink: result.editLink, nonce: Date.now() };
   }, null);
 
   useEffect(() => {
-    if (state?.editLink) {
-      window.open(state.editLink, "_blank", "noopener,noreferrer");
-    }
-  }, [state]);
+    if (!state?.editLink) return;
+    setSent(true);
+    stashPublishToast({
+      headline,
+      editLink: state.editLink,
+      draftId,
+      mode: "drafter",
+    });
+    const id = window.setTimeout(() => {
+      router.push("/");
+    }, HANDOFF_BEAT_MS);
+    return () => window.clearTimeout(id);
+  }, [state, headline, draftId, router]);
+
+  if (sent) {
+    return (
+      <div
+        className="flex items-center gap-2 rounded-full px-3 py-2 text-[12px]"
+        style={{
+          background: "var(--bg-subtle)",
+          color: "var(--fg-muted)",
+          border: "1px solid var(--border)",
+        }}
+        aria-live="polite"
+      >
+        <span aria-hidden style={{ color: "var(--emerald, #2F8F66)" }}>
+          ✓
+        </span>
+        <span>Sent to WordPress</span>
+      </div>
+    );
+  }
 
   return (
     <form action={formAction}>

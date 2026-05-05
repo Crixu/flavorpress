@@ -484,14 +484,15 @@ async function loadDraftAndClaim(
   claimId: string,
 ): Promise<{ body: string; claim: LoadedClaim }> {
   const draftRow = await db.execute({
-    sql: `SELECT id, body, wp_post_id, wp_synced_at FROM drafts WHERE id = ? AND user_id = ?`,
+    sql: `SELECT id, body, wp_post_id FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
-  if (draftRow.rows[0]!.wp_post_id && !draftRow.rows[0]!.wp_synced_at) {
-    // Just-pushed draft. Apply would mutate stale local body and clobber
-    // wp-admin edits on next push. Force a Pull from WP first.
-    throw new Error("Pull the latest version from WordPress before applying fact-check fixes.");
+  if (draftRow.rows[0]!.wp_post_id) {
+    // Sent drafts are read-only in FlavorPress; the editor branch that
+    // hosts fact-check fixes no longer renders for them. This guard backs
+    // that up against hand-crafted requests.
+    throw new Error("This draft has been sent to WordPress and can no longer be edited here.");
   }
   const body = String(draftRow.rows[0]!.body ?? "");
 

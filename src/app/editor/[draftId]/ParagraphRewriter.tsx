@@ -23,10 +23,9 @@ interface Props {
   /** Bumps the rewrite-button injection effect when the body changes
    *  (e.g., after a successful rewrite revalidates the page). */
   bodyHtml: string;
-  locked?: boolean;
 }
 
-export function ParagraphRewriter({ draftId, bodyHtml, locked = false }: Props) {
+export function ParagraphRewriter({ draftId, bodyHtml }: Props) {
   const router = useRouter();
   const active = useActiveSelection(draftId);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
@@ -43,7 +42,6 @@ export function ParagraphRewriter({ draftId, bodyHtml, locked = false }: Props) 
   }, [active]);
 
   useEffect(() => {
-    if (locked) return;
     const article = document.querySelector<HTMLElement>(
       `[data-fp-article-draft-id="${cssEscape(draftId)}"]`,
     );
@@ -118,7 +116,7 @@ export function ParagraphRewriter({ draftId, bodyHtml, locked = false }: Props) 
     return () => {
       for (const fn of cleanups) fn();
     };
-  }, [draftId, bodyHtml, locked, router]);
+  }, [draftId, bodyHtml, router]);
 
   // Reflect pending state on the matching paragraph so the user sees the
   // affected block dim while the model rewrites it. We toggle a data

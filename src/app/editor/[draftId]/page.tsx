@@ -19,7 +19,7 @@ import type { ResearchNotes } from "@/lib/v1/researcher-generator";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { ParagraphRewriter } from "./ParagraphRewriter";
 import { PublishToWpForm } from "./PublishToWpForm";
-import { PullFromWpForm } from "./PullFromWpForm";
+import { ReceiptView } from "./ReceiptView";
 import { ResearcherView } from "./ResearcherView";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +53,43 @@ export default async function EditorPage({ params }: PageProps) {
   const mode = String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
   const sourceCount = clusterR.rows[0] ? Number(clusterR.rows[0].source_count) : 0;
   const traceId = String(d.trace_id ?? "");
+
+  // Sent drafter drafts render a receipt, not the editor. The push is one-way:
+  // editing happens in WordPress now, and this view is a record of what was
+  // sent. Researcher notes don't follow this branch; the notes themselves
+  // remain useful research material to mine while writing in WordPress.
+  if (mode === "drafter" && d.wp_post_id) {
+    const wpEditLink = d.wp_edit_link
+      ? String(d.wp_edit_link)
+      : await recoverWordPressEditLink(String(d.outlet_id), Number(d.wp_post_id));
+    const receiptQuotes = d.quotes
+      ? (JSON.parse(String(d.quotes)) as Array<{
+          sourceId: string;
+          text: string;
+          citation: string;
+        }>)
+      : [];
+    const sentAt = d.wp_synced_at ? Number(d.wp_synced_at) : Number(d.edited_at ?? d.created_at);
+    return (
+      <ReceiptView
+        draftId={String(d.id)}
+        headline={String(d.headline)}
+        bodyHtml={String(d.body ?? "")}
+        sentAt={sentAt}
+        wpEditLink={wpEditLink}
+        sources={itemsR.rows.map((row) => ({
+          id: String(row.id),
+          title: String(row.title),
+          display_name: row.display_name === null ? null : String(row.display_name),
+          source_url: String(row.canonical_url ?? row.source_url),
+          published_at: Number(row.published_at),
+        }))}
+        quotes={receiptQuotes.map((q) => ({ text: q.text, citation: q.citation }))}
+        traceId={traceId}
+        sourceCount={sourceCount}
+      />
+    );
+  }
 
   if (mode === "researcher") {
     const notesRaw = d.notes ? String(d.notes) : null;
@@ -145,29 +182,14 @@ export default async function EditorPage({ params }: PageProps) {
           >
             {traceId.slice(0, 8) || "—"}
           </span>
-          {d.wp_edit_link ? (
-            <>
-              <PullFromWpForm draftId={String(d.id)} className="fp-btn" pendingLabel="Pulling">
-                Pull from WP
-              </PullFromWpForm>
-              <a
-                href={String(d.wp_edit_link)}
-                target="_blank"
-                rel="noreferrer"
-                className="fp-btn fp-btn-primary"
-              >
-                Open in WordPress →
-              </a>
-            </>
-          ) : (
-            <PublishToWpForm
-              draftId={String(d.id)}
-              className="fp-btn fp-btn-primary"
-              pendingLabel="Saving draft"
-            >
-              Push to WordPress draft →
-            </PublishToWpForm>
-          )}
+          <PublishToWpForm
+            draftId={String(d.id)}
+            headline={String(d.headline)}
+            className="fp-btn fp-btn-primary"
+            pendingLabel="Saving draft"
+          >
+            Push to WordPress draft →
+          </PublishToWpForm>
         </div>
       </header>
 
@@ -260,7 +282,6 @@ export default async function EditorPage({ params }: PageProps) {
                 draftId={String(d.id)}
                 headline={String(d.headline)}
                 alternates={headlineAlternates}
-                locked={Boolean(d.wp_post_id) && !d.wp_synced_at}
               />
 
               <ExtensionsArticle
@@ -269,11 +290,7 @@ export default async function EditorPage({ params }: PageProps) {
                 initialAnnotationsByExt={initialAnnotationsByExt}
                 enabledExtensionIds={enabledExtensionIds}
               />
-              <ParagraphRewriter
-                draftId={String(d.id)}
-                bodyHtml={String(d.body ?? "")}
-                locked={Boolean(d.wp_post_id)}
-              />
+              <ParagraphRewriter draftId={String(d.id)} bodyHtml={String(d.body ?? "")} />
 
               {quotes.length > 0 ? (
                 <div className="mt-10 pt-6" style={{ borderTop: "1px solid var(--border)" }}>
@@ -395,66 +412,44 @@ export default async function EditorPage({ params }: PageProps) {
 
             {/* Publish actions */}
             <div className="space-y-2 pt-1">
-              {d.wp_edit_link ? (
-                <>
-                  <a
-                    href={String(d.wp_edit_link)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="fp-btn fp-btn-primary w-full"
-                    style={{ width: "100%" }}
-                  >
-                    Open in WordPress →
-                  </a>
-                  <PullFromWpForm
-                    draftId={String(d.id)}
-                    className="fp-btn w-full"
-                    style={{ width: "100%" }}
-                    pendingLabel="Pulling from WP"
-                  >
-                    Pull from WP
-                  </PullFromWpForm>
-                  {d.wp_synced_at ? (
-                    <PublishToWpForm
-                      draftId={String(d.id)}
-                      className="fp-btn w-full"
-                      pendingLabel="Pushing update"
-                    >
-                      Push update to WP
-                    </PublishToWpForm>
-                  ) : null}
-                </>
-              ) : (
-                <PublishToWpForm
-                  draftId={String(d.id)}
-                  className="fp-btn fp-btn-primary w-full"
-                  pendingLabel="Saving draft"
-                >
-                  Push to WordPress draft
-                </PublishToWpForm>
-              )}
+              <PublishToWpForm
+                draftId={String(d.id)}
+                headline={String(d.headline)}
+                className="fp-btn fp-btn-primary w-full"
+                pendingLabel="Saving draft"
+              >
+                Push to WordPress draft
+              </PublishToWpForm>
               <button className="w-full py-2 text-[12px]" style={{ color: "var(--fg-subtle)" }}>
                 Schedule for later
               </button>
-              {!d.wp_post_id ? (
-                <form action={deleteDraftAction}>
-                  <input type="hidden" name="draftId" value={String(d.id)} />
-                  <input type="hidden" name="redirectTo" value="/drafts" />
-                  <button
-                    type="submit"
-                    className="w-full py-2 text-[12px] transition hover:underline"
-                    style={{ color: "var(--fg-subtle)" }}
-                  >
-                    Delete draft
-                  </button>
-                </form>
-              ) : null}
+              <form action={deleteDraftAction}>
+                <input type="hidden" name="draftId" value={String(d.id)} />
+                <input type="hidden" name="redirectTo" value="/drafts" />
+                <button
+                  type="submit"
+                  className="w-full py-2 text-[12px] transition hover:underline"
+                  style={{ color: "var(--fg-subtle)" }}
+                >
+                  Delete draft
+                </button>
+              </form>
             </div>
           </aside>
         </div>
       </div>
     </div>
   );
+}
+
+async function recoverWordPressEditLink(outletId: string, wpPostId: number): Promise<string> {
+  const outletR = await db.execute({
+    sql: `SELECT base_url FROM outlets WHERE id = ? AND user_id = ?`,
+    args: [outletId, SINGLE_USER_ID],
+  });
+  const baseUrl = String(outletR.rows[0]?.base_url ?? "").replace(/\/$/, "");
+  if (!baseUrl) return "#";
+  return `${baseUrl}/wp-admin/post.php?post=${wpPostId}&action=edit`;
 }
 
 function hostFromUrl(s: string): string {

@@ -19,7 +19,6 @@ import {
   blocksToHtml,
   encodePreflight,
   fetchHomepageProse,
-  fetchPostFromWP,
   fetchSiteIdentity,
   htmlToBlocks,
   listRecentPosts,
@@ -27,7 +26,6 @@ import {
   preflightWordPress,
   probeWordPress,
   publishToWordPress,
-  updateWordPressPost,
 } from "../wordpress";
 import { createHash } from "node:crypto";
 import { createAnthropicClient, extractText, MODEL } from "../anthropic";
@@ -825,9 +823,11 @@ export async function boostSourceTrustAction(formData: FormData) {
 }
 
 /**
- * Delete an unsent draft. Refuses if the draft has already been pushed to
- * WordPress; once a draft has a wp_post_id, the canonical version lives on
- * the user's site and removing it should happen in WordPress.
+ * Delete a draft from FlavorPress. For unsent drafts this removes the
+ * artifact entirely. For sent drafts (wp_post_id set) it removes the local
+ * record only; the WordPress post is unaffected and stays on the user's
+ * site. The receipt view's "Delete from FlavorPress" link uses this to let
+ * the user prune the local list without touching WP.
  *
  * Form fields: draftId, redirectTo (optional; when set, redirect there
  * after deletion. The editor uses this to bounce back to /drafts).
@@ -842,9 +842,7 @@ export async function deleteDraftAction(formData: FormData) {
     args: [draftId, SINGLE_USER_ID],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
-  if (r.rows[0]!.wp_post_id) {
-    throw new Error("Draft is already in WordPress. Delete it from your site instead.");
-  }
+  const wasSent = Boolean(r.rows[0]!.wp_post_id);
   const clusterId = r.rows[0]!.cluster_id ? String(r.rows[0]!.cluster_id) : null;
 
   await db.execute({
@@ -880,7 +878,10 @@ export async function deleteDraftAction(formData: FormData) {
     args: [draftId, SINGLE_USER_ID],
   });
 
-  if (del.rowsAffected > 0 && clusterId) {
+  if (del.rowsAffected > 0 && clusterId && !wasSent) {
+    // Trust penalty applies to abandoned drafts. A sent draft already
+    // earned its trust bump on publish; pruning the local receipt later
+    // shouldn't reverse that, and the post is still live on WordPress.
     await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted);
     revalidatePath("/sources");
   }
@@ -1209,19 +1210,17 @@ export async function selectDraftHeadlineAction(formData: FormData) {
   if (!headline) throw new Error("headline required.");
 
   const r = await db.execute({
-    sql: `SELECT headline, headline_alternates, wp_post_id, wp_synced_at FROM drafts
+    sql: `SELECT headline, headline_alternates, wp_post_id FROM drafts
           WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
-  if (row.wp_post_id && !row.wp_synced_at) {
-    // Just-pushed draft, no pull yet: WP is the canonical surface and the
-    // user is editing there. Refuse to overwrite. Once they Pull from WP,
-    // wp_synced_at is set and headline edits flow through to the next push.
-    throw new Error(
-      "Headline already sent to WordPress. Pull from WP first if you want to edit it here.",
-    );
+  if (row.wp_post_id) {
+    // Sent drafts are read-only in FlavorPress. The editor for a sent
+    // draft renders the receipt view, which has no headline picker; this
+    // guard backs that up against hand-crafted requests.
+    throw new Error("This draft has been sent to WordPress and can no longer be edited here.");
   }
   const current = String(row.headline ?? "");
   if (current === headline) return;
@@ -1357,92 +1356,30 @@ function wpRoundTripBodyHash(bodyHtml: string): string {
   return draftBodyHash(blocksToHtml(htmlToBlocks(bodyHtml)));
 }
 
-/**
- * Pull the post body and title back from WordPress into the local draft.
- *
- * Round-trip lifecycle: the user pushes the draft to WP, refines copy in
- * wp-admin, then comes back here to re-run fact-check or related-images.
- * Without a sync, those tools would either be hard-blocked (today's
- * behaviour) or operate on stale local content and clobber the user's WP
- * edits on the next push. This action makes WP the source of truth for
- * body and headline at sync time.
- *
- * Conflict policy is "WP wins" by construction; any local body changes
- * since the last sync are discarded. The only mutations the local body
- * can have between syncs are extension-tool runs (fact-check fixes,
- * related-image inserts), and those are reproducible. The user's wp-admin
- * typing is not.
- *
- * The pull is lossy. WP returns Gutenberg block markup; we strip the
- * delimiter comments and store plain HTML so the fact-check claim-text
- * substring search keeps working. Custom blocks added in wp-admin
- * (cover, columns, embeds) lose their wrappers; the next push will rebuild
- * paragraph/quote wrappers but won't reconstruct those richer blocks.
- *
- * Form fields: draftId (required).
- */
-export async function pullFromWPAction(formData: FormData): Promise<void> {
-  await ensureSchema();
-  const draftId = String(formData.get("draftId") ?? "");
-  if (!draftId) throw new Error("draftId required.");
-
-  const r = await db.execute({
-    sql: `SELECT id, outlet_id, wp_post_id FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+async function recoverWordPressEditLink(
+  outletId: string,
+  wpPostId: number,
+): Promise<string | null> {
+  if (!outletId || !Number.isFinite(wpPostId)) return null;
+  const outletR = await db.execute({
+    sql: `SELECT base_url FROM outlets WHERE id = ? AND user_id = ?`,
+    args: [outletId, SINGLE_USER_ID],
   });
-  if (r.rows.length === 0) throw new Error("Draft not found.");
-  const row = r.rows[0]!;
-  const wpPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
-  if (!wpPostId) {
-    throw new Error("Draft has not been pushed to WordPress yet; nothing to pull.");
-  }
+  if (outletR.rows.length === 0) return null;
+  const baseUrl = String(outletR.rows[0]!.base_url ?? "").replace(/\/$/, "");
+  if (!baseUrl) return null;
+  return `${baseUrl}/wp-admin/post.php?post=${wpPostId}&action=edit`;
+}
 
-  const outletId = String(row.outlet_id ?? "");
-  if (!outletId) throw new Error("Draft is not bound to an outlet.");
-  const creds = await getOutletCredentials(outletId);
-  if (!creds) {
-    throw new Error(
-      "Outlet has no stored credentials. Reconnect the outlet on /voice and try again.",
-    );
-  }
-
-  const post = await fetchPostFromWP(creds, wpPostId);
-  const bodyHtml = blocksToHtml(post.contentRaw);
-  const headline = post.titleRaw.trim();
-  const contentHash = draftBodyHash(bodyHtml);
-  const now = Date.now();
-
+async function rememberRecoveredWordPressEditLink(
+  draftId: string,
+  editLink: string,
+): Promise<void> {
   await db.execute({
-    sql: `UPDATE drafts
-          SET headline = ?, body = ?,
-              wp_synced_at = ?, wp_modified_at = ?, wp_content_hash = ?,
-              edited_at = ?
-          WHERE id = ? AND user_id = ?`,
-    args: [headline, bodyHtml, now, post.modifiedAt, contentHash, now, draftId, SINGLE_USER_ID],
+    sql: `UPDATE drafts SET wp_edit_link = ? WHERE id = ? AND user_id = ? AND wp_edit_link IS NULL`,
+    args: [editLink, draftId, SINGLE_USER_ID],
   });
-
-  // Extension state is keyed to the previous body's substrings; after a
-  // pull, claim_text for fact-check claims may no longer occur in the body
-  // and related-image queries are based on stale headline/body. Clear both
-  // so the editor presents an honest "not run since sync" state.
-  await db.execute({
-    sql: `DELETE FROM fact_check_claims WHERE draft_id = ?`,
-    args: [draftId],
-  });
-  await db.execute({
-    sql: `DELETE FROM fact_check_results WHERE draft_id = ?`,
-    args: [draftId],
-  });
-  await db.execute({
-    sql: `DELETE FROM related_image_results WHERE draft_id = ?`,
-    args: [draftId],
-  });
-  await db.execute({
-    sql: `DELETE FROM related_image_runs WHERE draft_id = ?`,
-    args: [draftId],
-  });
-
-  revalidatePath(`/editor/${draftId}`);
+  revalidatePath("/drafts");
 }
 
 /**
@@ -1457,12 +1394,10 @@ export async function pullFromWPAction(formData: FormData): Promise<void> {
  *   status — "draft" (default) | "publish" | "future"
  *   scheduleAt — epoch ms when status=future
  *
- * Persists wp_post_id and wp_edit_link on the drafts row so the editor
- * can show "Open in WordPress" instead of "Publish" on subsequent visits.
- *
- * On a draft that already has wp_post_id, the action does a PUT instead
- * of a POST: the same WP post receives the updated title and body, and
- * the editor can keep refining it locally between WP edits.
+ * One-way handoff: once the draft has a wp_post_id, FlavorPress treats it
+ * as sent. A repeat call returns the existing edit link without writing
+ * anything to WP; this guards against double-clicks and concurrent tabs racing
+ * the same publish.
  */
 export async function publishDraftToWPAction(formData: FormData): Promise<{ editLink: string }> {
   await ensureSchema();
@@ -1478,7 +1413,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
 
   const r = await db.execute({
     sql: `SELECT id, mode, outlet_id, cluster_id, headline, body, state,
-                 wp_post_id, wp_edit_link, wp_synced_at, wp_modified_at, wp_content_hash
+                 wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
@@ -1494,6 +1429,22 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     );
   }
 
+  const existingPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
+  if (existingPostId) {
+    // Already handed off. Return the existing link so a re-submit lands the
+    // user where they expect, instead of clobbering wp-admin edits.
+    const editLink = row.wp_edit_link
+      ? String(row.wp_edit_link)
+      : await recoverWordPressEditLink(String(row.outlet_id ?? ""), existingPostId);
+    if (!editLink) {
+      throw new Error(
+        "This draft has already been sent to WordPress, but its edit link is missing.",
+      );
+    }
+    if (!row.wp_edit_link) await rememberRecoveredWordPressEditLink(draftId, editLink);
+    return { editLink };
+  }
+
   const outletId = String(row.outlet_id ?? "");
   if (!outletId) throw new Error("Draft is not bound to an outlet.");
   const creds = await getOutletCredentials(outletId);
@@ -1505,44 +1456,14 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
 
   const headline = String(row.headline ?? "");
   const body = String(row.body ?? "");
-  const existingPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
 
-  if (existingPostId) {
-    const lastContentHash = row.wp_content_hash ? String(row.wp_content_hash) : "";
-    if (!row.wp_synced_at || !lastContentHash) {
-      throw new Error("Pull the latest version from WordPress before pushing an update.");
-    }
-
-    const remotePost = await fetchPostFromWP(creds, existingPostId);
-    const remoteBodyHash = draftBodyHash(blocksToHtml(remotePost.contentRaw));
-    const lastModifiedAt = row.wp_modified_at ? Number(row.wp_modified_at) : null;
-    const remoteChanged =
-      remoteBodyHash !== lastContentHash ||
-      (lastModifiedAt !== null && remotePost.modifiedAt > lastModifiedAt);
-    if (remoteChanged) {
-      throw new Error(
-        "WordPress has newer edits. Pull from WP before pushing an update from FlavorPress.",
-      );
-    }
-  }
-
-  const result = existingPostId
-    ? await updateWordPressPost({
-        creds,
-        postId: existingPostId,
-        title: headline,
-        contentHtml: body,
-        // Update keeps the existing post status by default; only force when
-        // the caller explicitly asked to publish or schedule.
-        status: status === "draft" ? undefined : status,
-      })
-    : await publishToWordPress({
-        creds,
-        title: headline,
-        contentHtml: body,
-        status,
-        scheduleAt,
-      });
+  const result = await publishToWordPress({
+    creds,
+    title: headline,
+    contentHtml: body,
+    status,
+    scheduleAt,
+  });
 
   const contentHash = wpRoundTripBodyHash(body);
   const now = Date.now();
@@ -1565,17 +1486,19 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     ],
   });
 
-  if (!existingPostId) {
-    // First push: bump source-trust for the cluster. Re-pushes don't earn
-    // additional trust; the trust delta is tied to "this story shipped",
-    // not "the user kept editing it".
-    const clusterId = row.cluster_id ? String(row.cluster_id) : null;
-    if (clusterId) {
-      await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished);
-    }
+  const clusterId = row.cluster_id ? String(row.cluster_id) : null;
+  if (clusterId) {
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished);
   }
 
-  revalidatePath(`/editor/${draftId}`);
+  // Deliberately do NOT revalidate /editor/[draftId] here. The client form
+  // wants to render a brief "Sent" beat and then redirect to /; if we
+  // revalidate the current route, the editor RSC re-runs with wp_post_id
+  // set, the page swaps to the receipt view, and the form unmounts before
+  // its post-success effect can stash the toast payload and trigger the
+  // redirect. The route is force-dynamic, so the next navigation back here
+  // will see fresh data anyway.
+  revalidatePath("/drafts");
   revalidatePath("/sources");
   return { editLink: result.editLink };
 }
@@ -1607,8 +1530,18 @@ export async function sendResearchToWPAction(formData: FormData): Promise<{ edit
     throw new Error("This action is only for researcher notes.");
   }
 
-  if (row.wp_edit_link) {
-    return { editLink: String(row.wp_edit_link) };
+  const existingPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
+  if (existingPostId || row.wp_edit_link) {
+    const editLink = row.wp_edit_link
+      ? String(row.wp_edit_link)
+      : await recoverWordPressEditLink(String(row.outlet_id ?? ""), Number(existingPostId));
+    if (!editLink) {
+      throw new Error(
+        "These notes have already been sent to WordPress, but the edit link is missing.",
+      );
+    }
+    if (!row.wp_edit_link) await rememberRecoveredWordPressEditLink(draftId, editLink);
+    return { editLink };
   }
 
   const outletId = String(row.outlet_id ?? "");
@@ -1680,7 +1613,11 @@ export async function sendResearchToWPAction(formData: FormData): Promise<{ edit
     ],
   });
 
-  revalidatePath(`/editor/${draftId}`);
+  // See note on publishDraftToWPAction: avoid revalidating /editor/[draftId]
+  // during the action so the form's post-success "Sent" beat survives until
+  // the client redirect fires. Force-dynamic guarantees fresh data on the
+  // next navigation back to the editor.
+  revalidatePath("/drafts");
   return { editLink: result.editLink };
 }
 

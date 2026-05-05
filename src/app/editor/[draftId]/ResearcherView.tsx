@@ -87,6 +87,7 @@ export function ResearcherView({
           ) : (
             <SendResearchToWpForm
               draftId={draftId}
+              topic={topic}
               className="fp-btn fp-btn-primary"
               pendingLabel="Saving draft"
             >
