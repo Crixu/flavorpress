@@ -111,9 +111,6 @@ export default async function EditorPage({ params }: PageProps) {
         citation: string;
       }>)
     : [];
-  const voiceScore = Number(d.voice_match_score ?? 0);
-  const voiceOk = voiceScore >= 75;
-
   return (
     <div className="space-y-6">
       {/* Page header — same eyebrow + serif h1 pattern as the rest of the app */}
@@ -189,22 +186,6 @@ export default async function EditorPage({ params }: PageProps) {
           style={{ borderBottom: "1px solid var(--border)" }}
         >
           <span className="fp-eyebrow">Pre-publish</span>
-          <span
-            className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px]"
-            style={{
-              background: voiceOk ? "var(--emerald-tint)" : "var(--amber-tint)",
-              color: voiceOk ? "#3F7556" : "var(--amber)",
-            }}
-          >
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full"
-              style={{
-                background: voiceOk ? "var(--emerald)" : "var(--amber)",
-              }}
-            />
-            <span style={{ fontWeight: 600 }}>voice-match {voiceScore}</span>
-            <span style={{ opacity: 0.75 }}>{voiceOk ? "sounds like you" : "below threshold"}</span>
-          </span>
           <span
             className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px]"
             style={{
@@ -321,58 +302,6 @@ export default async function EditorPage({ params }: PageProps) {
               initialAnnotationsByExt={initialAnnotationsByExt}
               enabledExtensionIds={enabledExtensionIds}
             />
-
-            {/* Voice match */}
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: "var(--surface)",
-                boxShadow: "var(--shadow-xs)",
-              }}
-            >
-              <div className="fp-eyebrow">Voice-match</div>
-              <div className="mt-2 flex items-baseline gap-3">
-                <span
-                  className="font-mono tabular"
-                  style={{
-                    fontSize: 32,
-                    fontWeight: 700,
-                    letterSpacing: "-0.03em",
-                    color: voiceOk ? "var(--emerald)" : "var(--amber)",
-                  }}
-                >
-                  {voiceScore}
-                </span>
-                <span className="flex-1">
-                  <div
-                    className="h-1.5 overflow-hidden rounded-full"
-                    style={{ background: "var(--bg-subtle)" }}
-                  >
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(100, voiceScore)}%`,
-                        background: voiceOk
-                          ? "var(--emerald)"
-                          : "linear-gradient(90deg, var(--rose) 0%, #F5B26A 100%)",
-                      }}
-                    />
-                  </div>
-                  <div className="mt-1 text-[10px]" style={{ color: "var(--fg-subtle)" }}>
-                    Burrows' Delta on function-word distribution
-                  </div>
-                </span>
-              </div>
-              <button
-                className="mt-3 w-full rounded-full py-1.5 text-[12px]"
-                style={{
-                  background: "var(--bg-subtle)",
-                  color: "var(--fg)",
-                }}
-              >
-                Voice-tighten regenerate
-              </button>
-            </div>
 
             {/* Angle */}
             {d.angle_archive || d.angle_gap ? (
