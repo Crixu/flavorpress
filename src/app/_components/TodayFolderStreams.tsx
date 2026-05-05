@@ -3,8 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { dismissClusterAction, pollFolderAction } from "@/lib/v1/actions";
+import {
+  dismissClusterAction,
+  getFolderPollProgressAction,
+  pollFolderAction,
+} from "@/lib/v1/actions";
 import { ClusterActions } from "./ClusterActions";
+import { useToast } from "./Toast";
 import { useBackgroundPolling } from "./useBackgroundPolling";
 
 export interface TodayClusterPreview {
@@ -59,11 +64,8 @@ interface Props {
   defaultOutletId: string | null;
 }
 
-const PEEK_COUNT = 2;
-
 export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props) {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [expandedStreams, setExpandedStreams] = useState<Set<string>>(new Set());
 
   // Filter out optimistically-dismissed clusters but keep the lane visible
   // even when it goes empty: every folder is a reading lane the user
@@ -77,16 +79,24 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
     }));
   }, [streams, dismissedIds]);
 
-  // Lane-level view-transition-name keeps the section in place during a
-  // dismiss; cards animate within while the surrounding lane stays anchored.
-  // Compact mode kicks in based on lanes with content, not empty placeholders.
-  const compact = visibleStreams.filter((s) => s.clusters.length > 0).length > 2;
+  const firstWithContent = visibleStreams.find((s) => s.clusters.length > 0)?.id;
+  const fallbackFolderId = visibleStreams[0]?.id;
+  const initialSelected = firstWithContent ?? fallbackFolderId ?? null;
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(initialSelected);
 
-  // Optimistic dismiss + rollback. The card hides immediately so the user
-  // sees feedback while the server action runs; if the action throws (DB
-  // error, network blip, etc.), we put the id back so the cluster doesn't
-  // appear deleted while the server still has it as 'fired'. Wrapping
-  // both directions in startViewTransition keeps the animation symmetric.
+  // If the selected folder disappears (rare; folder removal mid-session),
+  // fall back to whichever lane has content. Single-user prototype, but
+  // keeps the rail honest when the dataset shifts under us.
+  const selected =
+    visibleStreams.find((s) => s.id === selectedFolderId) ??
+    visibleStreams.find((s) => s.clusters.length > 0) ??
+    visibleStreams[0] ??
+    null;
+
+  // Optimistic dismiss + rollback. Same semantics as before; the card
+  // hides immediately, the action runs, and on failure the id goes back
+  // so the cluster doesn't appear deleted while the server still has it
+  // as 'fired'.
   const dismissOptimistically = (id: string) => {
     applyDismissalWithTransition(() =>
       setDismissedIds((prev) => {
@@ -107,84 +117,288 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
     );
   };
 
-  return (
-    <div className="space-y-6">
-      {visibleStreams.map((stream) => {
-        const expanded = expandedStreams.has(stream.id);
-        const isEmpty = stream.clusters.length === 0;
-        const heroPreview = stream.clusters[0];
-        const peekPreviews = expanded
-          ? stream.clusters.slice(1)
-          : stream.clusters.slice(1, 1 + PEEK_COUNT);
-        const hiddenCount = expanded ? 0 : Math.max(0, stream.clusters.length - 1 - PEEK_COUNT);
+  if (!selected) return null;
 
-        return (
-          <section
-            key={stream.id}
-            className="space-y-3"
-            style={{ viewTransitionName: laneTransitionName(stream.id) }}
-          >
-            <FolderStreamHeader stream={stream} compact={compact} />
-            <div className="space-y-3">
-              {isEmpty ? (
-                <EmptyStreamRow folderName={stream.name} />
-              ) : (
-                <ClusterCard
-                  key={heroPreview!.cluster.id}
-                  preview={heroPreview!}
-                  rank={1}
-                  isTop
-                  outlets={outlets}
-                  defaultOutletId={defaultOutletId}
-                  onDismiss={dismissOptimistically}
-                  onDismissFailed={restoreAfterFailure}
-                />
-              )}
-              {peekPreviews.map((preview, idx) => (
-                <PeekRow
-                  key={preview.cluster.id}
-                  preview={preview}
-                  rank={idx + 2}
-                  outlets={outlets}
-                  defaultOutletId={defaultOutletId}
-                  onDismiss={dismissOptimistically}
-                  onDismissFailed={restoreAfterFailure}
-                />
-              ))}
-              {hiddenCount > 0 ? (
-                <button
-                  type="button"
-                  className="fp-btn fp-btn-ghost w-full justify-center"
-                  onClick={() =>
-                    setExpandedStreams((prev) => {
-                      const next = new Set(prev);
-                      next.add(stream.id);
-                      return next;
-                    })
-                  }
+  return (
+    <div
+      className="fp-finder"
+      style={{
+        background: "var(--surface)",
+        borderRadius: "var(--radius-xl)",
+        boxShadow: "var(--shadow-sm)",
+        // overflow:hidden was here originally; it broke position:sticky
+        // on the rail. Border-radius on the rail (left side) and pane
+        // (right side) keeps the corners rounded without clipping.
+        minHeight: 540,
+      }}
+    >
+      <FolderRail
+        streams={visibleStreams}
+        selectedId={selected.id}
+        onSelect={setSelectedFolderId}
+      />
+      <FolderPane
+        stream={selected}
+        outlets={outlets}
+        defaultOutletId={defaultOutletId}
+        onDismiss={dismissOptimistically}
+        onDismissFailed={restoreAfterFailure}
+      />
+    </div>
+  );
+}
+
+function FolderRail({
+  streams,
+  selectedId,
+  onSelect,
+}: {
+  streams: TodayFolderStream[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <nav
+      aria-label="Folders"
+      style={{
+        // Outer wrapper fills the grid column so the cream rail
+        // background extends top to bottom even when the pane is
+        // taller than the folder list.
+        background: "var(--bg-subtle)",
+        borderRight: "1px solid var(--border)",
+        borderTopLeftRadius: "var(--radius-xl)",
+        borderBottomLeftRadius: "var(--radius-xl)",
+      }}
+    >
+      <div
+        style={{
+          // Inner sticky wrapper carries the actual folder buttons.
+          // Sticky needs no overflow:hidden ancestor to function;
+          // top offset clears the pill nav (~70px) + page pt-8 (~32px)
+          // plus a small margin.
+          position: "sticky",
+          top: 112,
+          padding: "16px 8px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          maxHeight: "calc(100vh - 128px)",
+          overflowY: "auto",
+        }}
+      >
+        <div
+          className="fp-eyebrow"
+          style={{
+            padding: "6px 12px 10px",
+            color: "var(--fg-subtle)",
+          }}
+        >
+          Folders
+        </div>
+        {streams.map((stream) => {
+          const active = stream.id === selectedId;
+          const isEmpty = stream.clusters.length === 0;
+          const lead = stream.clusters[0]?.items[0]?.title ?? null;
+          return (
+            <button
+              key={stream.id}
+              type="button"
+              onClick={() => onSelect(stream.id)}
+              aria-pressed={active}
+              className="text-left"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 10,
+                padding: "10px 12px",
+                borderRadius: "var(--radius-md)",
+                color: isEmpty && !active ? "var(--fg-muted)" : "var(--fg)",
+                background: active ? "var(--surface)" : "transparent",
+                boxShadow: active ? "var(--shadow-xs)" : "none",
+                cursor: "pointer",
+                alignItems: "center",
+                fontFamily: "inherit",
+                border: "0",
+              }}
+            >
+              <span style={{ minWidth: 0 }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 >
-                  Show {hiddenCount} more from {stream.name}
-                </button>
-              ) : null}
-              {expanded && stream.clusters.length > 1 + PEEK_COUNT ? (
-                <button
-                  type="button"
-                  className="fp-btn fp-btn-ghost w-full justify-center"
-                  onClick={() =>
-                    setExpandedStreams((prev) => {
-                      const next = new Set(prev);
-                      next.delete(stream.id);
-                      return next;
-                    })
-                  }
+                  {stream.name}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "var(--fg-muted)",
+                    marginTop: 2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 >
-                  Collapse {stream.name}
-                </button>
-              ) : null}
-            </div>
-          </section>
-        );
-      })}
+                  {lead ?? "No clusters yet"}
+                </span>
+              </span>
+              <span
+                className="tabular"
+                style={{
+                  fontSize: 11,
+                  color: active ? "var(--bg)" : "var(--fg-muted)",
+                  background: active ? "var(--indigo)" : "var(--surface)",
+                  border: active ? "1px solid var(--indigo)" : "1px solid var(--border)",
+                  padding: "1px 8px",
+                  borderRadius: 9999,
+                }}
+              >
+                {stream.clusters.length}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function FolderPane({
+  stream,
+  outlets,
+  defaultOutletId,
+  onDismiss,
+  onDismissFailed,
+}: {
+  stream: TodayFolderStream;
+  outlets: OutletOption[];
+  defaultOutletId: string | null;
+  onDismiss: (id: string) => void;
+  onDismissFailed: (id: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: "24px 28px 32px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 18,
+        viewTransitionName: laneTransitionName(stream.id),
+        borderTopRightRadius: "var(--radius-xl)",
+        borderBottomRightRadius: "var(--radius-xl)",
+        background: "var(--surface)",
+      }}
+    >
+      <FolderPaneHeader stream={stream} />
+      {stream.clusters.length === 0 ? (
+        <EmptyStreamRow folderName={stream.name} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <ClusterCard
+            key={stream.clusters[0]!.cluster.id}
+            preview={stream.clusters[0]!}
+            rank={1}
+            isTop
+            outlets={outlets}
+            defaultOutletId={defaultOutletId}
+            onDismiss={onDismiss}
+            onDismissFailed={onDismissFailed}
+          />
+          {stream.clusters.slice(1).map((preview, idx) => (
+            <PeekRow
+              key={preview.cluster.id}
+              preview={preview}
+              rank={idx + 2}
+              outlets={outlets}
+              defaultOutletId={defaultOutletId}
+              onDismiss={onDismiss}
+              onDismissFailed={onDismissFailed}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FolderPaneHeader({ stream }: { stream: TodayFolderStream }) {
+  const [, startTransition] = useTransition();
+  const polling = useBackgroundPolling();
+  const { show } = useToast();
+
+  function refresh() {
+    const fd = new FormData();
+    fd.set("folderId", stream.folderId);
+    polling.start();
+    startTransition(async () => {
+      const { sourceCount, startedAt } = await pollFolderAction(fd);
+      if (sourceCount === 0) {
+        show({
+          title: `${stream.name}: nothing to poll`,
+          durationMs: 3000,
+        });
+        return;
+      }
+      // Determinate toast: progress bar reflects (sources finished / total)
+      // by polling getFolderPollProgressAction every 1s. Watchdog cap at
+      // 120s in case a feed hangs forever; complete=true dismisses early
+      // when the count catches up.
+      show({
+        title: `Refreshing ${stream.name}`,
+        body: `${sourceCount} ${sourceCount === 1 ? "source" : "sources"} polling`,
+        durationMs: 120_000,
+        pollIntervalMs: 1000,
+        pollProgress: async () => {
+          const p = await getFolderPollProgressAction({
+            folderId: stream.folderId,
+            startedAt,
+          });
+          const total = p.total > 0 ? p.total : sourceCount;
+          const progress = total > 0 ? Math.min(1, p.completed / total) : 1;
+          const complete = p.completed >= total;
+          return { progress, complete };
+        },
+        onComplete: () => {
+          show({
+            title: `${stream.name}: refreshed ${sourceCount} ${
+              sourceCount === 1 ? "source" : "sources"
+            }`,
+            durationMs: 3000,
+          });
+        },
+      });
+    });
+  }
+
+  return (
+    <div
+      className="flex items-baseline justify-between gap-4 pb-3"
+      style={{ borderBottom: "1px solid var(--border)" }}
+    >
+      <div className="flex items-baseline gap-3">
+        <h2 className="fp-h1-serif" style={{ fontSize: "1.7rem", lineHeight: 1, fontWeight: 500 }}>
+          {stream.name}
+        </h2>
+        <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+          {stream.clusters.length} {stream.clusters.length === 1 ? "cluster" : "clusters"}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="fp-btn fp-btn-ghost"
+          style={{ fontSize: 12, padding: "0.3rem 0.7rem" }}
+          onClick={refresh}
+        >
+          Refresh
+        </button>
+      </div>
     </div>
   );
 }
@@ -220,88 +434,6 @@ function cardTransitionName(id: string) {
 
 function cssIdent(s: string) {
   return s.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-function FolderStreamHeader({ stream, compact }: { stream: TodayFolderStream; compact: boolean }) {
-  const [, startTransition] = useTransition();
-  const polling = useBackgroundPolling();
-  const [lastCount, setLastCount] = useState<number | null>(null);
-
-  function refresh() {
-    const fd = new FormData();
-    fd.set("folderId", stream.folderId);
-    polling.start();
-    startTransition(async () => {
-      const result = await pollFolderAction(fd);
-      setLastCount(result.sourceCount);
-    });
-  }
-
-  if (compact) {
-    return (
-      <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-semibold tracking-tight">{stream.name}</h2>
-          <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-            {stream.clusters.length} ready
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {polling.active ? (
-            <PollingPill
-              label={
-                lastCount === null
-                  ? "Refreshing"
-                  : lastCount === 0
-                    ? "Nothing to poll"
-                    : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
-              }
-            />
-          ) : null}
-          <button
-            type="button"
-            className="fp-btn fp-btn-ghost"
-            style={{ fontSize: "12px", padding: "0.3rem 0.7rem" }}
-            onClick={refresh}
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between"
-      style={{ background: "var(--bg-subtle)", border: "1px solid var(--border)" }}
-    >
-      <div>
-        <div className="fp-eyebrow">Folder stream</div>
-        <h2 className="mt-1 text-xl font-semibold tracking-tight">{stream.name}</h2>
-        <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          {stream.clusters.length} ready {stream.clusters.length === 1 ? "cluster" : "clusters"}{" "}
-          from this reading lane.
-        </p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {polling.active ? (
-          <PollingPill
-            label={
-              lastCount === null
-                ? "Refreshing"
-                : lastCount === 0
-                  ? "Nothing to poll"
-                  : `Refreshing ${lastCount} ${lastCount === 1 ? "source" : "sources"}`
-            }
-          />
-        ) : null}
-        <button type="button" className="fp-btn fp-btn-ghost" onClick={refresh}>
-          Refresh
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function EmptyStreamRow({ folderName }: { folderName: string }) {

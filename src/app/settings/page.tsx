@@ -13,11 +13,12 @@ import {
   toggleExtensionAction,
 } from "@/lib/v1/settings-actions";
 import { resolveAnthropicAuth, type AuthMode } from "@/lib/anthropic";
-import { ensureSchema } from "@/lib/db";
+import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
 import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
+import { LibraryMaintenance } from "./_components/LibraryMaintenance";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ const extensionErrorMessages: Record<string, string> = Object.fromEntries(
 export default async function SettingsPage({ searchParams }: PageProps) {
   await ensureSchema();
   const sp = await searchParams;
-  const [snapshot, auth] = await Promise.all([
+  const [snapshot, auth, draftCountR] = await Promise.all([
     loadSettingsSnapshot(extensionSettingFields.map((f) => f.key)),
     resolveAnthropicAuth().catch(
       () =>
@@ -50,7 +51,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           ReturnType<typeof resolveAnthropicAuth>
         >,
     ),
+    db.execute({
+      sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ?`,
+      args: [SINGLE_USER_ID],
+    }),
   ]);
+  const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
 
   return (
     <div className="space-y-8" style={{ maxWidth: 720 }}>
@@ -134,6 +140,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       })}
 
       <ExtensionsSection disabledExtensionIds={snapshot.disabledExtensionIds} />
+
+      <LibraryMaintenance draftCount={draftCount} />
 
       <ExportSection />
     </div>

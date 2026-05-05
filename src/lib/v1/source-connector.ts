@@ -11,6 +11,7 @@
 
 import { db, ensureSchema } from "../db";
 import { getBus } from "./event-bus";
+import { extractItemEntities } from "./entity-extractor";
 import { BackoffError } from "./polite-fetch";
 import { traceLogger, newTraceId } from "./trace";
 import type { Item, ItemIngestedPayload, Source, SourceKind } from "./types";
@@ -145,7 +146,15 @@ export async function runConnector<TRaw>(
     enriched.push(...deduped);
   }
 
-  // Insert items, then emit ingest events so the cluster engine sees them.
+  // Insert items, run entity extraction, then emit ingest events so the
+  // cluster engine sees them with populated entities.
+  //
+  // Entity extraction runs synchronously per item between INSERT and EMIT.
+  // The LLM call is cached by content_hash so repeat polls of unchanged
+  // items hit cache and pay nothing; first-time tagging blocks the loop
+  // by ~1-2s per item but gives the cluster engine clean tags to work
+  // with on the same trip. If credentials are unavailable the extractor
+  // falls back to the legacy regex; ingest never blocks on auth.
   let ingestedCount = 0;
   for (const item of enriched) {
     const id = crypto.randomUUID();
@@ -172,6 +181,33 @@ export async function runConnector<TRaw>(
           item.commentCount ?? null,
         ],
       });
+
+      // Tag entities + primary_subject + beat_tag. Errors inside the
+      // extractor are swallowed; this UPDATE is best-effort. Cluster
+      // engine reads `entities ?? regex-fallback`, so a missing tag
+      // set degrades gracefully rather than blocking ingest.
+      try {
+        const extracted = await extractItemEntities({
+          title: item.title,
+          lede: item.lede,
+          contentHash,
+        });
+        await db.execute({
+          sql: `UPDATE items SET entities = ?, primary_subject = ?, beat_tag = ? WHERE id = ?`,
+          args: [
+            JSON.stringify(extracted.entities),
+            extracted.primarySubject,
+            extracted.beatTag,
+            id,
+          ],
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await log.warn("connector.extract", `entity tagging failed: ${msg}`, {
+          itemId: id,
+        });
+      }
+
       ingestedCount++;
       await getBus().emit<ItemIngestedPayload>(
         "item.ingested",

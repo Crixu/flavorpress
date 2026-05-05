@@ -32,6 +32,7 @@ interface Props {
   traceId: string;
   sourceCount: number;
   wpEditLink: string | null;
+  sibling?: React.ReactNode;
 }
 
 export function ResearcherView({
@@ -42,6 +43,7 @@ export function ResearcherView({
   traceId,
   sourceCount,
   wpEditLink,
+  sibling,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -67,6 +69,7 @@ export function ResearcherView({
             Raw material to write from. Pick an angle, lift a verbatim quote, chase a lead. Quotes
             are checked against the source text; leads are claims to verify before you use them.
           </p>
+          {sibling ? <div className="pt-1">{sibling}</div> : null}
         </div>
         <div className="flex items-center gap-2">
           <span

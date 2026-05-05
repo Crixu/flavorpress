@@ -32,6 +32,7 @@ interface Props {
   quotes: ReceiptQuote[];
   traceId: string;
   sourceCount: number;
+  sibling?: React.ReactNode;
 }
 
 const BODY_PREVIEW_WORDS = 150;
@@ -46,6 +47,7 @@ export function ReceiptView({
   quotes,
   traceId,
   sourceCount,
+  sibling,
 }: Props) {
   const plainBody = stripHtml(bodyHtml);
   const wordCount = plainBody.split(/\s+/).filter(Boolean).length;
@@ -74,6 +76,7 @@ export function ReceiptView({
           <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "22ch" }}>
             {headline}
           </h1>
+          {sibling ? <div className="pt-1">{sibling}</div> : null}
         </div>
         <div className="flex items-center gap-2">
           <span

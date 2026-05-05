@@ -33,6 +33,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body>
         <ToastProvider>
+          <div className="fp-nav-scrim" aria-hidden />
           <header className="fp-pill-nav">
             <div className="fp-pill-nav-inner">
               <Link href="/" className="group flex items-center gap-3">

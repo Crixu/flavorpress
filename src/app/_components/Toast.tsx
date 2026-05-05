@@ -24,6 +24,29 @@ interface ToastPayload {
   primary?: ToastAction;
   secondary?: ToastAction;
   durationMs?: number;
+  /**
+   * Render a progress bar at the bottom edge of the toast that fills
+   * over `progressMs` milliseconds via CSS animation. Use this only
+   * when no real progress source is available; for real progress use
+   * `pollProgress` instead. When set without `pollProgress`, durationMs
+   * defaults to progressMs so the toast auto-dismisses with the bar.
+   */
+  progressMs?: number;
+  /**
+   * Real-time progress driver. Called every `pollIntervalMs` (default
+   * 1000) while the toast is mounted; the returned `progress` (0..1)
+   * drives the bar width. When `complete` is true the toast dismisses.
+   * Pair with `durationMs` to set a watchdog cap so a stuck poll does
+   * not leave the toast on screen forever.
+   */
+  pollProgress?: () => Promise<{ progress: number; complete: boolean }>;
+  /**
+   * Called after a polled toast completes and dismisses. Use this for a
+   * replacement toast, so the dismiss path cannot clear the new toast in
+   * the same tick.
+   */
+  onComplete?: () => void;
+  pollIntervalMs?: number;
 }
 
 interface ToastContextValue {
@@ -55,7 +78,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
     setToast(payload);
     setNonce((n) => n + 1);
-    const duration = payload.durationMs ?? DEFAULT_DURATION_MS;
+    // When progressMs is set, auto-dismiss when the bar completes; the
+    // bar IS the timer the user sees. Otherwise fall back to the
+    // explicit durationMs or the default.
+    const duration = payload.durationMs ?? payload.progressMs ?? DEFAULT_DURATION_MS;
     timerRef.current = window.setTimeout(() => {
       setToast(null);
       timerRef.current = null;
@@ -85,12 +111,46 @@ export function useToast(): ToastContextValue {
 }
 
 function ToastSlot({ toast, onDismiss }: { toast: ToastPayload | null; onDismiss: () => void }) {
+  // Drive determinate progress from the toast's pollProgress callback when
+  // present. Hook is unconditional (per Rules of Hooks); bail out inside
+  // the effect when there's nothing to poll.
+  const [polledProgress, setPolledProgress] = useState<number>(0);
+  const { pollProgress, pollIntervalMs, onComplete } = toast ?? {};
+  useEffect(() => {
+    if (!pollProgress) return;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const tick = async () => {
+      try {
+        const r = await pollProgress();
+        if (cancelled) return;
+        setPolledProgress(Math.max(0, Math.min(1, r.progress)));
+        if (r.complete) {
+          onDismiss();
+          onComplete?.();
+          return;
+        }
+      } catch {
+        // Swallow polling errors; the watchdog durationMs will dismiss
+        // the toast eventually so we don't get stuck.
+      }
+      timer = window.setTimeout(tick, pollIntervalMs ?? 1000);
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [pollProgress, pollIntervalMs, onDismiss, onComplete]);
+
   if (!toast) return null;
   return (
     <div
       role="status"
       aria-live="polite"
-      className="fixed right-4 bottom-4 z-50 max-w-[360px] rounded-2xl px-4 py-3"
+      className="fixed right-4 bottom-4 z-50 max-w-[360px] rounded-2xl px-4 py-3 overflow-hidden"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -144,6 +204,39 @@ function ToastSlot({ toast, onDismiss }: { toast: ToastPayload | null; onDismiss
           ✕
         </button>
       </div>
+      {toast.pollProgress || toast.progressMs ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 3,
+            background: "var(--bg-subtle)",
+          }}
+        >
+          {toast.pollProgress ? (
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.round(polledProgress * 100)}%`,
+                background: "var(--indigo)",
+                transition: "width 400ms cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                height: "100%",
+                background: "var(--indigo)",
+                transformOrigin: "left center",
+                animation: `fp-toast-progress ${toast.progressMs}ms linear forwards`,
+              }}
+            />
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

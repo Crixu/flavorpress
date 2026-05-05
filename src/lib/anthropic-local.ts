@@ -1,5 +1,3 @@
-import "server-only";
-
 /**
  * LocalClaudeClient — minimal AnthropicLike shim that rides the user's
  * `claude` Code login via @anthropic-ai/claude-agent-sdk. Used when the

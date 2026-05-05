@@ -27,6 +27,7 @@ import { getBus } from "./event-bus";
 import { traceLogger } from "./trace";
 import type { ClusterThresholdCrossedPayload, ItemIngestedPayload, Item } from "./types";
 import { rowToItem, type ItemRow } from "./source-connector";
+import { askMergeOracle } from "./merge-oracle";
 
 export const CLUSTER_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -45,6 +46,19 @@ const TRIGRAM_THRESHOLD = 0.4; // lowered from 0.6; real news rewrites diverge
 const ENTITY_OVERLAP_THRESHOLD = 2; // of top 5; lowered from 3 for the same
 // reason. The 2+ distinct-domain guard
 // keeps the cluster fire bar honest.
+
+// Layer 3 (LLM merge oracle) ambiguity zone. A pair that misses Layer 2
+// but lands here is suspicious enough to ask Claude. Below this band the
+// pair is too dissimilar to be worth a model call; above it, Layer 2
+// should have already merged them.
+const LAYER3_TRIGRAM_FLOOR = 0.22;
+const LAYER3_TRIGRAM_CEILING = TRIGRAM_THRESHOLD;
+const LAYER3_ENTITY_FLOOR = 1; // at least one shared entity
+// Cap on how many candidates we hand to the oracle per ingest. Keeps
+// cost predictable; if Layer 2 was supposed to have caught it, more than
+// 4 reaches into the oracle would mean the thresholds are wrong, not
+// that we should pay for 30 LLM calls.
+const LAYER3_MAX_CANDIDATES = 4;
 
 export async function handleItemIngested(
   payload: ItemIngestedPayload,
@@ -80,6 +94,12 @@ export async function handleItemIngested(
   for (const w of windowItems) {
     if (w.canonicalUrl === item.canonicalUrl && w.clusterId) {
       await assignToCluster(item.id, w.clusterId);
+      // Union the new item's entities into the cluster's primary_entities
+      // so the tag set stays current. Without this, primary_entities is
+      // frozen at formation and topic search / ranker see stale tags
+      // when later items name things the original lead didn't.
+      const incomingEntities = item.entities ?? extractEntities(item.title, item.lede);
+      await unionClusterEntities(w.clusterId, incomingEntities);
       await log.info("cluster.engine.layer1", "exact-url match", {
         clusterId: w.clusterId,
       });
@@ -101,9 +121,13 @@ export async function handleItemIngested(
 
     let clusterId = w.clusterId;
     if (!clusterId) {
-      // Form a new cluster around w + item.
-      clusterId = await formCluster(w.userId, [w.id], itemEntities);
+      // Form a new cluster around w + item. Seed primary_entities with
+      // the union of both items so the tag set starts complete.
+      const seedEntities = Array.from(new Set([...itemEntities, ...wEntities]));
+      clusterId = await formCluster(w.userId, [w.id], seedEntities);
       await assignToCluster(w.id, clusterId);
+    } else {
+      await unionClusterEntities(clusterId, itemEntities);
     }
     await assignToCluster(item.id, clusterId);
     await log.info("cluster.engine.layer2", "entity+trigram match", {
@@ -115,12 +139,60 @@ export async function handleItemIngested(
     return { clusterId, layer: 2 };
   }
 
-  // Layer 3: sentence-embedding cosine — deferred to embedding-backed call.
-  // For v1 day 1, a missing layer 3 means: item stays unclustered until a
-  // future ingest joins it via layer 2 or 1. The capability registry can
-  // ship a layer-3 capability later that subscribes to `item.ingested` and
-  // re-evaluates orphan items.
-  await log.info("cluster.engine.layer3", "deferred (no embedding pass yet)");
+  // Layer 3: LLM merge oracle. For pairs that missed Layer 2 but land in
+  // the ambiguous near-miss zone (>=1 shared entity, trigram cosine in
+  // [LAYER3_TRIGRAM_FLOOR, LAYER3_TRIGRAM_CEILING)), ask Claude whether
+  // the two items are the same story. Bounded by LAYER3_MAX_CANDIDATES
+  // and cached per content_hash pair so re-runs are free.
+  //
+  // Sentence-embedding clustering is the next-tier upgrade beyond this;
+  // until then, the oracle handles the orphan-merging gap.
+  const candidates: Array<{ item: Item; score: number }> = [];
+  for (const w of windowItems) {
+    const wEntities = w.entities ?? extractEntities(w.title, w.lede);
+    const overlap = countOverlap(itemEntities, wEntities);
+    if (overlap < LAYER3_ENTITY_FLOOR) continue;
+    const cosine = trigramCosine(itemTrigrams, trigrams(w.title));
+    if (cosine < LAYER3_TRIGRAM_FLOOR || cosine >= LAYER3_TRIGRAM_CEILING) continue;
+    candidates.push({ item: w, score: overlap + cosine });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const shortlist = candidates.slice(0, LAYER3_MAX_CANDIDATES);
+
+  for (const c of shortlist) {
+    const w = c.item;
+    const verdict = await askMergeOracle({
+      aHash: item.contentHash,
+      aTitle: item.title,
+      aLede: item.lede,
+      bHash: w.contentHash,
+      bTitle: w.title,
+      bLede: w.lede,
+    });
+    if (!verdict || !verdict.sameStory) continue;
+
+    const wEntities = w.entities ?? extractEntities(w.title, w.lede);
+    let clusterId = w.clusterId;
+    if (!clusterId) {
+      const seedEntities = Array.from(new Set([...itemEntities, ...wEntities]));
+      clusterId = await formCluster(w.userId, [w.id], seedEntities);
+      await assignToCluster(w.id, clusterId);
+    } else {
+      await unionClusterEntities(clusterId, itemEntities);
+    }
+    await assignToCluster(item.id, clusterId);
+    await log.info("cluster.engine.layer3", "oracle merge", {
+      clusterId,
+      reason: verdict.reason,
+      source: verdict.source,
+    });
+    await maybeFireCluster(clusterId, item.userId, opts.traceId);
+    return { clusterId, layer: 3 };
+  }
+
+  await log.info("cluster.engine.layer3", "no merge", {
+    candidates: shortlist.length,
+  });
   return { clusterId: null, layer: null };
 }
 
@@ -134,6 +206,26 @@ async function assignToCluster(itemId: string, clusterId: string): Promise<void>
             SELECT COUNT(DISTINCT source_id) FROM items WHERE cluster_id = ?
           ) WHERE id = ?`,
     args: [clusterId, clusterId],
+  });
+}
+
+async function unionClusterEntities(clusterId: string, incoming: string[]): Promise<void> {
+  if (incoming.length === 0) return;
+  const r = await db.execute({
+    sql: `SELECT primary_entities FROM clusters WHERE id = ?`,
+    args: [clusterId],
+  });
+  if (r.rows.length === 0) return;
+  const existing = r.rows[0]!.primary_entities
+    ? (JSON.parse(String(r.rows[0]!.primary_entities)) as unknown[]).filter(
+        (e): e is string => typeof e === "string",
+      )
+    : [];
+  const merged = Array.from(new Set([...existing, ...incoming]));
+  if (merged.length === existing.length) return;
+  await db.execute({
+    sql: `UPDATE clusters SET primary_entities = ? WHERE id = ?`,
+    args: [JSON.stringify(merged), clusterId],
   });
 }
 

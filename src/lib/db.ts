@@ -122,6 +122,8 @@ export async function ensureSchema(): Promise<void> {
         published_at INTEGER NOT NULL,
         fetched_at INTEGER NOT NULL,
         entities TEXT,
+        primary_subject TEXT,
+        beat_tag TEXT,
         cluster_id TEXT,
         marked_at INTEGER,
         dismissed_at INTEGER,
@@ -142,6 +144,55 @@ export async function ensureSchema(): Promise<void> {
         computed_at INTEGER NOT NULL,
         PRIMARY KEY (canonical_url, content_hash, embedding_model, embedding_version)
       )`,
+
+      // Cache for the LLM-at-ingest entity extractor. Keyed on
+      // content_hash so identical bodies (republished posts, RSS dupes)
+      // reuse the result instead of re-paying for a Sonnet call. Entries
+      // store the full structured output (entities + primary_subject +
+      // beat_tag) plus the model name so we can invalidate selectively
+      // when the prompt or model changes.
+      `CREATE TABLE IF NOT EXISTS entity_cache (
+        content_hash TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_version TEXT NOT NULL,
+        entities TEXT NOT NULL,
+        primary_subject TEXT,
+        beat_tag TEXT,
+        computed_at INTEGER NOT NULL,
+        PRIMARY KEY (content_hash, model, prompt_version)
+      )`,
+
+      // Cache for the Layer 3 LLM merge oracle. Stores yes/no answers to
+      // "are these two items the same story" decisions, keyed on the
+      // ordered pair of content_hashes. hash_a is always lex-smaller
+      // than hash_b at insert time so the lookup is order-insensitive.
+      `CREATE TABLE IF NOT EXISTS merge_oracle_cache (
+        hash_a TEXT NOT NULL,
+        hash_b TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_version TEXT NOT NULL,
+        same_story INTEGER NOT NULL,
+        reason TEXT,
+        computed_at INTEGER NOT NULL,
+        PRIMARY KEY (hash_a, hash_b, model, prompt_version)
+      )`,
+
+      // Long-running maintenance jobs (re-extract entities, rebuild
+      // clusters). The action that starts the job inserts a row with the
+      // total count; the background runner increments `completed` after
+      // each unit of work; the toast in the UI polls this row to drive
+      // its progress bar. `kind` is the job type so we can prevent two
+      // jobs of the same kind running concurrently.
+      `CREATE TABLE IF NOT EXISTS job_progress (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        total INTEGER NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        started_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        error TEXT
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_job_progress_kind ON job_progress(kind, started_at DESC)`,
 
       `CREATE TABLE IF NOT EXISTS clusters (
         id TEXT PRIMARY KEY,
@@ -493,6 +544,18 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("comment_count")) {
         console.info("[migrate] items: adding comment_count column");
         await db.execute("ALTER TABLE items ADD COLUMN comment_count INTEGER");
+      }
+      // LLM-at-ingest extractor outputs. primary_subject is the single
+      // thing the article is mainly about; beat_tag is the topical lane
+      // (e.g., "AI hardware", "iPhone news"). Both nullable so older
+      // items that haven't been re-extracted don't break joins.
+      if (!cols.includes("primary_subject")) {
+        console.info("[migrate] items: adding primary_subject column");
+        await db.execute("ALTER TABLE items ADD COLUMN primary_subject TEXT");
+      }
+      if (!cols.includes("beat_tag")) {
+        console.info("[migrate] items: adding beat_tag column");
+        await db.execute("ALTER TABLE items ADD COLUMN beat_tag TEXT");
       }
     }
   } catch {

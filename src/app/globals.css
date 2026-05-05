@@ -111,6 +111,48 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.fp-finder {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+}
+
+.fp-topic-results-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr) 240px;
+}
+
+.fp-topic-card-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 760px) {
+  .fp-finder,
+  .fp-topic-results-grid,
+  .fp-topic-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fp-finder > nav {
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--border);
+    border-top-right-radius: var(--radius-xl);
+    border-bottom-left-radius: 0 !important;
+  }
+
+  .fp-finder > nav > div {
+    position: static !important;
+    max-height: none !important;
+  }
+
+  .fp-finder > div {
+    border-top-right-radius: 0 !important;
+    border-bottom-left-radius: var(--radius-xl);
+  }
+}
+
 /* Peek row affordance: cheap hover/focus feedback on the headline button
    so the user can tell the row is interactive without making the wrapper
    div itself a fake button. */
@@ -233,6 +275,44 @@ body {
   top: 0;
   z-index: 40;
   padding: 20px 24px 0 24px;
+}
+
+/* Toast progress bar animation: fills from 0 to 100% over the toast's
+ * progressMs duration. Used by the refresh indicator so a folder poll
+ * has a visible non-blocking timer that doesn't strand on folder switch. */
+@keyframes fp-toast-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Frosted scrim behind the pill nav. Fixed at the top of the viewport,
+ * sits below the pill (z-index 39 vs 40) and above the page content, so
+ * anything scrolling past picks up a soft blur and a paper-coloured wash
+ * that fades out before the rest of the page. The mask gradient is what
+ * makes the disappearance gradual: full blur at the top, none past the
+ * pill's bottom edge. pointer-events:none keeps the pill interactive. */
+.fp-nav-scrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 104px;
+  z-index: 39;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bg) 88%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 60%, transparent) 60%,
+    transparent 100%
+  );
 }
 .fp-pill-nav-inner {
   background: var(--surface);
