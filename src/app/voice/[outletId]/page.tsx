@@ -22,10 +22,10 @@ import {
   addVoiceTermAction,
   removeVoiceTermAction,
   buildVoiceProfileAction,
-  seedVoiceFromSamplesAction,
   saveBlogDescriptionAction,
   deriveBlogDescriptionAction,
 } from "@/lib/v1/actions";
+import { VoiceSetupPicker } from "./_components/VoiceSetupPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,6 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
   const signature: string[] = profile
     ? (JSON.parse(String(profile.signature_terms ?? "[]")) as string[])
     : [];
-  const styleYaml = profile ? String(profile.style_sheet_yaml ?? "") : "";
   const description = profile ? String((profile as Record<string, unknown>).description ?? "") : "";
   const archiveSize = profile ? Number(profile.archive_index_size ?? 0) : 0;
   const sentenceMean = profile ? Number(profile.sentence_length_mean ?? 0) : 0;
@@ -150,6 +149,17 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
                 Pulling recent posts and extracting this outlet's voice.
               </PendingMessage>
             </form>
+            <details className="mt-6">
+              <summary
+                className="cursor-pointer text-sm font-medium"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                Or seed voice manually (free-write, interview, or paste)
+              </summary>
+              <div className="mt-4">
+                <VoiceSetupPicker outletId={outletId} hasProfile={false} />
+              </div>
+            </details>
           </section>
         )
       ) : (
@@ -229,35 +239,10 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
             />
           </section>
 
-          {/* Style YAML preview */}
-          {styleYaml ? (
-            <section>
-              <h2 className="mb-2 text-base font-semibold tracking-tight">
-                Style sheet (YAML)
-                <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
-                  what the model sees
-                </span>
-              </h2>
-              <pre
-                className="overflow-x-auto rounded-lg p-4 text-[12px] leading-relaxed"
-                style={{
-                  background: "var(--bg-subtle)",
-                  border: "1px solid var(--border)",
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                }}
-              >
-                {styleYaml}
-              </pre>
-            </section>
-          ) : null}
         </>
       )}
 
-      {/* The thin-archive empty state already inlines the samples form, so
-          only render the standalone seed block when we aren't showing it. */}
-      {!profile && isThinArchive ? null : (
-        <SeedFromSamples outletId={outletId} hasProfile={!!profile} />
-      )}
+      {profile ? <RedoVoiceSetup outletId={outletId} /> : null}
     </div>
   );
 }
@@ -273,34 +258,13 @@ function ThinArchiveEmptyState({ outletId, postCount }: { outletId: string; post
       </div>
       <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
         Voice training needs at least {MIN_VOICE_TRAIN_POSTS} published posts to extract a stable
-        fingerprint; below that the model nudges drafts toward generic prose. Paste sample writing
-        instead; an old post, a draft, an essay. We extract the same fingerprint we would build from
-        your archive. Re-train from the archive later once you have {MIN_VOICE_TRAIN_POSTS}+ posts
-        on the site.
+        fingerprint; below that the model nudges drafts toward generic prose. Pick a path below; we
+        extract the same fingerprint either way. Re-train from the archive later once you have{" "}
+        {MIN_VOICE_TRAIN_POSTS}+ posts on the site.
       </p>
-      <p className="mt-3 text-xs" style={{ color: "var(--fg-muted)" }}>
-        Aim for 500+ words across one or more samples. Separate multiple samples with a line
-        containing only <code className="rounded bg-[color:var(--bg-subtle)] px-1">---</code>.
-      </p>
-      <form action={seedVoiceFromSamplesAction} className="mt-4 space-y-3">
-        <input type="hidden" name="outletId" value={outletId} />
-        <textarea
-          name="samples"
-          required
-          rows={10}
-          placeholder="Paste your prose here. Aim for 500+ words for a stable fingerprint."
-          className="fp-input w-full"
-          style={{
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: "12px",
-            lineHeight: "1.5",
-          }}
-        />
-        <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Seeding voice">
-          Seed voice from samples
-        </SubmitButton>
-        <PendingMessage>Extracting a voice fingerprint from your pasted samples.</PendingMessage>
-      </form>
+      <div className="mt-4">
+        <VoiceSetupPicker outletId={outletId} hasProfile={false} />
+      </div>
     </section>
   );
 }
@@ -363,45 +327,17 @@ function BlogDescriptionEditor({
   );
 }
 
-function SeedFromSamples({ outletId, hasProfile }: { outletId: string; hasProfile: boolean }) {
+function RedoVoiceSetup({ outletId }: { outletId: string }) {
   return (
     <section className="fp-card p-6">
-      <div className="text-base font-semibold">
-        {hasProfile ? "Reseed from sample writing." : "Brand-new site? Seed from sample writing."}
-      </div>
+      <div className="text-base font-semibold">Re-do voice setup.</div>
       <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-        {hasProfile
-          ? "Replace the current fingerprint by pasting fresh prose; an old post, a draft, an essay. Your signature and banned terms are recomputed from the new sample."
-          : "Paste at least 200 words of your prose from anywhere; an old post, a draft, an essay. We extract the same fingerprint we would build from your archive."}{" "}
-        Separate multiple samples with a line containing only{" "}
-        <code className="rounded bg-[color:var(--bg-subtle)] px-1">---</code>.
+        Replace the current fingerprint by writing fresh prose, answering a short interview, or
+        pasting samples. Your signature and banned terms get recomputed.
       </p>
-      <form action={seedVoiceFromSamplesAction} className="mt-4 space-y-3">
-        <input type="hidden" name="outletId" value={outletId} />
-        <textarea
-          name="samples"
-          required
-          rows={10}
-          placeholder={"Paste your prose here. Aim for 500+ words for a stable fingerprint."}
-          className="fp-input w-full"
-          style={{
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: "12px",
-            lineHeight: "1.5",
-          }}
-        />
-        <SubmitButton
-          className="fp-btn fp-btn-primary"
-          pendingLabel={hasProfile ? "Reseeding voice" : "Seeding voice"}
-        >
-          {hasProfile ? "Reseed voice from samples" : "Seed voice from samples"}
-        </SubmitButton>
-        <PendingMessage>
-          {hasProfile
-            ? "Replacing the fingerprint with one extracted from your pasted samples."
-            : "Extracting a voice fingerprint from your pasted samples."}
-        </PendingMessage>
-      </form>
+      <div className="mt-4">
+        <VoiceSetupPicker outletId={outletId} hasProfile={true} />
+      </div>
     </section>
   );
 }
