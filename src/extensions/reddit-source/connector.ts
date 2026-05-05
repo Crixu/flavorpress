@@ -13,12 +13,17 @@
  * We normalize to `https://www.reddit.com/r/<sub>.json` (or the matching
  * sort, if one was chosen) at fetch time. The user's `source.url` row stays
  * untouched so the existing dashboard / link-out behavior is unchanged.
+ *
+ * Engagement thresholds (minimum upvotes, minimum comments) are read from
+ * the extension's settings in `./server.ts` and applied during fetch so
+ * filtered posts never enter the items table.
  */
 
-import { db } from "../../db";
-import { BackoffError, USER_AGENT, registrableDomain, takeToken } from "../polite-fetch";
-import type { RawItem, SourceConnector, ConnectorContext } from "../source-connector";
-import type { Source } from "../types";
+import { db } from "@/lib/db";
+import { BackoffError, USER_AGENT, registrableDomain, takeToken } from "@/lib/v1/polite-fetch";
+import type { RawItem, SourceConnector, ConnectorContext } from "@/lib/v1/source-connector";
+import type { Source } from "@/lib/v1/types";
+import { getRedditEngagementThresholds } from "./server";
 
 interface RedditChildData {
   id?: string;
@@ -52,7 +57,9 @@ export const redditConnector: SourceConnector<RawItem> = {
     const jsonUrl = toJsonListingUrl(ctx.source.url);
     const body = await fetchJson(ctx.source, jsonUrl);
     if (body === null) return [];
-    return parseListing(body);
+    const items = parseListing(body);
+    const thresholds = await getRedditEngagementThresholds();
+    return applyEngagementThresholds(items, thresholds);
   },
 
   parse(raw: RawItem): RawItem | null {
@@ -205,4 +212,33 @@ export function parseListing(listing: RedditListing): RawItem[] {
     });
   }
   return items;
+}
+
+export interface RedditEngagementThresholds {
+  minScore: number | null;
+  minComments: number | null;
+}
+
+/**
+ * Drop items below the configured thresholds. A null threshold means
+ * "no filter on this dimension." Posts missing a numeric value for a
+ * dimension fail the threshold; we cannot trust them to clear it.
+ */
+export function applyEngagementThresholds(
+  items: RawItem[],
+  thresholds: RedditEngagementThresholds,
+): RawItem[] {
+  const { minScore, minComments } = thresholds;
+  if (minScore === null && minComments === null) return items;
+  return items.filter((item) => {
+    if (minScore !== null) {
+      if (typeof item.score !== "number" || item.score < minScore) return false;
+    }
+    if (minComments !== null) {
+      if (typeof item.commentCount !== "number" || item.commentCount < minComments) {
+        return false;
+      }
+    }
+    return true;
+  });
 }

@@ -19,9 +19,10 @@ import "server-only";
  */
 
 import type { SourceExtensionEntry } from "./types";
+import { redditSourceExtension } from "./reddit-source/server";
 import { xSourceExtension } from "./x-source/server";
 
-export const SOURCE_EXTENSIONS: SourceExtensionEntry[] = [xSourceExtension];
+export const SOURCE_EXTENSIONS: SourceExtensionEntry[] = [xSourceExtension, redditSourceExtension];
 
 export function findClaimingSourceExtension(input: string): SourceExtensionEntry | null {
   for (const ext of SOURCE_EXTENSIONS) {
