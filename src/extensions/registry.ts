@@ -15,6 +15,11 @@ import {
   COMMENT_COURTROOM_LABEL,
 } from "./comment-courtroom/types";
 import { FACT_CHECK_ID, FACT_CHECK_LABEL } from "./fact-check/types";
+import {
+  REDDIT_SOURCE_DESCRIPTION,
+  REDDIT_SOURCE_ID,
+  REDDIT_SOURCE_LABEL,
+} from "./reddit-source/types";
 import { RELATED_IMAGES_ID, RELATED_IMAGES_LABEL } from "./related-images/types";
 import { X_SOURCE_DESCRIPTION, X_SOURCE_ID, X_SOURCE_LABEL } from "./x-source/types";
 
@@ -41,6 +46,11 @@ export const EXTENSION_METADATA: ExtensionMetadata[] = [
     id: X_SOURCE_ID,
     label: X_SOURCE_LABEL,
     description: X_SOURCE_DESCRIPTION,
+  },
+  {
+    id: REDDIT_SOURCE_ID,
+    label: REDDIT_SOURCE_LABEL,
+    description: REDDIT_SOURCE_DESCRIPTION,
   },
   {
     id: COMMENT_COURTROOM_ID,

@@ -18,7 +18,7 @@ import { getRegistry } from "./capability-registry";
 import { handleItemIngested, getClusterItems } from "./cluster-engine";
 import { rankCluster } from "./ranker";
 import { fingerprintText, voiceMatchScore } from "./style-sheet";
-import { redditConnector } from "./connectors/reddit";
+import { redditConnector } from "@/extensions/reddit-source/server";
 import { rssConnectorExpanded } from "./connectors/rss";
 import { runConnector } from "./source-connector";
 import { db, ensureSchema } from "../db";
