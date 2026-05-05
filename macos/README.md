@@ -9,6 +9,7 @@ Closing the window keeps the app and its server running; the dock icon reopens i
 ```sh
 npm run mac:build      # produces macos/build/FlavorPress.app
 npm run mac:run        # build + open
+npm run mac:dmg        # build + package macos/build/FlavorPress-v<version>-arm64.dmg for release
 ```
 
 What `build.sh` does:
