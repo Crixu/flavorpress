@@ -2,6 +2,11 @@
 
 This is the **FlavorPress** prototype (capital F, capital P, no space; never "Flavor", "Flavorpress", "Flavor Press", or "Flavortown"). Read these rules before writing code, scoping a feature, suggesting an architecture change, or replying to Lucas about anything in this directory.
 
+## Project Architecture
+
+- This is a FlavorPress project with an extension system. New editor surfaces or opt-in source surfaces should be implemented as reusable extensions unless explicitly stated otherwise.
+- Always check whether a feature belongs as an extension before scaffolding it as core code. For new source kinds, follow the Source plug-in paths section below.
+
 ## The single scope rule
 
 Every feature, code change, ticket, dependency add, UX decision, prompt edit, and architectural choice has to move this loop:
@@ -98,6 +103,20 @@ The default for a new source is the connector path. Switch to the extension path
 - `src/lib/voice.ts`: voice profile builder. Pulls last 20 posts; user can edit the result.
 - `src/lib/seed.ts`: demo data. Extend cautiously; demo state shapes user perception.
 - `src/app/api/inbound/route.ts`: real webhook for forwarding services. Auth via `x-flavorpress-secret`.
+
+## Verification Before Done
+
+- Always run `typecheck`, `lint`, and `test` before declaring a task complete.
+- For PRs, also verify `build` passes. If dependencies aren't installed locally, say so explicitly rather than skipping verification silently.
+
+## Style Rules
+
+- Never use em dashes in code, comments, or copy. Use regular hyphens or rephrase.
+- Don't make product promises in user-facing copy without verifying they match the actual product model (pull-based sync, single-outlet, etc.).
+
+## Code Review Patterns to Pre-empt
+
+When implementing features that touch auth, dedupe, or persisted state, proactively check for: (1) idempotency on repeat actions, (2) race conditions on concurrent updates, (3) NULL/legacy row handling on schema changes, (4) source grounding for any LLM-generated text, (5) word/length caps on generated content.
 
 ## How this rule was set
 
