@@ -22,7 +22,7 @@ import {
   unmarkItemAction,
 } from "../actions";
 
-interface ReaderItem {
+export interface ReaderItem {
   id: string;
   title: string;
   lede: string;
