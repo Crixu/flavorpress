@@ -4,6 +4,7 @@ const config: NextConfig = {
   turbopack: {
     root: import.meta.dirname,
   },
+  allowedDevOrigins: ["192.168.195.100"],
   experimental: {
     serverActions: { bodySizeLimit: "2mb" },
   },
