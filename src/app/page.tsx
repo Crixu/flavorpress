@@ -160,18 +160,9 @@ export default async function TodayPage() {
     return { id: folder.id, folderId: folder.id, name: folder.name, clusters: previews };
   });
 
-  // Stable order: folders with content first, ranked by their top cluster's
-  // composite, then empty lanes in the user's folder sort_order.
-  streams.sort((a, b) => {
-    const aHas = a.clusters.length > 0;
-    const bHas = b.clusters.length > 0;
-    if (aHas !== bHas) return aHas ? -1 : 1;
-    if (!aHas) return 0;
-    const aScore = a.clusters[0]!.cluster.signals?.composite ?? 0;
-    const bScore = b.clusters[0]!.cluster.signals?.composite ?? 0;
-    return bScore - aScore;
-  });
-
+  // Folders render in the user's declared order (sort_order ASC, name ASC),
+  // already applied by the folders query. Lanes stay put on dismiss/refresh
+  // so "Not now" never causes a folder to slide.
   const totalPreviews = distinctClusters.size;
   const streamsWithContent = streams.filter((s) => s.clusters.length > 0).length;
 

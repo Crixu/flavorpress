@@ -80,9 +80,10 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
     }));
   }, [streams, dismissedIds]);
 
-  // Default: first folder in the array is expanded. All others start collapsed.
+  // Default: first folder with content is expanded. If every lane is empty,
+  // fall back to the first folder so the user still sees an empty-lane state.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
-    const first = streams[0]?.id;
+    const first = streams.find((stream) => stream.clusters.length > 0)?.id ?? streams[0]?.id;
     return first ? new Set([first]) : new Set();
   });
 

@@ -119,7 +119,7 @@ describe("TodayFolderStreams", () => {
       makeStream({
         id: "coffee",
         name: "Coffee",
-        clusters: [],
+        clusters: [makeCluster({ id: "c1", sourceCount: 3 })],
       }),
       makeStream({
         id: "tech",
@@ -148,6 +148,34 @@ describe("TodayFolderStreams", () => {
     fireEvent.click(techHeader!);
     expect(screen.queryByText("Cluster c2 headline")).not.toBeInTheDocument();
     expect(techHeader?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("expands the first folder with content when earlier folders are empty", () => {
+    const streams: TodayFolderStream[] = [
+      makeStream({
+        id: "coffee",
+        name: "Coffee",
+        clusters: [],
+      }),
+      makeStream({
+        id: "tech",
+        name: "Tech",
+        clusters: [makeCluster({ id: "c2", sourceCount: 2, folderId: "tech", folderName: "Tech" })],
+      }),
+    ];
+
+    render(<TodayFolderStreams streams={streams} outlets={outlets} defaultOutletId="outlet-1" />);
+
+    const coffeeHeader = screen
+      .getAllByRole("button")
+      .find((b) => b.getAttribute("aria-expanded") !== null && b.textContent?.includes("Coffee"));
+    const techHeader = screen
+      .getAllByRole("button")
+      .find((b) => b.getAttribute("aria-expanded") !== null && b.textContent?.includes("Tech"));
+
+    expect(coffeeHeader?.getAttribute("aria-expanded")).toBe("false");
+    expect(techHeader?.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Cluster c2 headline")).toBeInTheDocument();
   });
 
   it("renders a single-source cluster card with the wpds-card-emphasis class", () => {
