@@ -383,6 +383,34 @@ body {
   color: var(--fg-subtle);
 }
 
+/* Manuscript body. Tailwind's prose plugin sets a default leading and
+ * paragraph margin that runs tight; the editor body wants more breathing
+ * room because draft generation often produces dense quote-heavy paragraphs. */
+.fp-manuscript p {
+  margin-top: 1.15em;
+  margin-bottom: 1.15em;
+}
+.fp-manuscript p:first-child {
+  margin-top: 0;
+}
+.fp-manuscript blockquote {
+  margin-top: 1.4em;
+  margin-bottom: 1.4em;
+  padding-left: 1em;
+  border-left: 3px solid var(--border-strong);
+  color: var(--fg-muted);
+  font-style: italic;
+}
+.fp-manuscript a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.fp-manuscript a:hover {
+  text-decoration-color: var(--fg);
+}
+
 /* Page heading */
 .fp-eyebrow {
   font-size: 11px;
@@ -542,6 +570,48 @@ body {
 ::view-transition-group(*) {
   animation-duration: 260ms;
   animation-timing-function: var(--ease);
+}
+
+/* Reader onboarding: practice deck flourishes */
+@keyframes fp-edge-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateX(0) translateY(-50%);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(var(--fp-edge-shift, 6px)) translateY(-50%);
+  }
+}
+.fp-edge-pulse-right {
+  --fp-edge-shift: 6px;
+  animation: fp-edge-pulse 1.6s var(--ease) infinite;
+}
+.fp-edge-pulse-left {
+  --fp-edge-shift: -6px;
+  animation: fp-edge-pulse 1.6s var(--ease) infinite;
+}
+@keyframes fp-card-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-10px) rotate(-1deg);
+  }
+  40% {
+    transform: translateX(8px) rotate(0.8deg);
+  }
+  60% {
+    transform: translateX(-6px) rotate(-0.5deg);
+  }
+  80% {
+    transform: translateX(4px) rotate(0.3deg);
+  }
+}
+.fp-card-shake {
+  animation: fp-card-shake 360ms var(--ease);
 }
 
 /* Reduced motion */

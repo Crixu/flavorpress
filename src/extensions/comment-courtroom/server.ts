@@ -93,7 +93,7 @@ export async function runCommentCourtroom(
   const headline = String(draftRow.rows[0]!.headline ?? "").trim();
   const bodyText = stripHtml(String(draftRow.rows[0]!.body ?? ""));
   if (bodyText.length < MIN_BODY_CHARS) {
-    throw new Error("Draft is too short to run the courtroom; write a few more sentences first.");
+    throw new Error("Draft is too short to simulate comments; write a few more sentences first.");
   }
 
   const handle = await createAnthropicClient();

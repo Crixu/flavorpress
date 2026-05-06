@@ -11,10 +11,11 @@ interface Props {
 
 export function HeadlineSelector({ draftId, headline, alternates }: Props) {
   const total = alternates.length + 1;
+  const headlineLabel = total > 1 ? `Headline · 1 of ${total}` : "Headline";
 
   return (
     <div>
-      <div className="fp-eyebrow">Draft · 1 of {total}</div>
+      <div className="fp-eyebrow">{headlineLabel}</div>
       <h1
         className="mt-3 fp-h1-serif"
         style={{

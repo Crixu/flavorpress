@@ -97,11 +97,11 @@ export function ExtensionsArticle({
     <article
       ref={articleRef}
       data-fp-article-draft-id={draftId}
-      className="prose prose-stone mt-7 max-w-none"
+      className="fp-manuscript prose prose-stone mt-7 max-w-none"
       style={{
         fontFamily: "var(--font-serif), Georgia, serif",
         fontSize: 17.5,
-        lineHeight: 1.72,
+        lineHeight: 1.78,
         color: "var(--fg)",
       }}
       dangerouslySetInnerHTML={{ __html: bodyHtml }}

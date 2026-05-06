@@ -225,6 +225,8 @@ export async function ensureSchema(): Promise<void> {
         voice_match_score REAL NOT NULL,
         angle_archive TEXT,
         angle_gap TEXT,
+        angle_hint TEXT,
+        custom_angle TEXT,
         fact_check_result_id TEXT,
         originality_result_id TEXT,
         trace_id TEXT NOT NULL,
@@ -514,6 +516,14 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("wp_content_hash")) {
         console.info("[migrate] drafts: adding wp_content_hash column");
         await db.execute("ALTER TABLE drafts ADD COLUMN wp_content_hash TEXT");
+      }
+      if (!cols.includes("angle_hint")) {
+        console.info("[migrate] drafts: adding angle_hint column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN angle_hint TEXT");
+      }
+      if (!cols.includes("custom_angle")) {
+        console.info("[migrate] drafts: adding custom_angle column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN custom_angle TEXT");
       }
     }
   } catch {

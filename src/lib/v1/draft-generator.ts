@@ -35,6 +35,10 @@ export interface DraftInput {
   outletId: string;
   /** Optional angle hint to bias generation toward archive-habit or cluster-gap. */
   angleHint?: "archive" | "gap";
+  /** Optional one-line user-supplied angle. When present, overrides the
+   *  archive/gap default guidance: the model is told to use this exact
+   *  framing. Trimmed, capped at 200 chars by the action layer. */
+  customAngle?: string;
   /** Target body length in words. Defaults to 600. Clamped to [100, 1500]. */
   wordCount?: number;
   /** Override capability version pin for in-flight workflows. */
@@ -73,6 +77,8 @@ export interface DraftOutput {
   voiceMatchScore: number;
   angleArchive: string | null;
   angleGap: string | null;
+  angleHint: "archive" | "gap" | "custom";
+  customAngle: string | null;
   traceId: string;
   regenerated: boolean;
 }
@@ -96,12 +102,14 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   const exemplars = await loadExemplars(input.userId, items[0]!.lede);
 
   const angleHint = input.angleHint ?? "archive";
+  const customAngle = (input.customAngle ?? "").trim().slice(0, 200) || null;
   const wordCount = normalizeWordCount(input.wordCount);
   const promptBundle = buildPrompt({
     styleSheet,
     exemplars,
     items,
     angleHint,
+    customAngle,
     wordCount,
     bannedTerms: voiceProfile?.bannedTerms ?? [],
     description: voiceProfile?.description ?? null,
@@ -160,6 +168,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       exemplars,
       items,
       angleHint,
+      customAngle,
       wordCount,
       bannedTerms: voiceProfile?.bannedTerms ?? [],
       description: voiceProfile?.description ?? null,
@@ -193,8 +202,8 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     sql: `INSERT INTO drafts
           (id, cluster_id, user_id, outlet_id, capability_version_pin,
            headline, headline_alternates, body, quotes, voice_match_score,
-           angle_archive, angle_gap, trace_id, created_at, state)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pre-rendered')`,
+           angle_archive, angle_gap, angle_hint, custom_angle, trace_id, created_at, state)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pre-rendered')`,
     args: [
       draftId,
       input.clusterId,
@@ -208,6 +217,8 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       finalScore,
       result.angleArchive,
       result.angleGap,
+      customAngle ? "custom" : angleHint,
+      customAngle,
       traceId,
       Date.now(),
     ],
@@ -246,6 +257,8 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     voiceMatchScore: finalScore,
     angleArchive: result.angleArchive,
     angleGap: result.angleGap,
+    angleHint: customAngle ? "custom" : angleHint,
+    customAngle,
     traceId,
     regenerated,
   };
@@ -394,6 +407,7 @@ function buildPrompt(opts: {
   exemplars: string[];
   items: Item[];
   angleHint: "archive" | "gap";
+  customAngle: string | null;
   wordCount: number;
   bannedTerms: string[];
   description: string | null;
@@ -428,8 +442,9 @@ LEDE: ${item.lede}
       ? `BANNED TERMS (do not use these in the draft): ${opts.bannedTerms.join(", ")}`
       : "BANNED TERMS: ostensibly, delve, moreover, crucial, leverage (verb), utilize";
 
-  const angleGuidance =
-    opts.angleHint === "gap"
+  const angleGuidance = opts.customAngle
+    ? `ANGLE (writer's own framing, follow exactly): ${opts.customAngle}`
+    : opts.angleHint === "gap"
       ? `ANGLE: choose the cluster-gap angle. Lead with what one outlier source says that the rest miss; close with how this contradicts or extends the consensus.`
       : `ANGLE: lean into the writer's archive habit. Pick the framing they have used before on similar topics; close with the through-line to past posts.`;
 

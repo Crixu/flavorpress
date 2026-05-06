@@ -43,13 +43,16 @@ export function SiblingArtifactLink({
   const otherMode: Mode = currentMode === "drafter" ? "researcher" : "drafter";
   const otherLabel = otherMode === "drafter" ? "drafted version" : "research notes";
 
+  // One visual treatment regardless of state: a small text-with-arrow that
+  // either jumps to an existing sibling or commissions one. Earlier this
+  // rendered as a link in one direction and a styled button in the other,
+  // which made the same affordance look like two different things.
+  const linkClass = "text-xs underline-offset-2 hover:underline";
+  const linkStyle = { color: "var(--fg-muted)" } as const;
+
   if (siblingDraftId) {
     return (
-      <Link
-        href={`/editor/${siblingDraftId}`}
-        className="text-xs underline-offset-2 hover:underline"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <Link href={`/editor/${siblingDraftId}`} className={linkClass} style={linkStyle}>
         Also has {otherLabel} →
       </Link>
     );
@@ -77,21 +80,17 @@ export function SiblingArtifactLink({
       type="button"
       onClick={generate}
       disabled={pending}
-      className="fp-btn"
+      className={linkClass}
       style={{
+        ...linkStyle,
         background: "transparent",
-        border: "1px solid var(--border-strong)",
-        color: "var(--fg-muted)",
-        fontSize: 12,
-        padding: "0.3rem 0.7rem",
+        border: "none",
+        padding: 0,
+        cursor: pending ? "wait" : "pointer",
       }}
       aria-disabled={pending}
     >
-      {pending
-        ? `Generating ${otherLabel}`
-        : otherMode === "drafter"
-          ? "Generate drafted version"
-          : "Generate research notes"}
+      {pending ? `Generating ${otherLabel}…` : `Generate ${otherLabel} →`}
     </button>
   );
 }
