@@ -1,0 +1,54 @@
+.wpds-sidesheet-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 100;
+}
+.wpds-sidesheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface-canvas);
+  border-left: 1px solid var(--border-default);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 101;
+}
+.wpds-sidesheet-h {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wpds-sidesheet-title {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+  flex: 1;
+  letter-spacing: -0.005em;
+}
+.wpds-sidesheet-x {
+  background: transparent;
+  border: 0;
+  font-size: 22px;
+  color: var(--ink-tertiary);
+  cursor: pointer;
+  padding: 0 6px;
+}
+.wpds-sidesheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+.wpds-sidesheet-foot {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  gap: 8px;
+  background: var(--surface-subtle);
+  align-items: center;
+}
