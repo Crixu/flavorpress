@@ -732,3 +732,91 @@ p[data-fp-para-pending="1"] {
     top: -1.4rem;
   }
 }
+
+/* WPDS app shell — top bar + tabs (replaces fp-pill-nav) */
+.fp-topbar {
+  height: 44px;
+  background: var(--ink-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.fp-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #fff;
+}
+
+.fp-brand-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.fp-version-badge {
+  background: #2c3338;
+  color: #bbb;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fp-topbar-right {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.fp-topbar-link {
+  color: #bbb;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color var(--duration) var(--ease);
+}
+
+.fp-topbar-link:hover {
+  color: #fff;
+}
+
+.fp-tabs {
+  height: 48px;
+  background: var(--surface-canvas);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 28px;
+  font-size: 13px;
+}
+
+.fp-tab {
+  padding: 14px 0;
+  color: var(--ink-tertiary);
+  text-decoration: none;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+
+.fp-tab.on {
+  color: var(--ink-primary);
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 var(--ink-primary);
+}
+
+.fp-tab:hover {
+  color: var(--ink-primary);
+}
+
+.fp-main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+}

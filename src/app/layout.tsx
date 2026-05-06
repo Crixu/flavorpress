@@ -33,41 +33,22 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body>
         <ToastProvider>
-          <div className="fp-nav-scrim" aria-hidden />
-          <header className="fp-pill-nav">
-            <div className="fp-pill-nav-inner">
-              <Link href="/" className="group flex items-center gap-3">
-                <BrandMark />
-                <span className="text-[15px] font-semibold tracking-tight">FlavorPress</span>
-                <span
-                  className="ml-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]"
-                  style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
-                >
-                  v1 alpha
-                </span>
+          <header className="fp-topbar">
+            <Link href="/" className="fp-brand">
+              <span className="fp-brand-name">FlavorPress</span>
+              <span className="fp-version-badge">v1 alpha</span>
+            </Link>
+            <div className="fp-topbar-right">
+              <Link href="/settings" className="fp-topbar-link">
+                Settings
               </Link>
-              <ShellNav />
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/settings"
-                  aria-label="Settings"
-                  title="Settings"
-                  className="rounded-full px-3 py-1 text-[12px] font-medium transition hover:scale-105"
-                  style={{
-                    background: "var(--bg-subtle)",
-                    color: "var(--fg-muted)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  Settings
-                </Link>
-                <Suspense fallback={null}>
-                  <HelpIndexButton />
-                </Suspense>
-              </div>
+              <Suspense fallback={null}>
+                <HelpIndexButton />
+              </Suspense>
             </div>
           </header>
-          <main className="mx-auto max-w-[1280px] px-6 pt-8 pb-16">{children}</main>
+          <ShellNav />
+          <main className="fp-main">{children}</main>
           <Suspense fallback={null}>
             <HelpFlyout />
           </Suspense>
@@ -76,20 +57,5 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         </ToastProvider>
       </body>
     </html>
-  );
-}
-
-function BrandMark() {
-  return (
-    <span
-      aria-hidden
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full transition group-hover:scale-105"
-      style={{
-        background: "linear-gradient(135deg, #FF8B60 0%, #F5B26A 100%)",
-        boxShadow: "var(--shadow-xs)",
-      }}
-    >
-      <span style={{ color: "#FFFFFF", fontSize: 13, fontWeight: 700 }}>F</span>
-    </span>
   );
 }
