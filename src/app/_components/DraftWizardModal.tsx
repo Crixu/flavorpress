@@ -154,6 +154,7 @@ export function DraftWizardModal({
       try {
         await generateDraftAction(fd);
       } catch (err: unknown) {
+        if (isNextRedirect(err)) throw err;
         const message = err instanceof Error ? err.message : "Could not start draft.";
         setError(message);
       }
@@ -498,5 +499,15 @@ function Skeleton() {
       style={{ borderRadius: "var(--radius-md)" }}
       aria-hidden
     />
+  );
+}
+
+function isNextRedirect(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    typeof err.digest === "string" &&
+    err.digest.startsWith("NEXT_REDIRECT;")
   );
 }

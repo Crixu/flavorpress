@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getOutletPostCount, MIN_VOICE_TRAIN_POSTS, type WPCredentials } from "../wordpress";
+import {
+  getOutletPostCount,
+  htmlToBlocks,
+  MIN_VOICE_TRAIN_POSTS,
+  type WPCredentials,
+} from "../wordpress";
 
 const creds: WPCredentials = {
   baseUrl: "https://example.com/",
@@ -46,5 +51,23 @@ describe("getOutletPostCount", () => {
 
     await expect(getOutletPostCount(creds)).resolves.toBe(MIN_VOICE_TRAIN_POSTS);
     expect(requestedUrl).toContain(`per_page=${MIN_VOICE_TRAIN_POSTS}`);
+  });
+});
+
+describe("htmlToBlocks", () => {
+  it("preserves headings and lists as Gutenberg blocks", () => {
+    const html = [
+      "<p>Intro</p>",
+      "<h2>Five signals</h2>",
+      "<ol><li>One</li><li>Two</li></ol>",
+      "<h3>What now?</h3>",
+      "<ul><li>Check source</li></ul>",
+    ].join("");
+
+    expect(htmlToBlocks(html)).toContain("<!-- wp:heading -->\n<h2>Five signals</h2>");
+    expect(htmlToBlocks(html)).toContain('<!-- wp:list {"ordered":true} -->');
+    expect(htmlToBlocks(html)).toContain("<ol><li>One</li><li>Two</li></ol>");
+    expect(htmlToBlocks(html)).toContain('<!-- wp:heading {"level":3} -->');
+    expect(htmlToBlocks(html)).toContain("<!-- wp:list -->\n<ul><li>Check source</li></ul>");
   });
 });
