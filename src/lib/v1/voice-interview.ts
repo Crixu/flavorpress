@@ -1,14 +1,7 @@
 import { MODEL, createAnthropicClient, extractText } from "@/lib/anthropic";
 
-export const VOICE_INTERVIEW_QUESTIONS: readonly string[] = [
-  "What's the blog about, in one sentence you'd actually say out loud?",
-  "Who reads it; describe one specific person you picture.",
-  "What's the boring truth in your space that you wish more people said?",
-  "A recent post you were proud of, in three sentences.",
-  "A post that flopped or felt wrong, in three sentences.",
-  "Three words you reach for; three words you'd never use.",
-  'If a stranger asked "why should I read you instead of $bigger_blogger," what\'s the honest answer?',
-];
+import { VOICE_INTERVIEW_QUESTIONS } from "./voice-interview-questions";
+export { VOICE_INTERVIEW_QUESTIONS } from "./voice-interview-questions";
 
 const SYNTHESIS_SYSTEM = `You are extracting a writer's voice from a short interview. The user has answered up to seven questions about the blog they write. Produce a 600-800 word essay in the user's voice, drawing only on material in the answers. The essay should read like a representative blog post by this person: opinions, sentence rhythm, vocabulary, tics. Do not invent facts. Do not add meta-commentary, headers, lists, or hedges. No em-dashes; use semicolons or new sentences. Lead with the fact, not setup. If an answer is blank, skip it; do not pad. Output only the essay prose.`;
 

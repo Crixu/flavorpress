@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { PendingMessage, SubmitButton } from "@/app/_components/SubmitButton";
 import { seedVoiceFromInterviewAction } from "@/lib/v1/actions";
-import { VOICE_INTERVIEW_QUESTIONS } from "@/lib/v1/voice-interview";
+import { VOICE_INTERVIEW_QUESTIONS } from "@/lib/v1/voice-interview-questions";
 
 export function InterviewPanel({
   outletId,
