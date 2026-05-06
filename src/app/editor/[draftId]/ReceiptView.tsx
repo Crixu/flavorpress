@@ -30,9 +30,7 @@ interface Props {
   wpEditLink: string;
   sources: ReceiptSource[];
   quotes: ReceiptQuote[];
-  traceId: string;
   sourceCount: number;
-  sibling?: React.ReactNode;
 }
 
 const BODY_PREVIEW_WORDS = 150;
@@ -45,9 +43,7 @@ export function ReceiptView({
   wpEditLink,
   sources,
   quotes,
-  traceId,
   sourceCount,
-  sibling,
 }: Props) {
   const plainBody = stripHtml(bodyHtml);
   const wordCount = plainBody.split(/\s+/).filter(Boolean).length;
@@ -76,20 +72,8 @@ export function ReceiptView({
           <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "22ch" }}>
             {headline}
           </h1>
-          {sibling ? <div className="pt-1">{sibling}</div> : null}
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className="hidden rounded-full px-3 py-1.5 font-mono text-[10px] sm:inline"
-            style={{
-              background: "var(--surface)",
-              color: "var(--fg-subtle)",
-              border: "1px solid var(--border)",
-            }}
-            title="Trace ID"
-          >
-            {traceId.slice(0, 8) || "—"}
-          </span>
           <a href={wpEditLink} target="_blank" rel="noreferrer" className="fp-btn fp-btn-primary">
             Open in WordPress ↗
           </a>

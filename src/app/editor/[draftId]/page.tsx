@@ -56,7 +56,6 @@ export default async function EditorPage({ params }: PageProps) {
 
   const mode = String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
   const sourceCount = clusterR.rows[0] ? Number(clusterR.rows[0].source_count) : 0;
-  const traceId = String(d.trace_id ?? "");
 
   // Lookup the sibling artifact (same cluster + outlet, opposite mode).
   // Used by SiblingArtifactLink to either link to it or commission it.
@@ -109,9 +108,7 @@ export default async function EditorPage({ params }: PageProps) {
           published_at: Number(row.published_at),
         }))}
         quotes={receiptQuotes.map((q) => ({ text: q.text, citation: q.citation }))}
-        traceId={traceId}
         sourceCount={sourceCount}
-        sibling={sibling}
       />
     );
   }
