@@ -73,6 +73,7 @@ export default async function EditorPage({ params }: PageProps) {
       outletId={String(d.outlet_id ?? "")}
       currentMode={mode}
       siblingDraftId={siblingDraftId}
+      currentDraftId={String(d.id)}
     />
   );
 
@@ -133,6 +134,7 @@ export default async function EditorPage({ params }: PageProps) {
     return (
       <ResearcherView
         draftId={String(d.id)}
+        clusterId={String(d.cluster_id)}
         topic={notes.topic || String(d.headline ?? "Research notes")}
         notes={notes}
         sources={itemsR.rows.map((row) => ({
@@ -144,7 +146,6 @@ export default async function EditorPage({ params }: PageProps) {
           source_url: String(row.canonical_url ?? row.source_url),
           published_at: Number(row.published_at),
         }))}
-        traceId={traceId}
         sourceCount={sourceCount}
         wpEditLink={d.wp_edit_link ? String(d.wp_edit_link) : null}
         sibling={sibling}

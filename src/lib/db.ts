@@ -261,6 +261,8 @@ export async function ensureSchema(): Promise<void> {
         signature_terms TEXT,
         anchored_post_ids TEXT,
         description TEXT,
+        seed_method TEXT,
+        seed_transcript TEXT,
         last_rebuilt_at INTEGER NOT NULL
       )`,
       `CREATE INDEX IF NOT EXISTS idx_voice_user ON voice_profiles(user_id)`,
@@ -475,6 +477,14 @@ async function migrateLegacyTables(): Promise<void> {
         if (!cols.includes("description")) {
           console.info("[migrate] voice_profiles: adding description column");
           await db.execute("ALTER TABLE voice_profiles ADD COLUMN description TEXT");
+        }
+        if (!cols.includes("seed_method")) {
+          console.info("[migrate] voice_profiles: adding seed_method column");
+          await db.execute("ALTER TABLE voice_profiles ADD COLUMN seed_method TEXT");
+        }
+        if (!cols.includes("seed_transcript")) {
+          console.info("[migrate] voice_profiles: adding seed_transcript column");
+          await db.execute("ALTER TABLE voice_profiles ADD COLUMN seed_transcript TEXT");
         }
       }
     }

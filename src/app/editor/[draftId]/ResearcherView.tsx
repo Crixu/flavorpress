@@ -15,6 +15,14 @@ import type {
   ResearchQuote,
 } from "@/lib/v1/researcher-generator";
 import { SendResearchToWpForm } from "./SendResearchToWpForm";
+import {
+  AddSourceForm,
+  FlagMismatchButton,
+  MoreQuotesButton,
+  RemixIdeasButton,
+} from "./ResearchActions";
+
+const QUOTE_CAP = 12;
 
 interface SourceRow {
   id: string;
@@ -26,10 +34,10 @@ interface SourceRow {
 
 interface Props {
   draftId: string;
+  clusterId: string;
   topic: string;
   notes: ResearchNotes;
   sources: SourceRow[];
-  traceId: string;
   sourceCount: number;
   wpEditLink: string | null;
   sibling?: React.ReactNode;
@@ -37,67 +45,38 @@ interface Props {
 
 export function ResearcherView({
   draftId,
+  clusterId,
   topic,
   notes,
   sources,
-  traceId,
   sourceCount,
   wpEditLink,
   sibling,
 }: Props) {
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="fp-eyebrow">
-            <Link href="/" className="hover:underline" style={{ color: "var(--fg-subtle)" }}>
-              ← Today
-            </Link>
-            <span className="mx-2" style={{ color: "var(--border-strong)" }}>
-              ·
-            </span>
-            <span>Research notes</span>
-            <span className="mx-2" style={{ color: "var(--border-strong)" }}>
-              ·
-            </span>
-            <span>{sourceCount} sources</span>
-          </div>
-          <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "26ch" }}>
-            {topic}
-          </h1>
-          <p className="text-sm" style={{ color: "var(--fg-muted)", maxWidth: "60ch" }}>
-            Raw material to write from. Pick an angle, lift a verbatim quote, chase a lead. Quotes
-            are checked against the source text; leads are claims to verify before you use them.
-          </p>
-          {sibling ? <div className="pt-1">{sibling}</div> : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className="hidden rounded-full px-3 py-1.5 font-mono text-[10px] sm:inline"
-            style={{
-              background: "var(--surface)",
-              color: "var(--fg-subtle)",
-              border: "1px solid var(--border)",
-            }}
-            title="Trace ID"
-          >
-            {traceId.slice(0, 8) || "—"}
+      <header className="space-y-1.5">
+        <div className="fp-eyebrow">
+          <Link href="/" className="hover:underline" style={{ color: "var(--fg-subtle)" }}>
+            ← Today
+          </Link>
+          <span className="mx-2" style={{ color: "var(--border-strong)" }}>
+            ·
           </span>
-          {wpEditLink ? (
-            <a href={wpEditLink} target="_blank" rel="noreferrer" className="fp-btn fp-btn-primary">
-              Open in WordPress →
-            </a>
-          ) : (
-            <SendResearchToWpForm
-              draftId={draftId}
-              topic={topic}
-              className="fp-btn fp-btn-primary"
-              pendingLabel="Saving draft"
-            >
-              Draft in WordPress →
-            </SendResearchToWpForm>
-          )}
+          <span>Research notes</span>
+          <span className="mx-2" style={{ color: "var(--border-strong)" }}>
+            ·
+          </span>
+          <span>{sourceCount} sources</span>
         </div>
+        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "26ch" }}>
+          {topic}
+        </h1>
+        <p className="text-sm" style={{ color: "var(--fg-muted)", maxWidth: "60ch" }}>
+          Raw material to write from. Pick an angle, lift a verbatim quote, chase a lead. Quotes are
+          checked against the source text; leads are claims to verify before you use them.
+        </p>
+        {sibling ? <div className="pt-1">{sibling}</div> : null}
       </header>
 
       <div
@@ -124,6 +103,27 @@ export function ResearcherView({
               {notes.ideas.length} ideas · {notes.quotes.length} quotes · {notes.facts.length} leads
             </span>
           </span>
+          <div className="ml-auto flex items-center gap-2">
+            {wpEditLink ? (
+              <a
+                href={wpEditLink}
+                target="_blank"
+                rel="noreferrer"
+                className="fp-btn fp-btn-primary"
+              >
+                Open in WordPress →
+              </a>
+            ) : (
+              <SendResearchToWpForm
+                draftId={draftId}
+                topic={topic}
+                className="fp-btn fp-btn-primary"
+                pendingLabel="Saving draft"
+              >
+                Draft in WordPress →
+              </SendResearchToWpForm>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-12">
@@ -193,12 +193,20 @@ export function ResearcherView({
                 </li>
               ))}
             </ul>
+            <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="fp-eyebrow mb-2">Add a source</div>
+              <p className="mb-2 text-[11px] leading-snug" style={{ color: "var(--fg-subtle)" }}>
+                Paste an article URL to widen the input. Then hit Remix or More quotes to pull it
+                into the notes.
+              </p>
+              <AddSourceForm draftId={draftId} clusterId={clusterId} />
+            </div>
           </aside>
 
           <div className="col-span-12 px-10 pt-10 pb-16 lg:col-span-9">
             <div className="mx-auto max-w-[760px] space-y-10">
-              <IdeasSection ideas={notes.ideas} />
-              <QuotesSection quotes={notes.quotes} />
+              <IdeasSection ideas={notes.ideas} draftId={draftId} />
+              <QuotesSection quotes={notes.quotes} draftId={draftId} />
               <FactsSection facts={notes.facts} />
 
               <div
@@ -208,17 +216,20 @@ export function ResearcherView({
                 <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
                   Done with these notes? Delete to keep your drafts list tidy.
                 </p>
-                <form action={deleteDraftAction}>
-                  <input type="hidden" name="draftId" value={draftId} />
-                  <input type="hidden" name="redirectTo" value="/drafts" />
-                  <button
-                    type="submit"
-                    className="text-[12px] hover:underline"
-                    style={{ color: "var(--fg-subtle)" }}
-                  >
-                    Delete notes
-                  </button>
-                </form>
+                <div className="flex items-center gap-4">
+                  <FlagMismatchButton draftId={draftId} clusterId={clusterId} />
+                  <form action={deleteDraftAction}>
+                    <input type="hidden" name="draftId" value={draftId} />
+                    <input type="hidden" name="redirectTo" value="/drafts" />
+                    <button
+                      type="submit"
+                      className="text-[12px] hover:underline"
+                      style={{ color: "var(--fg-subtle)" }}
+                    >
+                      Delete notes
+                    </button>
+                  </form>
+                </div>
               </div>
             </div>
           </div>
@@ -233,11 +244,13 @@ function SectionHeader({
   count,
   description,
   dotColor,
+  action,
 }: {
   label: string;
   count: number;
   description: string;
   dotColor: string;
+  action?: React.ReactNode;
 }) {
   return (
     <header
@@ -258,14 +271,17 @@ function SectionHeader({
           {count}
         </span>
       </div>
-      <p className="text-[12px]" style={{ color: "var(--fg-subtle)", maxWidth: "40ch" }}>
-        {description}
-      </p>
+      <div className="flex items-baseline gap-3">
+        <p className="text-[12px]" style={{ color: "var(--fg-subtle)", maxWidth: "32ch" }}>
+          {description}
+        </p>
+        {action ? <div>{action}</div> : null}
+      </div>
     </header>
   );
 }
 
-function IdeasSection({ ideas }: { ideas: ResearchIdea[] }) {
+function IdeasSection({ ideas, draftId }: { ideas: ResearchIdea[]; draftId: string }) {
   if (ideas.length === 0) return null;
   return (
     <section className="space-y-4">
@@ -274,6 +290,7 @@ function IdeasSection({ ideas }: { ideas: ResearchIdea[] }) {
         count={ideas.length}
         description="Angles you might take. Pick one to write from."
         dotColor="#9C4A22"
+        action={<RemixIdeasButton draftId={draftId} />}
       />
       <ul className="space-y-3">
         {ideas.map((idea, i) => (
@@ -296,7 +313,7 @@ function IdeasSection({ ideas }: { ideas: ResearchIdea[] }) {
   );
 }
 
-function QuotesSection({ quotes }: { quotes: ResearchQuote[] }) {
+function QuotesSection({ quotes, draftId }: { quotes: ResearchQuote[]; draftId: string }) {
   if (quotes.length === 0) return null;
   return (
     <section className="space-y-4">
@@ -305,6 +322,7 @@ function QuotesSection({ quotes }: { quotes: ResearchQuote[] }) {
         count={quotes.length}
         description="Verbatim from the source. Lift with attribution."
         dotColor="var(--fg-muted)"
+        action={<MoreQuotesButton draftId={draftId} atCap={quotes.length >= QUOTE_CAP} />}
       />
       <ul className="space-y-3">
         {quotes.map((q, i) => (
