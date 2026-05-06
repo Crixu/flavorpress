@@ -139,15 +139,18 @@ export function ClusterActions({
     ) : null;
 
   if (draft) {
+    const isPublished = mode === "drafter" && Boolean(draft.wpEditLink);
     const openLabel = mode === "researcher" ? "Open notes →" : "Open draft →";
-    const openCopy =
-      mode === "researcher" ? (
-        "ideas, quotes, leads"
-      ) : (
+    let openCopy: React.ReactNode = null;
+    if (mode === "researcher") {
+      openCopy = "ideas, quotes, leads";
+    } else if (!isPublished) {
+      openCopy = (
         <>
           voice-match <span className="font-medium tabular">{draft.voiceMatch}</span>
         </>
       );
+    }
     return (
       <div className="flex flex-col gap-3">
         {outletPicker}
@@ -158,30 +161,29 @@ export function ClusterActions({
           </Link>
           <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
             {openCopy}
-            {mode === "drafter" && draft.wpEditLink ? (
-              <>
-                {" · "}
-                <a
-                  href={draft.wpEditLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:underline"
-                >
-                  in WordPress ↗
-                </a>
-              </>
+            {isPublished ? (
+              <a
+                href={draft.wpEditLink!}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:underline"
+              >
+                in WordPress ↗
+              </a>
             ) : null}
           </span>
-          <button
-            type="button"
-            onClick={() => trigger(true)}
-            disabled={customInvalid || !selectedOutletId}
-            className="fp-btn fp-btn-ghost"
-          >
-            Regenerate
-          </button>
+          {isPublished ? null : (
+            <button
+              type="button"
+              onClick={() => trigger(true)}
+              disabled={customInvalid || !selectedOutletId}
+              className="fp-btn fp-btn-ghost"
+            >
+              Regenerate
+            </button>
+          )}
         </div>
-        {lengthPicker}
+        {isPublished ? null : lengthPicker}
       </div>
     );
   }
