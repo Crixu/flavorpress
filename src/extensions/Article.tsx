@@ -20,6 +20,7 @@ interface Props {
   bodyHtml: string;
   initialAnnotationsByExt: InitialAnnotationsByExtension;
   enabledExtensionIds: string[];
+  quotes?: { text: string; citation: string }[];
 }
 
 export function ExtensionsArticle({
@@ -27,6 +28,7 @@ export function ExtensionsArticle({
   bodyHtml,
   initialAnnotationsByExt,
   enabledExtensionIds,
+  quotes = [],
 }: Props) {
   const articleRef = useRef<HTMLElement | null>(null);
 
@@ -52,10 +54,11 @@ export function ExtensionsArticle({
           a.annotation.spanText.length - b.annotation.spanText.length ||
           a.annotation.index - b.annotation.index,
       );
+    quotes.forEach((q, i) => wrapQuote(root, i, q.text, q.citation));
     for (const { extensionId, annotation } of byShortestSpan) {
       wrapFirstOccurrence(root, extensionId, annotation);
     }
-  }, [all, bodyHtml, enabledExtensionIds]);
+  }, [all, bodyHtml, enabledExtensionIds, quotes]);
 
   // Toggle active-ring styling on the matching mark.
   useEffect(() => {
@@ -110,7 +113,7 @@ export function ExtensionsArticle({
 }
 
 function unwrapMarks(root: HTMLElement): void {
-  const marks = root.querySelectorAll("mark[data-fp-ext]");
+  const marks = root.querySelectorAll("mark[data-fp-ext], mark[data-fp-quote]");
   marks.forEach((m) => {
     const parent = m.parentNode;
     if (!parent) return;
@@ -184,6 +187,53 @@ function findTextPosition(
     }
   }
   return null;
+}
+
+function wrapQuote(root: HTMLElement, index: number, text: string, citation: string): boolean {
+  const trimmed = text.trim().replace(/^["“”']+|["“”']+$/g, "");
+  const needle = trimmed.toLowerCase();
+  if (!needle) return false;
+  const stream = collectQuoteTextStream(root);
+  const i = stream.text.toLowerCase().indexOf(needle);
+  if (i === -1) return false;
+  const start = findTextPosition(stream.nodes, i);
+  const end = findTextPosition(stream.nodes, i + trimmed.length);
+  if (!start || !end) return false;
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  if (range.collapsed) return false;
+  const mark = document.createElement("mark");
+  mark.dataset.fpQuote = String(index + 1);
+  if (citation) mark.title = `Lifted from ${citation}`;
+  mark.appendChild(range.extractContents());
+  range.insertNode(mark);
+  return true;
+}
+
+function collectQuoteTextStream(root: HTMLElement): {
+  text: string;
+  nodes: TextNodeSpan[];
+} {
+  const nodes: TextNodeSpan[] = [];
+  let text = "";
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode() as Text | null;
+  while (node) {
+    if (
+      node.parentElement?.closest("mark[data-fp-quote], script, style, noscript, .fp-para-rewrite")
+    ) {
+      node = walker.nextNode() as Text | null;
+      continue;
+    }
+    const value = node.nodeValue ?? "";
+    if (value.length > 0) {
+      nodes.push({ node, start: text.length, end: text.length + value.length });
+      text += value;
+    }
+    node = walker.nextNode() as Text | null;
+  }
+  return { text, nodes };
 }
 
 function createAnnotationMark(extensionId: string, annotation: ExtensionAnnotation): HTMLElement {
