@@ -1,0 +1,36 @@
+.wpds-field {
+  margin-bottom: 16px;
+}
+.wpds-field-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.wpds-field input,
+.wpds-field textarea,
+.wpds-field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 13px;
+  background: var(--surface-canvas);
+  color: var(--ink-primary);
+}
+.wpds-field input:focus,
+.wpds-field textarea:focus,
+.wpds-field select:focus {
+  outline: none;
+  border-color: var(--ink-primary);
+  box-shadow: 0 0 0 1px var(--ink-primary);
+}
+.wpds-field-hint {
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  margin-top: 4px;
+}
