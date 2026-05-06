@@ -175,7 +175,7 @@ function FolderSection({
       {expanded && (
         <div
           style={{
-            padding: "0 24px 24px",
+            padding: "20px 24px 24px",
             display: "flex",
             flexDirection: "column",
             gap: 12,

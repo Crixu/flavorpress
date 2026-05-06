@@ -52,3 +52,13 @@
   background: var(--surface-subtle);
   align-items: center;
 }
+
+/* Push the main page over while the sheet is open so cards and rows do
+ * not draw under the sheet panel. The sheet floats; the body shrinks. */
+body[data-wpds-sheet-open="true"] .fp-main {
+  padding-right: calc(32px + var(--wpds-sheet-width, 480px));
+  transition: padding-right var(--duration) var(--ease);
+}
+body .fp-main {
+  transition: padding-right var(--duration) var(--ease);
+}

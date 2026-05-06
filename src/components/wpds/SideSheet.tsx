@@ -19,8 +19,16 @@ export function SideSheet({ open, onClose, title, width = 480, children, footer 
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    // Mark the body so the page can shift content left and avoid drawing
+    // under the sheet. Width is exposed as a CSS var for responsive padding.
+    document.body.setAttribute("data-wpds-sheet-open", "true");
+    document.body.style.setProperty("--wpds-sheet-width", `${width}px`);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.removeAttribute("data-wpds-sheet-open");
+      document.body.style.removeProperty("--wpds-sheet-width");
+    };
+  }, [open, onClose, width]);
 
   if (!open) return null;
   return (
