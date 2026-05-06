@@ -437,15 +437,15 @@ function parseModifiedGmt(raw: string | undefined): number | undefined {
 }
 
 /**
- * Wrap the draft body's `<p>` and `<blockquote>` tags in Gutenberg block
- * comments so the post renders as proper blocks in the WP editor instead of
- * a single Classic block with raw HTML inside.
+ * Wrap supported draft body tags in Gutenberg block comments so the post
+ * renders as proper blocks in the WP editor instead of a single Classic block
+ * with raw HTML inside.
  */
 export function htmlToBlocks(html: string): string {
   const trimmed = html.trim();
   if (!trimmed) return "";
 
-  const tagRegex = /<(p|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  const tagRegex = /<(p|blockquote|h2|h3|ol|ul)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   const parts: string[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -468,11 +468,19 @@ export function htmlToBlocks(html: string): string {
     const inner = m[2].trim();
     if (tag === "p") {
       parts.push(`<!-- wp:paragraph -->\n<p>${inner}</p>\n<!-- /wp:paragraph -->`);
-    } else {
+    } else if (tag === "blockquote") {
       const quoteInner = /<p[\s>]/i.test(inner) ? inner : `<p>${inner}</p>`;
       parts.push(
         `<!-- wp:quote -->\n<blockquote class="wp-block-quote">${quoteInner}</blockquote>\n<!-- /wp:quote -->`,
       );
+    } else if (tag === "h2" || tag === "h3") {
+      const level = tag === "h3" ? 3 : 2;
+      const attrs = level === 3 ? ' {"level":3}' : "";
+      parts.push(`<!-- wp:heading${attrs} -->\n<${tag}>${inner}</${tag}>\n<!-- /wp:heading -->`);
+    } else {
+      const ordered = tag === "ol";
+      const attrs = ordered ? ' {"ordered":true}' : "";
+      parts.push(`<!-- wp:list${attrs} -->\n<${tag}>${inner}</${tag}>\n<!-- /wp:list -->`);
     }
     lastIndex = m.index + m[0].length;
   }

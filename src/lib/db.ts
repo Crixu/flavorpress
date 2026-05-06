@@ -227,6 +227,7 @@ export async function ensureSchema(): Promise<void> {
         angle_gap TEXT,
         angle_hint TEXT,
         custom_angle TEXT,
+        format TEXT,
         fact_check_result_id TEXT,
         originality_result_id TEXT,
         trace_id TEXT NOT NULL,
@@ -534,6 +535,10 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("custom_angle")) {
         console.info("[migrate] drafts: adding custom_angle column");
         await db.execute("ALTER TABLE drafts ADD COLUMN custom_angle TEXT");
+      }
+      if (!cols.includes("format")) {
+        console.info("[migrate] drafts: adding format column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN format TEXT");
       }
     }
   } catch {

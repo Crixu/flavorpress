@@ -26,6 +26,15 @@ const STREAMING_VOICE_FLOOR = 0.5; // mid-flight Burrows' Delta cutoff
 const MIN_TOKENS_FOR_VOICE_CHECK = 200;
 const CAPABILITY_VERSION = "1.0.0";
 
+export {
+  DRAFT_FORMATS,
+  DEFAULT_DRAFT_FORMAT,
+  isDraftFormat,
+  type DraftFormat,
+} from "./draft-format";
+
+import { DEFAULT_DRAFT_FORMAT, isDraftFormat, type DraftFormat } from "./draft-format";
+
 export interface DraftInput {
   clusterId: string;
   userId: string;
@@ -39,8 +48,10 @@ export interface DraftInput {
    *  archive/gap default guidance: the model is told to use this exact
    *  framing. Trimmed, capped at 200 chars by the action layer. */
   customAngle?: string;
-  /** Target body length in words. Defaults to 600. Clamped to [100, 1500]. */
+  /** Target body length in words. Defaults to 1000. Clamped to [100, 2000]. */
   wordCount?: number;
+  /** Format archetype for the draft body. Defaults to "narrative". */
+  format?: DraftFormat;
   /** Override capability version pin for in-flight workflows. */
   capabilityVersion?: string;
   /** Curated research the writer pre-selected in researcher mode. When the
@@ -59,9 +70,9 @@ export interface ResearchSeed {
   quotes: { text: string; speaker: string | null; sourceUrl: string }[];
 }
 
-const DEFAULT_WORD_COUNT = 600;
+const DEFAULT_WORD_COUNT = 1000;
 const MIN_WORD_COUNT = 100;
-const MAX_WORD_COUNT = 1500;
+const MAX_WORD_COUNT = 2000;
 
 function normalizeWordCount(value: number | undefined): number {
   if (!value || !Number.isFinite(value)) return DEFAULT_WORD_COUNT;
@@ -79,6 +90,7 @@ export interface DraftOutput {
   angleGap: string | null;
   angleHint: "archive" | "gap" | "custom";
   customAngle: string | null;
+  format: DraftFormat;
   traceId: string;
   regenerated: boolean;
 }
@@ -104,6 +116,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   const angleHint = input.angleHint ?? "archive";
   const customAngle = (input.customAngle ?? "").trim().slice(0, 200) || null;
   const wordCount = normalizeWordCount(input.wordCount);
+  const format: DraftFormat = isDraftFormat(input.format) ? input.format : DEFAULT_DRAFT_FORMAT;
   const promptBundle = buildPrompt({
     styleSheet,
     exemplars,
@@ -111,6 +124,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     angleHint,
     customAngle,
     wordCount,
+    format,
     bannedTerms: voiceProfile?.bannedTerms ?? [],
     description: voiceProfile?.description ?? null,
     researchSeed: input.researchSeed,
@@ -170,6 +184,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       angleHint,
       customAngle,
       wordCount,
+      format,
       bannedTerms: voiceProfile?.bannedTerms ?? [],
       description: voiceProfile?.description ?? null,
       tighten: true,
@@ -202,8 +217,9 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     sql: `INSERT INTO drafts
           (id, cluster_id, user_id, outlet_id, capability_version_pin,
            headline, headline_alternates, body, quotes, voice_match_score,
-           angle_archive, angle_gap, angle_hint, custom_angle, trace_id, created_at, state)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pre-rendered')`,
+           angle_archive, angle_gap, angle_hint, custom_angle, format,
+           trace_id, created_at, state)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pre-rendered')`,
     args: [
       draftId,
       input.clusterId,
@@ -219,6 +235,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       result.angleGap,
       customAngle ? "custom" : angleHint,
       customAngle,
+      format,
       traceId,
       Date.now(),
     ],
@@ -259,6 +276,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     angleGap: result.angleGap,
     angleHint: customAngle ? "custom" : angleHint,
     customAngle,
+    format,
     traceId,
     regenerated,
   };
@@ -402,6 +420,34 @@ interface PromptBundle {
   userMessage: string;
 }
 
+const FORMAT_GUIDANCE: Record<DraftFormat, { label: string; shape: string }> = {
+  narrative: {
+    label: "narrative essay",
+    shape:
+      "Flowing paragraphs (no headers, no list markup). Lead with a scene or vivid claim; build through linked paragraphs; close on a single-sentence kicker.",
+  },
+  listicle: {
+    label: "listicle",
+    shape:
+      "Numbered or named list with 3-7 items. Each item is its own <h2> or <h3> followed by 1-3 paragraphs. Open with a one-paragraph framing lede before the first item; no closing summary.",
+  },
+  "news-brief": {
+    label: "news brief",
+    shape:
+      "Lead-with-the-news inverted-pyramid. First sentence states what changed and why it matters. 2-4 short paragraphs after that, ordered by descending importance. No headers; no scene-setting; no closing reflection.",
+  },
+  opinion: {
+    label: "opinion / hot take",
+    shape:
+      "Argumentative. Open with a sharp claim in the first sentence; back it with 2-4 paragraphs of evidence drawn from the sources; close with a forward-looking line. First-person allowed where the voice profile permits it.",
+  },
+  qa: {
+    label: "Q&A explainer",
+    shape:
+      "Question-and-answer structure. 3-5 <h3> question headings, each followed by 1-2 paragraph answers. Open with a one-paragraph framing lede before the first question.",
+  },
+};
+
 function buildPrompt(opts: {
   styleSheet: string;
   exemplars: string[];
@@ -409,6 +455,7 @@ function buildPrompt(opts: {
   angleHint: "archive" | "gap";
   customAngle: string | null;
   wordCount: number;
+  format: DraftFormat;
   bannedTerms: string[];
   description: string | null;
   tighten?: boolean;
@@ -452,6 +499,7 @@ LEDE: ${item.lede}
     ? "VOICE WARNING: previous attempt drifted from the writer's voice. Be tighter. Match the exemplars sentence-for-sentence on rhythm and word choice."
     : "";
 
+  const formatGuidance = FORMAT_GUIDANCE[opts.format];
   const researchSeed = opts.researchSeed;
   const researchBlock =
     researchSeed && (researchSeed.ideas.length > 0 || researchSeed.quotes.length > 0)
@@ -482,7 +530,10 @@ ${bannedBlock}
 
 ${angleGuidance}
 
-${researchBlock ? `${researchBlock}\n\n` : ""}CONSTRAINTS:
+${researchBlock ? `${researchBlock}\n\n` : ""}FORMAT (${formatGuidance.label}):
+${formatGuidance.shape}
+
+CONSTRAINTS:
 - ${opts.wordCount} words target, plus or minus ${wordTolerance}.
 - Em-dashes are forbidden. Use semicolons or new sentences.
 - Quote rules: max 25 words per quote, max 3 quotes per draft, max 1 quote per source. Cite each quote inline with source URL.
@@ -494,7 +545,7 @@ OUTPUT JSON ENVELOPE (exact shape):
 {
   "headline": "string",
   "headline_alternates": ["string", "string", "string"],
-  "body": "string (${opts.wordCount}±${wordTolerance} words, HTML <p> and <blockquote> tags allowed; inline <a href=\\\"...\\\"> links to source URLs are required)",
+  "body": "string (${opts.wordCount}±${wordTolerance} words, HTML body matching the FORMAT shape above; <p>, <h2>, <h3>, <ol>, <ul>, <li>, and <blockquote> tags allowed; inline <a href=\\\"...\\\"> links to source URLs are required)",
   "quotes": [{"source_index": 1, "text": "verbatim quote up to 25 words", "citation": "source URL"}],
   "angle_archive": "one-line description of the archive habit hook",
   "angle_gap": "one-line description of the cluster-derived gap"
