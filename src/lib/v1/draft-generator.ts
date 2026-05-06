@@ -43,6 +43,20 @@ export interface DraftInput {
   wordCount?: number;
   /** Override capability version pin for in-flight workflows. */
   capabilityVersion?: string;
+  /** Curated research the writer pre-selected in researcher mode. When the
+   *  drafter is commissioned from a research view, these are the angles and
+   *  verbatim quotes the writer signaled they want to use. Threaded into
+   *  the prompt as a "PRE-CURATED RESEARCH" block; the model is told to
+   *  prefer these over scanning the raw sources fresh. Without this, the
+   *  drafter and researcher see the cluster independently and the writer's
+   *  curated picks get dropped on the floor. */
+  researchSeed?: ResearchSeed;
+}
+
+export interface ResearchSeed {
+  topic: string;
+  ideas: { angle: string; rationale: string }[];
+  quotes: { text: string; speaker: string | null; sourceUrl: string }[];
 }
 
 const DEFAULT_WORD_COUNT = 600;
@@ -99,6 +113,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     wordCount,
     bannedTerms: voiceProfile?.bannedTerms ?? [],
     description: voiceProfile?.description ?? null,
+    researchSeed: input.researchSeed,
   });
 
   await log.info("draft.generate", "prompt assembled", {
@@ -158,6 +173,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       bannedTerms: voiceProfile?.bannedTerms ?? [],
       description: voiceProfile?.description ?? null,
       tighten: true,
+      researchSeed: input.researchSeed,
     });
     result = await streamOnce({
       systemPrompt: tighterPrompt.systemPrompt,
@@ -396,6 +412,7 @@ function buildPrompt(opts: {
   bannedTerms: string[];
   description: string | null;
   tighten?: boolean;
+  researchSeed?: ResearchSeed;
 }): PromptBundle {
   const wordTolerance = Math.max(30, Math.round(opts.wordCount * 0.1));
   const descriptionBlock = opts.description
@@ -435,6 +452,25 @@ LEDE: ${item.lede}
     ? "VOICE WARNING: previous attempt drifted from the writer's voice. Be tighter. Match the exemplars sentence-for-sentence on rhythm and word choice."
     : "";
 
+  const researchSeed = opts.researchSeed;
+  const researchBlock =
+    researchSeed && (researchSeed.ideas.length > 0 || researchSeed.quotes.length > 0)
+      ? `PRE-CURATED RESEARCH (the writer already vetted these in researcher mode; prefer these over scanning the sources fresh):
+${
+  researchSeed.ideas.length > 0
+    ? `Angles the writer is considering:\n${researchSeed.ideas
+        .map((i) => `- ${i.angle}${i.rationale ? ` (${i.rationale})` : ""}`)
+        .join("\n")}`
+    : ""
+}${
+          researchSeed.quotes.length > 0
+            ? `\nVerbatim quotes the writer pre-selected (USE THESE; do not invent new ones unless these are insufficient):\n${researchSeed.quotes
+                .map((q) => `- "${q.text}"${q.speaker ? `; ${q.speaker}` : ""} (${q.sourceUrl})`)
+                .join("\n")}`
+            : ""
+        }`
+      : "";
+
   const systemPrompt = `You are a draft writer that mimics the user's voice exactly.
 
 ${descriptionBlock ? `${descriptionBlock}\n\n` : ""}VOICE STYLE SHEET:
@@ -446,7 +482,7 @@ ${bannedBlock}
 
 ${angleGuidance}
 
-CONSTRAINTS:
+${researchBlock ? `${researchBlock}\n\n` : ""}CONSTRAINTS:
 - ${opts.wordCount} words target, plus or minus ${wordTolerance}.
 - Em-dashes are forbidden. Use semicolons or new sentences.
 - Quote rules: max 25 words per quote, max 3 quotes per draft, max 1 quote per source. Cite each quote inline with source URL.
