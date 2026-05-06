@@ -14,6 +14,7 @@
  */
 
 import { createAnthropicClient, extractText, MODEL } from "../anthropic";
+import { safeFetch, safeReadText } from "./safe-fetch";
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -82,25 +83,20 @@ Return the label.`,
 }
 
 async function tryFetchXml(url: string): Promise<string | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
+    const res = await safeFetch(url, {
+      timeoutMs: FETCH_TIMEOUT_MS,
       headers: {
         "User-Agent": "FlavorPressBot/1.0 (+https://flavorpress.io/bot; contact:lucas)",
         Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
       },
-      redirect: "follow",
     });
     if (!res.ok) return null;
-    let body = await res.text();
+    let body = await safeReadText(res);
     if (body.charCodeAt(0) === 0xfeff) body = body.slice(1);
     return body;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

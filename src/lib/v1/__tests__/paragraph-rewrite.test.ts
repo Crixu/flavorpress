@@ -78,6 +78,16 @@ describe("replaceParagraphInBody", () => {
     expect(next).toBe('<p>New <a href="https://x.test">cite</a>.</p>');
   });
 
+  it("sanitizes replacement HTML before composing the body", () => {
+    const html = "<p>Old.</p>";
+    const next = replaceParagraphInBody(
+      html,
+      0,
+      '<p onclick="alert(1)">New <a href="javascript:alert(1)">bad</a><script>alert(1)</script><a href="https://x.test" class="x">cite</a>.</p>',
+    );
+    expect(next).toBe('<p>New bad<a href="https://x.test">cite</a>.</p>');
+  });
+
   it("replaces by visible top-level paragraph index when quotes contain paragraphs", () => {
     const html = "<p>Intro.</p><blockquote><p>Quoted aside.</p></blockquote><p>Body.</p>";
     const next = replaceParagraphInBody(html, 1, "Body rewritten.");

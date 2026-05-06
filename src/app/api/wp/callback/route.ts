@@ -3,6 +3,7 @@
  *
  * WP redirects here after the user clicks Approve. Query params:
  *   - outlet_id: which outlet we staged before redirecting
+ *   - state: one-time server-side authorize nonce
  *   - site_url: WP confirms the base URL
  *   - user_login: WP username
  *   - password: freshly-issued application password
@@ -15,23 +16,63 @@ import { NextResponse } from "next/server";
 import { ensureSchema, ensureSingleUser } from "@/lib/db";
 import { probeWordPress } from "@/lib/wordpress";
 import { commitOutletCredentials, recordOutletError, getOutlet } from "@/lib/v1/outlets";
+import { getOrigin } from "@/lib/v1/origin";
+import { consumeWPAuthorizeState, normalizeSiteUrl, siteOrigin } from "@/lib/v1/wp-authorize-state";
 
 export async function GET(req: Request) {
   await ensureSchema();
   await ensureSingleUser();
+  const appOrigin = await getOrigin();
   const url = new URL(req.url);
   const outletId = url.searchParams.get("outlet_id") ?? "";
+  const state = url.searchParams.get("state") ?? "";
   const baseUrl = url.searchParams.get("site_url") ?? "";
   const username = url.searchParams.get("user_login") ?? "";
   const password = url.searchParams.get("password") ?? "";
 
-  if (!outletId || !baseUrl || !username || !password) {
-    return NextResponse.redirect(new URL("/voice?wp_error=missing_params", url.origin));
+  if (!state) {
+    return redirectTo("/voice?wp_error=missing_state", appOrigin);
   }
 
-  const outlet = await getOutlet(outletId);
+  const consumed = await consumeWPAuthorizeState(state);
+  if (!consumed.ok) {
+    const code = consumed.reason === "expired" ? "expired_state" : "invalid_state";
+    return redirectTo(`/voice?wp_error=${code}`, appOrigin);
+  }
+
+  const authorizeState = consumed.value;
+  if (!outletId || outletId !== authorizeState.outletId) {
+    return redirectTo("/voice?wp_error=state_mismatch", appOrigin);
+  }
+
+  if (!baseUrl || !username || !password) {
+    await recordOutletError(outletId, "WordPress authorize callback returned missing fields.");
+    return redirectTo("/voice?wp_error=missing_params", appOrigin);
+  }
+
+  const outlet = await getOutlet(authorizeState.outletId);
   if (!outlet) {
-    return NextResponse.redirect(new URL("/voice?wp_error=unknown_outlet", url.origin));
+    return redirectTo("/voice?wp_error=unknown_outlet", appOrigin);
+  }
+
+  const returnedSiteUrl = normalizeSiteUrl(baseUrl);
+  const stagedSiteUrl = normalizeSiteUrl(outlet.baseUrl);
+  const returnedOrigin = returnedSiteUrl ? siteOrigin(returnedSiteUrl) : null;
+  const stagedOrigin = stagedSiteUrl ? siteOrigin(stagedSiteUrl) : null;
+  if (
+    !returnedSiteUrl ||
+    !stagedSiteUrl ||
+    returnedSiteUrl !== authorizeState.expectedSiteUrl ||
+    stagedSiteUrl !== authorizeState.expectedSiteUrl ||
+    !returnedOrigin ||
+    returnedOrigin !== authorizeState.expectedSiteOrigin ||
+    stagedOrigin !== authorizeState.expectedSiteOrigin
+  ) {
+    await recordOutletError(
+      authorizeState.outletId,
+      "WordPress authorize callback returned a different site URL.",
+    );
+    return redirectTo("/voice?wp_error=site_mismatch", appOrigin);
   }
 
   const probe = await probeWordPress({
@@ -41,11 +82,13 @@ export async function GET(req: Request) {
   });
   if (!probe.ok) {
     await recordOutletError(outletId, probe.message, probe.kind);
-    return NextResponse.redirect(
-      new URL(`/voice?wp_error=${encodeURIComponent(probe.message)}`, url.origin),
-    );
+    return redirectTo(`/voice?wp_error=${encodeURIComponent(probe.message)}`, appOrigin);
   }
 
   await commitOutletCredentials(outletId, username, password, probe.kind);
-  return NextResponse.redirect(new URL(`/voice?wp_connected=${outletId}`, url.origin));
+  return redirectTo(`/voice?wp_connected=${outletId}`, appOrigin);
+}
+
+function redirectTo(path: string, origin: string): NextResponse {
+  return NextResponse.redirect(new URL(path, origin));
 }

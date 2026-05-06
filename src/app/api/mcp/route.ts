@@ -7,7 +7,7 @@
  * capabilities as MCP tools.
  *
  * v1 ships read-only registry inspection plus a tools/list and tools/call
- * surface. Auth: per-user API key in Authorization: Bearer <key>.
+ * surface. Tool calls require Authorization: Bearer <FLAVORPRESS_MCP_TOKEN>.
  *
  * Architect note: protocol version is advertised in handshake (the MCP
  * spec already supports this). When MCP 2.0 ships, we expose a sibling
@@ -16,12 +16,17 @@
  */
 
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
+import { SINGLE_USER_ID } from "@/lib/db";
 import { getRegistry } from "@/lib/v1/capability-registry";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 
 const PROTOCOL_VERSION = "2024-11-05"; // MCP draft we target in v1
 
-export async function GET() {
+export async function GET(req: Request) {
+  const authError = rejectInvalidPresentedAuth(req, null);
+  if (authError) return authError;
+
   // Discovery: handshake + tool list.
   await ensureRegisteredCapabilities();
   const registry = getRegistry();
@@ -53,7 +58,6 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  await ensureRegisteredCapabilities();
   const body = (await req.json().catch(() => null)) as {
     method?: string;
     params?: Record<string, unknown>;
@@ -66,6 +70,8 @@ export async function POST(req: Request) {
 
   const id = body.id ?? null;
   const method = body.method;
+  const authError = rejectInvalidPresentedAuth(req, id);
+  if (authError) return authError;
 
   if (method === "initialize") {
     return jsonRpcResult(id, {
@@ -76,6 +82,7 @@ export async function POST(req: Request) {
   }
 
   if (method === "tools/list") {
+    await ensureRegisteredCapabilities();
     const registry = getRegistry();
     const tools = registry.list().map((m) => ({
       name: m.id,
@@ -91,17 +98,14 @@ export async function POST(req: Request) {
     const args = params.arguments as Record<string, unknown> | undefined;
     if (!name) return jsonRpcError(id, -32602, "missing tool name");
 
-    // Auth: per-user bearer for now; v1 launches with internal use only.
-    const auth = req.headers.get("authorization") ?? "";
-    const userId = parseUserFromAuth(auth);
-    if (!userId) {
-      return jsonRpcError(id, -32001, "unauthorized");
-    }
+    const auth = authenticateMcpRequest(req);
+    if (!auth.ok) return jsonRpcError(id, -32001, auth.message);
 
+    await ensureRegisteredCapabilities();
     const registry = getRegistry();
     try {
       const result = await registry.invoke(name, undefined, args ?? {}, {
-        userId,
+        userId: auth.userId,
         requestId: crypto.randomUUID(),
         traceId: crypto.randomUUID(),
       });
@@ -133,11 +137,41 @@ function jsonRpcError(id: unknown, code: number, message: string) {
   });
 }
 
-function parseUserFromAuth(header: string): string | null {
-  // v1 stub: any Bearer token is accepted as user 'demo' for local dev.
-  // v1.1: hashed API keys table with per-key scopes + audit log.
-  if (!header.toLowerCase().startsWith("bearer ")) return null;
-  const token = header.slice(7).trim();
-  if (!token) return null;
-  return process.env.NODE_ENV === "production" ? null : "demo";
+function rejectInvalidPresentedAuth(req: Request, id: unknown) {
+  const header = req.headers.get("authorization");
+  if (!header) return null;
+
+  const auth = authenticateMcpRequest(req);
+  if (auth.ok) return null;
+
+  return jsonRpcError(id, -32001, auth.message);
+}
+
+function authenticateMcpRequest(
+  req: Request,
+): { ok: true; userId: string } | { ok: false; message: string } {
+  const configuredToken = (process.env.FLAVORPRESS_MCP_TOKEN ?? "").trim();
+  if (!configuredToken) {
+    return { ok: false, message: "MCP token is not configured" };
+  }
+
+  const header = req.headers.get("authorization") ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) {
+    return { ok: false, message: "unauthorized" };
+  }
+
+  const token = match[1];
+  if (!token || !tokenMatches(token, configuredToken)) {
+    return { ok: false, message: "unauthorized" };
+  }
+
+  return { ok: true, userId: SINGLE_USER_ID };
+}
+
+function tokenMatches(token: string, configuredToken: string): boolean {
+  const tokenBytes = new TextEncoder().encode(token);
+  const configuredBytes = new TextEncoder().encode(configuredToken);
+  if (tokenBytes.byteLength !== configuredBytes.byteLength) return false;
+  return timingSafeEqual(tokenBytes, configuredBytes);
 }

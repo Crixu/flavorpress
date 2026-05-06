@@ -7,6 +7,9 @@
  * number of connections per user.
  */
 
+import { sanitizeDraftHtml } from "./draft-html-sanitizer";
+import { safeFetch, safeReadJson, safeReadText } from "./v1/safe-fetch";
+
 export interface WPCredentials {
   baseUrl: string;
   username: string;
@@ -47,7 +50,7 @@ function root(creds: WPCredentials): string {
  */
 export async function probeWordPress(creds: WPCredentials): Promise<WPProbeResult> {
   try {
-    const res = await fetch(`${root(creds)}/wp-json/wp/v2/users/me`, {
+    const res = await safeFetch(`${root(creds)}/wp-json/wp/v2/users/me`, {
       headers: { Authorization: authHeader(creds) },
     });
     if (res.status === 401 || res.status === 403) {
@@ -73,7 +76,7 @@ export async function probeWordPress(creds: WPCredentials): Promise<WPProbeResul
         message: `Probe failed: HTTP ${res.status}`,
       };
     }
-    const user = (await res.json()) as { username?: string; name?: string };
+    const user = await safeReadJson<{ username?: string; name?: string }>(res);
     const wpcom = creds.baseUrl.includes(".wordpress.com");
     return {
       ok: true,
@@ -154,10 +157,9 @@ export async function preflightWordPress(
 
   // 2. Hit /wp-json to confirm WordPress + REST API.
   try {
-    const res = await fetch(`${result.baseUrl}/wp-json/`, {
+    const res = await safeFetch(`${result.baseUrl}/wp-json/`, {
       headers: { Accept: "application/json" },
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
+      timeoutMs: 8000,
     });
     result.reachable = res.ok;
     if (!res.ok) {
@@ -170,10 +172,10 @@ export async function preflightWordPress(
           : "Check that the WordPress REST API is enabled.";
       return result;
     }
-    const data = (await res.json()) as {
+    const data = await safeReadJson<{
       name?: string;
       namespaces?: string[];
-    };
+    }>(res);
     result.siteName = data.name ?? undefined;
     const ns = Array.isArray(data.namespaces) ? data.namespaces : [];
     result.isWordPress = ns.includes("wp/v2");
@@ -197,10 +199,9 @@ export async function preflightWordPress(
 
   // 3. Application Passwords endpoint (WP 5.6+).
   try {
-    const res = await fetch(`${result.baseUrl}/wp-admin/authorize-application.php`, {
+    const res = await safeFetch(`${result.baseUrl}/wp-admin/authorize-application.php`, {
       method: "HEAD",
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
+      timeoutMs: 8000,
     });
     // 200, 302 (redirect to login), or 401 all mean the endpoint exists.
     result.hasApplicationPasswords = res.status < 500 && res.status !== 404;
@@ -316,16 +317,16 @@ export interface WPSiteIdentity {
 export async function fetchSiteIdentity(baseUrl: string): Promise<WPSiteIdentity | null> {
   const root = baseUrl.replace(/\/$/, "");
   try {
-    const res = await fetch(`${root}/wp-json/`, {
+    const res = await safeFetch(`${root}/wp-json/`, {
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as {
+    const data = await safeReadJson<{
       name?: string;
       description?: string;
       home?: string;
       url?: string;
-    };
+    }>(res);
     return {
       name: String(data.name ?? ""),
       tagline: String(data.description ?? ""),
@@ -344,11 +345,11 @@ export async function fetchSiteIdentity(baseUrl: string): Promise<WPSiteIdentity
  */
 export async function fetchHomepageProse(homeUrl: string, charBudget = 2000): Promise<string> {
   try {
-    const res = await fetch(homeUrl, {
+    const res = await safeFetch(homeUrl, {
       headers: { Accept: "text/html" },
     });
     if (!res.ok) return "";
-    const html = await res.text();
+    const html = await safeReadText(res);
     const stripped = html
       .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
       .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
@@ -371,12 +372,12 @@ export async function fetchHomepageProse(homeUrl: string, charBudget = 2000): Pr
 
 /** Pull the user's last N posts. Used by the voice profile build. */
 export async function listRecentPosts(creds: WPCredentials, count = 50): Promise<WPPost[]> {
-  const res = await fetch(
+  const res = await safeFetch(
     `${root(creds)}/wp-json/wp/v2/posts?per_page=${count}&orderby=date&_fields=id,title,content,excerpt,link,date`,
     { headers: { Authorization: authHeader(creds) } },
   );
   if (!res.ok) throw new Error(`WP fetch failed: ${res.status}`);
-  return (await res.json()) as WPPost[];
+  return await safeReadJson<WPPost[]>(res);
 }
 
 /**
@@ -394,7 +395,7 @@ export const MIN_VOICE_TRAIN_POSTS = 20;
  * auto-train.
  */
 export async function getOutletPostCount(creds: WPCredentials): Promise<number> {
-  const res = await fetch(
+  const res = await safeFetch(
     `${root(creds)}/wp-json/wp/v2/posts?per_page=${MIN_VOICE_TRAIN_POSTS}&_fields=id`,
     {
       headers: { Authorization: authHeader(creds) },
@@ -408,7 +409,7 @@ export async function getOutletPostCount(creds: WPCredentials): Promise<number> 
   }
   // Older WP installs and some proxies strip the header. Fall back to the
   // body length, capped at the training threshold by per_page above.
-  const body = (await res.json()) as unknown[];
+  const body = await safeReadJson<unknown[]>(res);
   return Array.isArray(body) ? body.length : 0;
 }
 
@@ -501,7 +502,7 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
     body.date = new Date(input.scheduleAt).toISOString();
   }
 
-  const res = await fetch(
+  const res = await safeFetch(
     `${root(input.creds)}/wp-json/wp/v2/posts?context=edit&_fields=id,link,modified_gmt`,
     {
       method: "POST",
@@ -513,10 +514,10 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
     },
   );
   if (!res.ok) {
-    const text = await res.text();
+    const text = await safeReadText(res);
     throw new Error(`WP publish failed: ${res.status} ${text.slice(0, 200)}`);
   }
-  const post = (await res.json()) as { id: number; link: string; modified_gmt?: string };
+  const post = await safeReadJson<{ id: number; link: string; modified_gmt?: string }>(res);
   return {
     wpPostId: post.id,
     url: post.link,
@@ -545,7 +546,7 @@ export async function updateWordPressPost(input: UpdateInput): Promise<PublishRe
   };
   if (input.status) body.status = input.status;
 
-  const res = await fetch(
+  const res = await safeFetch(
     `${root(input.creds)}/wp-json/wp/v2/posts/${input.postId}?context=edit&_fields=id,link,modified_gmt`,
     {
       method: "PUT",
@@ -557,10 +558,10 @@ export async function updateWordPressPost(input: UpdateInput): Promise<PublishRe
     },
   );
   if (!res.ok) {
-    const text = await res.text();
+    const text = await safeReadText(res);
     throw new Error(`WP update failed: ${res.status} ${text.slice(0, 200)}`);
   }
-  const post = (await res.json()) as { id: number; link: string; modified_gmt?: string };
+  const post = await safeReadJson<{ id: number; link: string; modified_gmt?: string }>(res);
   return {
     wpPostId: post.id,
     url: post.link,
@@ -585,20 +586,20 @@ export interface FetchedPost {
  */
 export async function fetchPostFromWP(creds: WPCredentials, postId: number): Promise<FetchedPost> {
   const url = `${root(creds)}/wp-json/wp/v2/posts/${postId}?context=edit&_fields=id,title,content,modified_gmt,link`;
-  const res = await fetch(url, {
+  const res = await safeFetch(url, {
     headers: { Authorization: authHeader(creds) },
   });
   if (!res.ok) {
-    const text = await res.text();
+    const text = await safeReadText(res);
     throw new Error(`WP fetch failed: ${res.status} ${text.slice(0, 200)}`);
   }
-  const post = (await res.json()) as {
+  const post = await safeReadJson<{
     id: number;
     title?: { raw?: string; rendered?: string };
     content?: { raw?: string; rendered?: string };
     modified_gmt?: string;
     link?: string;
-  };
+  }>(res);
   const titleRaw = String(post.title?.raw ?? post.title?.rendered ?? "");
   const contentRaw = String(post.content?.raw ?? post.content?.rendered ?? "");
   const modifiedAt = parseModifiedGmt(post.modified_gmt);
@@ -623,14 +624,13 @@ export async function fetchPostFromWP(creds: WPCredentials, postId: number): Pro
  */
 export function blocksToHtml(raw: string): string {
   if (!raw) return "";
-  return (
-    raw
-      // Drop opening, closing, and self-closing block delimiters.
-      .replace(/<!--\s*\/?wp:[^>]*-->/g, "")
-      // Collapse whitespace runs the comments leave behind.
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
-  );
+  const html = raw
+    // Drop opening, closing, and self-closing block delimiters.
+    .replace(/<!--\s*\/?wp:[^>]*-->/g, "")
+    // Collapse whitespace runs the comments leave behind.
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return sanitizeDraftHtml(html);
 }
 
 /**
@@ -639,20 +639,23 @@ export function blocksToHtml(raw: string): string {
  * incident response.
  */
 export async function revokeAllAppPasswords(creds: WPCredentials): Promise<void> {
-  const meRes = await fetch(`${root(creds)}/wp-json/wp/v2/users/me`, {
+  const meRes = await safeFetch(`${root(creds)}/wp-json/wp/v2/users/me`, {
     headers: { Authorization: authHeader(creds) },
   });
   if (!meRes.ok) throw new Error(`me failed: ${meRes.status}`);
-  const me = (await meRes.json()) as { id: number };
+  const me = await safeReadJson<{ id: number }>(meRes);
 
-  const listRes = await fetch(`${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords`, {
-    headers: { Authorization: authHeader(creds) },
-  });
+  const listRes = await safeFetch(
+    `${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords`,
+    {
+      headers: { Authorization: authHeader(creds) },
+    },
+  );
   if (!listRes.ok) return;
-  const list = (await listRes.json()) as Array<{ uuid: string; name: string }>;
+  const list = await safeReadJson<Array<{ uuid: string; name: string }>>(listRes);
   for (const p of list) {
     if (!p.name.toLowerCase().includes("flavorpress")) continue;
-    await fetch(`${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords/${p.uuid}`, {
+    await safeFetch(`${root(creds)}/wp-json/wp/v2/users/${me.id}/application-passwords/${p.uuid}`, {
       method: "DELETE",
       headers: { Authorization: authHeader(creds) },
     });

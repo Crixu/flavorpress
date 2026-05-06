@@ -21,6 +21,7 @@ import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
 import { getAnthropicDraftModel } from "./settings";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
+import { sanitizeDraftHtml } from "../draft-html-sanitizer";
 import type { DraftRenderedPayload, Item, VoiceProfile } from "./types";
 const STREAMING_VOICE_FLOOR = 0.5; // mid-flight Burrows' Delta cutoff
 const MIN_TOKENS_FOR_VOICE_CHECK = 200;
@@ -593,7 +594,7 @@ function parseJsonEnvelope(text: string): {
   const headlineAlternates = Array.isArray(parsed.headline_alternates)
     ? parsed.headline_alternates.map((s) => String(s)).slice(0, 3)
     : [];
-  const body = String(parsed.body ?? "");
+  const body = sanitizeDraftHtml(String(parsed.body ?? ""));
   const quotesRaw = Array.isArray(parsed.quotes) ? parsed.quotes : [];
   const quotes = quotesRaw.slice(0, 3).map((q) => {
     const obj = q as Record<string, unknown>;

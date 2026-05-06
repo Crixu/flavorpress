@@ -14,6 +14,7 @@ import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
+import { sanitizeDraftHtml } from "../draft-html-sanitizer";
 import type { DraftRenderedPayload, Item } from "./types";
 
 const CAPABILITY_VERSION = "1.0.0";
@@ -78,7 +79,7 @@ export async function generateResearch(input: ResearchInput): Promise<ResearchOu
   });
 
   const draftId = crypto.randomUUID();
-  const bodyHtml = renderNotesHtml(notes);
+  const bodyHtml = sanitizeDraftHtml(renderNotesHtml(notes));
   const quotesForCol = notes.quotes.map((q) => ({
     sourceId: q.sourceUrl,
     text: q.text,
@@ -324,7 +325,7 @@ Return the new quotes JSON now.`;
  * format used at initial draft creation.
  */
 export function renderNotesBodyHtml(notes: ResearchNotes): string {
-  return renderNotesHtml(notes);
+  return sanitizeDraftHtml(renderNotesHtml(notes));
 }
 
 function renderSourceBlock(items: Item[]): string {

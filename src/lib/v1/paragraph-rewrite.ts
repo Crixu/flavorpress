@@ -21,6 +21,7 @@ import { FACT_CHECK_ID } from "../../extensions/fact-check/types";
 import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
 import { getAnthropicDraftModel } from "./settings";
+import { sanitizeDraftHtml } from "../draft-html-sanitizer";
 import type { Item } from "./types";
 
 const SOURCE_LEDE_LIMIT = 600;
@@ -153,7 +154,7 @@ export function replaceParagraphInBody(
   const after = html.slice(target.end);
   // Always wrap in a fresh `<p>`; if the model returned its own paragraph
   // wrapper, strip it so we never produce nested paragraphs.
-  const cleanInner = stripOuterParagraph(newInnerHtml).trim();
+  const cleanInner = stripOuterParagraph(sanitizeDraftHtml(newInnerHtml)).trim();
   return `${before}<p>${cleanInner}</p>${after}`;
 }
 

@@ -54,6 +54,7 @@ import {
 } from "./outlets";
 import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
+import { createWPAuthorizeState } from "./wp-authorize-state";
 import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { findClaimingSourceExtension } from "@/extensions/source-extensions";
@@ -142,7 +143,12 @@ export async function startWPAuthorizeAction(formData: FormData) {
     await recordOutletError(outletId, "");
   }
 
-  const successUrl = `${origin}/api/wp/callback?outlet_id=${outletId}`;
+  const authorizeState = await createWPAuthorizeState({
+    userId: SINGLE_USER_ID,
+    outletId,
+    expectedSiteUrl: baseUrl,
+  });
+  const successUrl = `${origin}/api/wp/callback?outlet_id=${outletId}&state=${authorizeState.state}`;
   const rejectUrl = `${origin}/voice?wp_rejected=${outletId}`;
   const params = new URLSearchParams({
     app_name: "FlavorPress",
