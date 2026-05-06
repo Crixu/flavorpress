@@ -18,6 +18,8 @@ import {
 } from "./_components/TodayFolderStreams";
 import { TopicSearch } from "./_components/TopicSearch/TopicSearch";
 import { PollAllButton } from "./sources/_components/PollAllButton";
+import { TodayStats } from "./_components/TodayStats";
+import { LookForClustersButton } from "./_components/LookForClustersButton";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +80,29 @@ export default async function TodayPage() {
     id: o.id,
     displayName: o.displayName ?? o.baseUrl,
   }));
+
+  const now = Date.now();
+  const last24h = now - 24 * 60 * 60 * 1000;
+  const monthStart = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1).getTime();
+
+  const [newItemsR, draftsInProgressR, sentThisMonthR] = await Promise.all([
+    db.execute({
+      sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND fetched_at > ?`,
+      args: [SINGLE_USER_ID, last24h],
+    }),
+    db.execute({
+      sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ? AND wp_synced_at IS NULL`,
+      args: [SINGLE_USER_ID],
+    }),
+    db.execute({
+      sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ? AND wp_synced_at IS NOT NULL AND wp_synced_at > ?`,
+      args: [SINGLE_USER_ID, monthStart],
+    }),
+  ]);
+
+  const newSinceLastVisit = Number(newItemsR.rows[0]?.n ?? 0);
+  const draftsInProgress = Number(draftsInProgressR.rows[0]?.n ?? 0);
+  const sentThisMonth = Number(sentThisMonthR.rows[0]?.n ?? 0);
 
   if (!hasOutlet || sourceCount < 5 || !hasDraftableOutlet) {
     return (
@@ -168,6 +193,16 @@ export default async function TodayPage() {
           aside for now.
         </p>
       </header>
+
+      <TodayStats
+        newSinceLastVisit={newSinceLastVisit}
+        draftsInProgress={draftsInProgress}
+        sentThisMonth={sentThisMonth}
+      />
+
+      <div className="flex items-center gap-3">
+        <LookForClustersButton />
+      </div>
 
       <TopicSearch outlets={outletOptions} defaultOutletId={defaultOutletId}>
         {totalPreviews === 0 ? (

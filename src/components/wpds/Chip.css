@@ -1,0 +1,29 @@
+.wpds-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  cursor: pointer;
+  background: var(--surface-canvas);
+  color: var(--ink-primary);
+  font-family: inherit;
+  transition: all var(--duration) var(--ease);
+}
+.wpds-chip:hover {
+  border-color: var(--ink-primary);
+}
+.wpds-chip.on {
+  background: var(--ink-primary);
+  color: #fff;
+  border-color: var(--ink-primary);
+}
+.wpds-chip-count {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.wpds-chip.on .wpds-chip-count {
+  color: #aaa;
+}

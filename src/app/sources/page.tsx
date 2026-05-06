@@ -12,14 +12,12 @@
 
 import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
-import { addSourceAction } from "@/lib/v1/actions";
-import { PendingStages, SubmitButton } from "../_components/SubmitButton";
 import { listOutlets, resolveOutletSourceIds } from "@/lib/v1/outlets";
-import { FolderChipBar } from "./_components/FolderChipBar";
+import { FolderSidebar } from "./_components/FolderSidebar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
 import { PollAllButton } from "./_components/PollAllButton";
-import { OpmlImportButton } from "./_components/OpmlImportButton";
 import { WaitingQueue } from "./_components/WaitingQueue";
+import { AddFeedButton } from "./_components/AddFeedButton";
 
 export const dynamic = "force-dynamic";
 
@@ -155,12 +153,13 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   })();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Page header */}
       <div className="flex items-end justify-between">
         <div>
           <div className="text-[11px] uppercase tracking-wider text-stone-500">What you read</div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Sources · {visibleRows.length}
+            Sources
             {headingScope ? (
               <span className="ml-2 text-sm font-normal" style={{ color: "var(--fg-muted)" }}>
                 in {headingScope}
@@ -168,12 +167,18 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             ) : null}
             {outletFilter ? (
               <span className="ml-2 text-sm font-normal" style={{ color: "var(--fg-muted)" }}>
-                · outlet {outletDisplayMap.get(outletFilter) ?? "outlet"}
+                &middot; {outletDisplayMap.get(outletFilter) ?? "outlet"}
               </span>
             ) : null}
           </h1>
         </div>
-        {!isEmpty ? <PollAllButton /> : null}
+        <div className="flex items-center gap-2">
+          <AddFeedButton
+            folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+            currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
+          />
+          {!isEmpty ? <PollAllButton /> : null}
+        </div>
       </div>
 
       {/* Outlet filter chips */}
@@ -208,176 +213,140 @@ export default async function SourcesPage({ searchParams }: PageProps) {
         </div>
       ) : null}
 
-      {/* Folder filter + management */}
-      {!isEmpty ? (
-        <FolderChipBar
-          folders={folders.map((f) => ({ id: f.id, name: f.name }))}
-          allCount={outletRows.length}
-          ungroupedCount={ungroupedCount}
-          folderCounts={folderCounts}
-          currentFolder={folderParam}
-          outletParam={outletFilter}
-        />
-      ) : null}
-
-      {/* Add sources */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
-        <div className="mb-1 flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Add sources</div>
-            <div className="text-[11px] text-stone-500">
-              RSS / Atom feed URLs, Reddit subreddits, podcast feeds, YouTube channel feeds. Paste
-              many; one per line.
-            </div>
-          </div>
-          <OpmlImportButton
+      {/* Sources shell: folder sidebar + main content */}
+      <div className="fp-sources-shell">
+        {!isEmpty ? (
+          <FolderSidebar
             folders={folders.map((f) => ({ id: f.id, name: f.name }))}
-            currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
+            allCount={outletRows.length}
+            ungroupedCount={ungroupedCount}
+            folderCounts={folderCounts}
+            currentFolder={folderParam}
+            outletParam={outletFilter}
           />
-        </div>
-        <form action={addSourceAction} className="mt-3 space-y-2">
-          <textarea
-            name="urls"
-            rows={isEmpty ? 5 : 3}
-            required
-            placeholder={`https://daringfireball.net/feeds/main
-https://reddit.com/r/specialtycoffee/.rss
-https://hnrss.org/frontpage`}
-            className="w-full rounded border border-stone-300 px-3 py-2 font-mono text-xs"
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <SubmitButton
-              className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
-              pendingLabel="Adding"
-            >
-              Add
-            </SubmitButton>
-            <FolderSelect
-              folders={folders}
-              currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
-            />
-            <span className="text-[11px] text-stone-500">kind auto-detected from URL pattern</span>
-          </div>
-          <PendingStages
-            title="Adding sources"
-            stages={[
-              "Reading pasted feed URLs",
-              "Detecting source type",
-              "Saving active feeds",
-              "Refreshing clusters",
-            ]}
-          />
-        </form>
-      </section>
+        ) : null}
 
-      {/* Empty state — one recommended pack inline; alternates collapsed. */}
-      {isEmpty ? (
-        <section className="space-y-3">
-          <div className="text-[11px] uppercase tracking-wider text-stone-500">
-            Or start with a recommended pack — copy and paste above
-          </div>
-          <StarterPack
-            name="Indie tech pack"
-            description="Broad prosumer-tech baseline. Swap in your own once you see how clusters fire."
-            urls={[
-              "https://stratechery.com/feed",
-              "https://www.theverge.com/rss/index.xml",
-              "https://hnrss.org/frontpage",
-              "https://ma.tt/rss",
-              "https://daringfireball.net/feeds/main",
-            ]}
-          />
-          <details className="text-xs text-stone-500">
-            <summary className="cursor-pointer hover:text-stone-900">More starter packs</summary>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className={isEmpty ? "w-full space-y-4" : "fp-sources-main space-y-4"}>
+          {isEmpty ? (
+            <section className="space-y-3">
+              <div className="rounded-2xl border border-stone-200 bg-white p-6">
+                <div className="mb-1">
+                  <div className="text-sm font-semibold">No sources yet</div>
+                  <div className="text-[11px] text-stone-500">
+                    Add RSS, Atom, Reddit, podcast, or YouTube feeds. Use &quot;+ Add feed&quot;
+                    above to get started.
+                  </div>
+                </div>
+              </div>
+              <div className="text-[11px] uppercase tracking-wider text-stone-500">
+                Starter packs - copy URLs and paste in the Add feed sheet
+              </div>
               <StarterPack
-                name="Apple-blogger pack"
-                description="MacRumors, 9to5Mac, AppleInsider, Six Colors, Daring Fireball, Apple newsroom."
+                name="Indie tech pack"
+                description="Broad prosumer-tech baseline. Swap in your own once you see how clusters fire."
                 urls={[
-                  "https://9to5mac.com/feed/",
-                  "https://appleinsider.com/rss/news",
-                  "https://feeds.macrumors.com/MacRumors-Front",
+                  "https://stratechery.com/feed",
+                  "https://www.theverge.com/rss/index.xml",
+                  "https://hnrss.org/frontpage",
+                  "https://ma.tt/rss",
                   "https://daringfireball.net/feeds/main",
-                  "https://feedpress.me/sixcolors",
-                  "https://www.apple.com/newsroom/rss-feed.rss",
                 ]}
               />
-              <StarterPack
-                name="Specialty coffee pack"
-                description="Sprudge, Daily Coffee News, r/specialtycoffee."
-                urls={[
-                  "https://sprudge.com/feed",
-                  "https://dailycoffeenews.com/feed",
-                  "https://reddit.com/r/specialtycoffee/.rss",
-                ]}
-              />
-              <StarterPack
-                name="AI ecosystem pack"
-                description="Anthropic, OpenAI, Latent Space, Pragmatic Engineer."
-                urls={[
-                  "https://www.anthropic.com/news/rss.xml",
-                  "https://openai.com/blog/rss.xml",
-                  "https://www.latent.space/feed",
-                  "https://newsletter.pragmaticengineer.com/feed",
-                ]}
-              />
+              <details className="text-xs text-stone-500">
+                <summary className="cursor-pointer hover:text-stone-900">
+                  More starter packs
+                </summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <StarterPack
+                    name="Apple-blogger pack"
+                    description="MacRumors, 9to5Mac, AppleInsider, Six Colors, Daring Fireball, Apple newsroom."
+                    urls={[
+                      "https://9to5mac.com/feed/",
+                      "https://appleinsider.com/rss/news",
+                      "https://feeds.macrumors.com/MacRumors-Front",
+                      "https://daringfireball.net/feeds/main",
+                      "https://feedpress.me/sixcolors",
+                      "https://www.apple.com/newsroom/rss-feed.rss",
+                    ]}
+                  />
+                  <StarterPack
+                    name="Specialty coffee pack"
+                    description="Sprudge, Daily Coffee News, r/specialtycoffee."
+                    urls={[
+                      "https://sprudge.com/feed",
+                      "https://dailycoffeenews.com/feed",
+                      "https://reddit.com/r/specialtycoffee/.rss",
+                    ]}
+                  />
+                  <StarterPack
+                    name="AI ecosystem pack"
+                    description="Anthropic, OpenAI, Latent Space, Pragmatic Engineer."
+                    urls={[
+                      "https://www.anthropic.com/news/rss.xml",
+                      "https://openai.com/blog/rss.xml",
+                      "https://www.latent.space/feed",
+                      "https://newsletter.pragmaticengineer.com/feed",
+                    ]}
+                  />
+                </div>
+              </details>
+            </section>
+          ) : filteredEmpty ? (
+            <div
+              className="rounded-xl border border-dashed p-8 text-center text-sm"
+              style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
+            >
+              {folderParam ? (
+                <>
+                  No sources here yet.{" "}
+                  <Link
+                    href={sourcesHref(null, outletFilter)}
+                    className="font-medium hover:underline"
+                    style={{ color: "var(--indigo)" }}
+                  >
+                    Show all sources
+                  </Link>
+                </>
+              ) : (
+                <>
+                  No sources assigned to this outlet yet. The outlet currently inherits all sources
+                  by default.{" "}
+                  <Link
+                    href="/sources"
+                    className="font-medium hover:underline"
+                    style={{ color: "var(--indigo)" }}
+                  >
+                    Show all sources
+                  </Link>
+                </>
+              )}
             </div>
-          </details>
-        </section>
-      ) : filteredEmpty ? (
-        <div
-          className="rounded-xl border border-dashed p-8 text-center text-sm"
-          style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
-        >
-          {folderParam ? (
-            <>
-              No sources here yet.{" "}
-              <Link
-                href={sourcesHref(null, outletFilter)}
-                className="font-medium hover:underline"
-                style={{ color: "var(--indigo)" }}
-              >
-                Show all sources →
-              </Link>
-            </>
           ) : (
             <>
-              No sources assigned to this outlet yet. The outlet currently inherits all sources by
-              default.{" "}
-              <Link
-                href="/sources"
-                className="font-medium hover:underline"
-                style={{ color: "var(--indigo)" }}
-              >
-                Show all sources →
-              </Link>
+              {waitingRows.length > 0 ? <WaitingQueue rows={waitingRows} /> : null}
+              <SourcesExplorer
+                groups={grouped}
+                folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+              />
             </>
           )}
-        </div>
-      ) : (
-        <>
-          {waitingRows.length > 0 ? <WaitingQueue rows={waitingRows} /> : null}
-          <SourcesExplorer
-            groups={grouped}
-            folders={folders.map((f) => ({ id: f.id, name: f.name }))}
-          />
-        </>
-      )}
 
-      {/* Diagnostics */}
-      {!isEmpty ? (
-        <details className="rounded-xl border border-stone-200 bg-white p-4">
-          <summary className="cursor-pointer text-xs uppercase tracking-wider text-stone-500 hover:text-stone-700">
-            Diagnostics · cluster engine status
-          </summary>
-          <div className="mt-4 grid grid-cols-4 gap-4 text-xs">
-            <Stat label="items / 24h" value={String(stats.rows[0]!.items_24h)} />
-            <Stat label="items total" value={String(stats.rows[0]!.items_total)} />
-            <Stat label="clusters fired" value={String(stats.rows[0]!.fired_clusters)} />
-            <Stat label="clusters total" value={String(stats.rows[0]!.clusters_total)} />
-          </div>
-        </details>
-      ) : null}
+          {/* Diagnostics */}
+          {!isEmpty ? (
+            <details className="rounded-xl border border-stone-200 bg-white p-4">
+              <summary className="cursor-pointer text-xs uppercase tracking-wider text-stone-500 hover:text-stone-700">
+                Diagnostics &middot; cluster engine status
+              </summary>
+              <div className="mt-4 grid grid-cols-4 gap-4 text-xs">
+                <Stat label="items / 24h" value={String(stats.rows[0]!.items_24h)} />
+                <Stat label="items total" value={String(stats.rows[0]!.items_total)} />
+                <Stat label="clusters fired" value={String(stats.rows[0]!.fired_clusters)} />
+                <Stat label="clusters total" value={String(stats.rows[0]!.clusters_total)} />
+              </div>
+            </details>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
@@ -483,30 +452,6 @@ function groupByFolder(rows: PlainSourceRow[], folders: FolderRow[]): FolderGrou
     .filter((g): g is FolderGroup => Boolean(g) && g!.rows.length > 0);
   if (ungrouped.rows.length > 0) ordered.push(ungrouped);
   return ordered;
-}
-
-function FolderSelect({
-  folders,
-  currentFolderId,
-}: {
-  folders: FolderRow[];
-  currentFolderId?: string | null;
-}) {
-  return (
-    <select
-      name="folderId"
-      defaultValue={currentFolderId ?? ""}
-      className="rounded border border-stone-300 px-2 py-1 text-xs"
-      aria-label="Add to folder"
-    >
-      <option value="">Ungrouped</option>
-      {folders.map((f) => (
-        <option key={f.id} value={f.id}>
-          {f.name}
-        </option>
-      ))}
-    </select>
-  );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

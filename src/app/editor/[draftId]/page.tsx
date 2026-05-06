@@ -24,6 +24,7 @@ import { PublishToWpForm } from "./PublishToWpForm";
 import { ReceiptView } from "./ReceiptView";
 import { ResearcherView } from "./ResearcherView";
 import { SiblingArtifactLink } from "./SiblingArtifactLink";
+import { EditorRail } from "./_components/EditorRail";
 
 export const dynamic = "force-dynamic";
 
@@ -273,45 +274,10 @@ export default async function EditorPage({ params }: PageProps) {
           </span>
         </div>
 
-        {/* Three panes — soft cream rails, white centre, no hard borders */}
-        <div className="grid grid-cols-12">
-          {/* Left rail */}
-          <aside className="col-span-12 p-5 lg:col-span-3" style={{ background: "#FAF7F1" }}>
-            <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
-              <div className="fp-eyebrow mb-3">Sources · {itemsR.rows.length}</div>
-              <ul className="space-y-2 text-xs">
-                {itemsR.rows.map((row) => (
-                  <li
-                    key={String(row.id)}
-                    className="rounded-2xl p-3"
-                    style={{
-                      background: "var(--surface)",
-                      boxShadow: "var(--shadow-xs)",
-                    }}
-                  >
-                    <div className="text-[12.5px] font-medium" style={{ color: "var(--fg)" }}>
-                      {String(row.display_name ?? hostFromUrl(String(row.source_url)))}
-                    </div>
-                    <div
-                      className="mt-0.5 font-mono text-[10px]"
-                      style={{ color: "var(--fg-subtle)" }}
-                    >
-                      {relativeTime(Number(row.published_at))}
-                    </div>
-                    <div
-                      className="mt-1.5 line-clamp-3 leading-snug"
-                      style={{ color: "var(--fg-muted)" }}
-                    >
-                      {String(row.title)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
-
-          {/* Centre: manuscript */}
-          <div className="col-span-12 px-10 pt-10 pb-16 lg:col-span-6">
+        {/* Shell: manuscript + tabbed right rail */}
+        <div className="fp-editor-shell">
+          {/* Manuscript */}
+          <main className="fp-editor-manuscript">
             <div className="mx-auto max-w-[640px]">
               <HeadlineSelector
                 draftId={String(d.id)}
@@ -344,78 +310,64 @@ export default async function EditorPage({ params }: PageProps) {
                 </div>
               ) : null}
             </div>
-          </div>
+          </main>
 
-          {/* Right rail: inspector */}
-          <aside className="col-span-12 p-5 lg:col-span-3" style={{ background: "#FAF7F1" }}>
-            <div className="space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
-              {/* Editor extensions (fact-check, originality, ...) */}
+          {/* Tabbed right rail: Sources / Extensions / Remix */}
+          <EditorRail
+            sources={itemsR.rows.map((row) => ({
+              id: String(row.id),
+              title: String(row.title),
+              source: String(row.display_name ?? hostFromUrl(String(row.source_url))),
+              link: String(row.canonical_url ?? row.source_url),
+            }))}
+            extensionAnnotationCount={totalAnnotations}
+            extensions={
               <ExtensionsPanels
                 draftId={String(d.id)}
                 initialAnnotationsByExt={initialAnnotationsByExt}
                 enabledExtensionIds={enabledExtensionIds}
               />
-
-              {/* Angle picker — interactive: pick archive, gap, or write your own,
-               *  then regenerate. Replaces the previous read-only display. */}
-              {d.angle_archive || d.angle_gap ? (
-                <AnglePicker
-                  draftId={String(d.id)}
-                  archive={d.angle_archive ? String(d.angle_archive) : null}
-                  gap={d.angle_gap ? String(d.angle_gap) : null}
-                  currentAngle={String(d.angle_hint ?? "")}
-                  customAngle={d.custom_angle ? String(d.custom_angle) : null}
-                  wordCount={draftWordCount}
-                />
-              ) : null}
-
-              {/* Length remix */}
-              <LengthPicker draftId={String(d.id)} currentWordCount={draftWordCount} />
-
-              {/* Agent slot — Canvas-styled placeholder */}
-              <div
-                className="rounded-2xl p-4"
-                style={{
-                  background: "linear-gradient(135deg, var(--plum-tint) 0%, #E9DEF4 100%)",
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="fp-eyebrow" style={{ color: "#5D3A6E" }}>
-                    Agent slot
-                  </div>
-                  <span className="text-[10px]" style={{ color: "#5D3A6E" }}>
-                    v1.1+
-                  </span>
-                </div>
-                <p className="mt-2 text-[11.5px] leading-snug" style={{ color: "#3F2360" }}>
-                  Research, scheduling, plagiarism, analytics. Capabilities plug in here in v1.1.
+            }
+            remix={
+              <div className="space-y-3">
+                {d.angle_archive || d.angle_gap ? (
+                  <AnglePicker
+                    draftId={String(d.id)}
+                    archive={d.angle_archive ? String(d.angle_archive) : null}
+                    gap={d.angle_gap ? String(d.angle_gap) : null}
+                    currentAngle={String(d.angle_hint ?? "")}
+                    customAngle={d.custom_angle ? String(d.custom_angle) : null}
+                    wordCount={draftWordCount}
+                  />
+                ) : null}
+                <LengthPicker draftId={String(d.id)} currentWordCount={draftWordCount} />
+                <p className="text-[11px]" style={{ color: "var(--ink-muted)" }}>
+                  Paragraph rewrite buttons appear inline on hover in the manuscript.
                 </p>
-              </div>
-
-              {/* Publish actions */}
-              <div className="space-y-2 pt-1">
-                <PublishToWpForm
-                  draftId={String(d.id)}
-                  headline={String(d.headline)}
-                  className="fp-btn fp-btn-primary w-full"
-                  pendingLabel="Saving draft"
-                >
-                  Push to WordPress draft
-                </PublishToWpForm>
-                <form action={deleteDraftAction}>
-                  <input type="hidden" name="draftId" value={String(d.id)} />
-                  <input type="hidden" name="redirectTo" value="/drafts" />
-                  <button
-                    type="submit"
-                    className="w-full py-2 text-[12px] transition hover:underline"
-                    style={{ color: "var(--fg-subtle)" }}
+                <div className="space-y-2 pt-1">
+                  <PublishToWpForm
+                    draftId={String(d.id)}
+                    headline={String(d.headline)}
+                    className="fp-btn fp-btn-primary w-full"
+                    pendingLabel="Saving draft"
                   >
-                    Delete draft
-                  </button>
-                </form>
+                    Push to WordPress draft
+                  </PublishToWpForm>
+                  <form action={deleteDraftAction}>
+                    <input type="hidden" name="draftId" value={String(d.id)} />
+                    <input type="hidden" name="redirectTo" value="/drafts" />
+                    <button
+                      type="submit"
+                      className="w-full py-2 text-[12px] transition hover:underline"
+                      style={{ color: "var(--fg-subtle)" }}
+                    >
+                      Delete draft
+                    </button>
+                  </form>
+                </div>
               </div>
-            </div>
-          </aside>
+            }
+          />
         </div>
       </div>
     </div>
@@ -438,15 +390,4 @@ function hostFromUrl(s: string): string {
   } catch {
     return s;
   }
-}
-
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} hr ago`;
-  const day = Math.floor(hr / 24);
-  return `${day} day${day === 1 ? "" : "s"} ago`;
 }

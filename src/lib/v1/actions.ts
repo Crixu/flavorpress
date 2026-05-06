@@ -60,6 +60,7 @@ import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { findClaimingSourceExtension } from "@/extensions/source-extensions";
 import { getDisabledExtensionIds } from "./settings";
 import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
+import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -2425,4 +2426,78 @@ function renderStyleYaml(s: ReturnType<typeof extractStyleSheet>): string {
       .map((t) => JSON.stringify(t))
       .join(", ")}]`,
   ].join("\n");
+}
+
+/**
+ * Manually run the cluster pass over the user's unclustered items. Backs the
+ * "Look for new clusters" button on Today.
+ *
+ * Feeds each unclustered item that falls within the 72-hour rolling window
+ * through handleItemIngested, which runs all three matching layers (exact URL,
+ * entity+trigram, LLM oracle). Items that match an existing or newly formed
+ * cluster get assigned; single-source clusters fire immediately (Task 0.4).
+ *
+ * Returns a small summary so the UI can render a toast.
+ */
+export async function runClusterPassAction(): Promise<{
+  clustersFired: number;
+  itemsClustered: number;
+}> {
+  await ensureSchema();
+  await ensureSingleUser();
+
+  // Snapshot counts before the pass so we can return a meaningful delta.
+  const beforeClusters = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
+    args: [SINGLE_USER_ID],
+  });
+  const beforeItems = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND cluster_id IS NOT NULL`,
+    args: [SINGLE_USER_ID],
+  });
+  const firedBefore = Number(beforeClusters.rows[0]?.n ?? 0);
+  const clusteredBefore = Number(beforeItems.rows[0]?.n ?? 0);
+
+  // Fetch unclustered items within the 72-hour window, oldest first. The
+  // chronological order matters: Layer 2 needs to see earlier items in the
+  // window before it can merge later ones, matching how ingest works at
+  // normal poll time.
+  const cutoff = Date.now() - CLUSTER_WINDOW_MS;
+  const r = await db.execute({
+    sql: `SELECT id, source_id, canonical_url, content_hash
+          FROM items
+          WHERE user_id = ? AND cluster_id IS NULL AND published_at >= ?
+          ORDER BY published_at ASC`,
+    args: [SINGLE_USER_ID, cutoff],
+  });
+
+  try {
+    for (const row of r.rows) {
+      await handleItemIngested(
+        {
+          itemId: String(row.id),
+          sourceId: String(row.source_id),
+          canonicalUrl: String(row.canonical_url),
+          contentHash: String(row.content_hash),
+        },
+        { userId: SINGLE_USER_ID, traceId: crypto.randomUUID() },
+      );
+    }
+  } catch {
+    // Partial failure: fall through and return whatever completed.
+  }
+
+  const afterClusters = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
+    args: [SINGLE_USER_ID],
+  });
+  const afterItems = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND cluster_id IS NOT NULL`,
+    args: [SINGLE_USER_ID],
+  });
+
+  return {
+    clustersFired: Math.max(0, Number(afterClusters.rows[0]?.n ?? 0) - firedBefore),
+    itemsClustered: Math.max(0, Number(afterItems.rows[0]?.n ?? 0) - clusteredBefore),
+  };
 }

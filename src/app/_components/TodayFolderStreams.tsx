@@ -8,6 +8,7 @@ import {
   getFolderPollProgressAction,
   pollFolderAction,
 } from "@/lib/v1/actions";
+import { Card } from "@/components/wpds";
 import { ClusterActions } from "./ClusterActions";
 import { useToast } from "./Toast";
 import { useBackgroundPolling } from "./useBackgroundPolling";
@@ -79,19 +80,23 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
     }));
   }, [streams, dismissedIds]);
 
-  const firstWithContent = visibleStreams.find((s) => s.clusters.length > 0)?.id;
-  const fallbackFolderId = visibleStreams[0]?.id;
-  const initialSelected = firstWithContent ?? fallbackFolderId ?? null;
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(initialSelected);
+  // Default: first folder in the array is expanded. All others start collapsed.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    const first = streams[0]?.id;
+    return first ? new Set([first]) : new Set();
+  });
 
-  // If the selected folder disappears (rare; folder removal mid-session),
-  // fall back to whichever lane has content. Single-user prototype, but
-  // keeps the rail honest when the dataset shifts under us.
-  const selected =
-    visibleStreams.find((s) => s.id === selectedFolderId) ??
-    visibleStreams.find((s) => s.clusters.length > 0) ??
-    visibleStreams[0] ??
-    null;
+  function toggleFolder(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   // Optimistic dismiss + rollback. Same semantics as before; the card
   // hides immediately, the action runs, and on failure the id goes back
@@ -117,166 +122,38 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
     );
   };
 
-  if (!selected) return null;
+  if (visibleStreams.length === 0) return null;
 
   return (
-    <div
-      className="fp-finder"
-      style={{
-        background: "var(--surface)",
-        borderRadius: "var(--radius-xl)",
-        boxShadow: "var(--shadow-sm)",
-        // overflow:hidden was here originally; it broke position:sticky
-        // on the rail. Border-radius on the rail (left side) and pane
-        // (right side) keeps the corners rounded without clipping.
-        minHeight: 540,
-      }}
-    >
-      <FolderRail
-        streams={visibleStreams}
-        selectedId={selected.id}
-        onSelect={setSelectedFolderId}
-      />
-      <FolderPane
-        stream={selected}
-        outlets={outlets}
-        defaultOutletId={defaultOutletId}
-        onDismiss={dismissOptimistically}
-        onDismissFailed={restoreAfterFailure}
-      />
+    <div className="flex flex-col gap-3">
+      {visibleStreams.map((stream) => (
+        <FolderSection
+          key={stream.id}
+          stream={stream}
+          expanded={expandedIds.has(stream.id)}
+          onToggle={() => toggleFolder(stream.id)}
+          outlets={outlets}
+          defaultOutletId={defaultOutletId}
+          onDismiss={dismissOptimistically}
+          onDismissFailed={restoreAfterFailure}
+        />
+      ))}
     </div>
   );
 }
 
-function FolderRail({
-  streams,
-  selectedId,
-  onSelect,
-}: {
-  streams: TodayFolderStream[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <nav
-      aria-label="Folders"
-      style={{
-        // Outer wrapper fills the grid column so the cream rail
-        // background extends top to bottom even when the pane is
-        // taller than the folder list.
-        background: "var(--bg-subtle)",
-        borderRight: "1px solid var(--border)",
-        borderTopLeftRadius: "var(--radius-xl)",
-        borderBottomLeftRadius: "var(--radius-xl)",
-      }}
-    >
-      <div
-        style={{
-          // Inner sticky wrapper carries the actual folder buttons.
-          // Sticky needs no overflow:hidden ancestor to function;
-          // top offset clears the pill nav (~70px) + page pt-8 (~32px)
-          // plus a small margin.
-          position: "sticky",
-          top: 112,
-          padding: "16px 8px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-          maxHeight: "calc(100vh - 128px)",
-          overflowY: "auto",
-        }}
-      >
-        <div
-          className="fp-eyebrow"
-          style={{
-            padding: "6px 12px 10px",
-            color: "var(--fg-subtle)",
-          }}
-        >
-          Folders
-        </div>
-        {streams.map((stream) => {
-          const active = stream.id === selectedId;
-          const isEmpty = stream.clusters.length === 0;
-          const lead = stream.clusters[0]?.items[0]?.title ?? null;
-          return (
-            <button
-              key={stream.id}
-              type="button"
-              onClick={() => onSelect(stream.id)}
-              aria-pressed={active}
-              className="text-left"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                gap: 10,
-                padding: "10px 12px",
-                borderRadius: "var(--radius-md)",
-                color: isEmpty && !active ? "var(--fg-muted)" : "var(--fg)",
-                background: active ? "var(--surface)" : "transparent",
-                boxShadow: active ? "var(--shadow-xs)" : "none",
-                cursor: "pointer",
-                alignItems: "center",
-                fontFamily: "inherit",
-                border: "0",
-              }}
-            >
-              <span style={{ minWidth: 0 }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 14,
-                    fontWeight: 500,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {stream.name}
-                </span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    color: "var(--fg-muted)",
-                    marginTop: 2,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {lead ?? "No clusters yet"}
-                </span>
-              </span>
-              <span
-                className="tabular"
-                style={{
-                  fontSize: 11,
-                  color: active ? "var(--bg)" : "var(--fg-muted)",
-                  background: active ? "var(--indigo)" : "var(--surface)",
-                  border: active ? "1px solid var(--indigo)" : "1px solid var(--border)",
-                  padding: "1px 8px",
-                  borderRadius: 9999,
-                }}
-              >
-                {stream.clusters.length}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
-
-function FolderPane({
+function FolderSection({
   stream,
+  expanded,
+  onToggle,
   outlets,
   defaultOutletId,
   onDismiss,
   onDismissFailed,
 }: {
   stream: TodayFolderStream;
+  expanded: boolean;
+  onToggle: () => void;
   outlets: OutletOption[];
   defaultOutletId: string | null;
   onDismiss: (id: string) => void;
@@ -285,54 +162,70 @@ function FolderPane({
   return (
     <div
       style={{
-        padding: "24px 28px 32px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 18,
-        viewTransitionName: laneTransitionName(stream.id),
-        borderTopRightRadius: "var(--radius-xl)",
-        borderBottomRightRadius: "var(--radius-xl)",
         background: "var(--surface)",
+        borderRadius: "var(--radius-xl)",
+        boxShadow: "var(--shadow-sm)",
       }}
     >
-      <FolderPaneHeader stream={stream} />
-      {stream.clusters.length === 0 ? (
-        <EmptyStreamRow folderName={stream.name} />
-      ) : (
-        <div className="flex flex-col gap-3">
-          <ClusterCard
-            key={stream.clusters[0]!.cluster.id}
-            preview={stream.clusters[0]!}
-            rank={1}
-            isTop
-            outlets={outlets}
-            defaultOutletId={defaultOutletId}
-            onDismiss={onDismiss}
-            onDismissFailed={onDismissFailed}
-          />
-          {stream.clusters.slice(1).map((preview, idx) => (
-            <PeekRow
-              key={preview.cluster.id}
-              preview={preview}
-              rank={idx + 2}
-              outlets={outlets}
-              defaultOutletId={defaultOutletId}
-              onDismiss={onDismiss}
-              onDismissFailed={onDismissFailed}
-            />
-          ))}
+      <FolderSectionHeader stream={stream} expanded={expanded} onToggle={onToggle} />
+      {expanded && (
+        <div
+          style={{
+            padding: "20px 24px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          {stream.clusters.length === 0 ? (
+            <EmptyStreamRow folderName={stream.name} />
+          ) : (
+            <>
+              <ClusterCard
+                key={stream.clusters[0]!.cluster.id}
+                preview={stream.clusters[0]!}
+                rank={1}
+                isTop
+                outlets={outlets}
+                defaultOutletId={defaultOutletId}
+                onDismiss={onDismiss}
+                onDismissFailed={onDismissFailed}
+              />
+              {stream.clusters.slice(1).map((preview, idx) => (
+                <PeekRow
+                  key={preview.cluster.id}
+                  preview={preview}
+                  rank={idx + 2}
+                  outlets={outlets}
+                  defaultOutletId={defaultOutletId}
+                  onDismiss={onDismiss}
+                  onDismissFailed={onDismissFailed}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function FolderPaneHeader({ stream }: { stream: TodayFolderStream }) {
+function FolderSectionHeader({
+  stream,
+  expanded,
+  onToggle,
+}: {
+  stream: TodayFolderStream;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const [, startTransition] = useTransition();
   const polling = useBackgroundPolling();
   const { show } = useToast();
 
-  function refresh() {
+  function refresh(e: React.MouseEvent) {
+    // Prevent the click from also toggling the folder open/closed.
+    e.stopPropagation();
     const fd = new FormData();
     fd.set("folderId", stream.folderId);
     polling.start();
@@ -345,10 +238,6 @@ function FolderPaneHeader({ stream }: { stream: TodayFolderStream }) {
         });
         return;
       }
-      // Determinate toast: progress bar reflects (sources finished / total)
-      // by polling getFolderPollProgressAction every 1s. Watchdog cap at
-      // 120s in case a feed hangs forever; complete=true dismisses early
-      // when the count catches up.
       show({
         title: `Refreshing ${stream.name}`,
         body: `${sourceCount} ${sourceCount === 1 ? "source" : "sources"} polling`,
@@ -377,19 +266,41 @@ function FolderPaneHeader({ stream }: { stream: TodayFolderStream }) {
   }
 
   return (
-    <div
-      className="flex items-baseline justify-between gap-4 pb-3"
-      style={{ borderBottom: "1px solid var(--border)" }}
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className="text-left w-full"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "16px 24px",
+        background: "transparent",
+        border: 0,
+        borderRadius: expanded ? "var(--radius-xl) var(--radius-xl) 0 0" : "var(--radius-xl)",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        borderBottom: expanded ? "1px solid var(--border)" : "none",
+      }}
     >
-      <div className="flex items-baseline gap-3">
-        <h2 className="fp-h1-serif" style={{ fontSize: "1.7rem", lineHeight: 1, fontWeight: 500 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <h2
+          className="fp-h1-serif"
+          style={{ fontSize: "1.25rem", lineHeight: 1, fontWeight: 500, margin: 0 }}
+        >
           {stream.name}
         </h2>
         <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
           {stream.clusters.length} {stream.clusters.length === 1 ? "cluster" : "clusters"}
         </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8 }}
+        // Prevent this inner div from triggering the outer button click twice.
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           className="fp-btn fp-btn-ghost"
@@ -398,8 +309,21 @@ function FolderPaneHeader({ stream }: { stream: TodayFolderStream }) {
         >
           Refresh
         </button>
+        <span
+          aria-hidden
+          style={{
+            display: "inline-block",
+            fontSize: 10,
+            color: "var(--fg-muted)",
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.15s ease",
+            userSelect: "none",
+          }}
+        >
+          ▾
+        </span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -422,10 +346,6 @@ function applyDismissalWithTransition(apply: () => void) {
     return;
   }
   apply();
-}
-
-function laneTransitionName(id: string) {
-  return `fp-lane-${cssIdent(id)}`;
 }
 
 function cardTransitionName(id: string) {
@@ -490,6 +410,7 @@ function ClusterCard({
   const c = preview.cluster;
   const headline = preview.items[0]?.title ?? "Untitled cluster";
   const fit = c.signals?.composite ?? 0;
+  const isSingleSource = c.sourceCount === 1;
 
   function dismiss() {
     onDismiss(c.id);
@@ -506,15 +427,19 @@ function ClusterCard({
     });
   }
 
+  const sourceName =
+    preview.items[0]?.displayName || hostFromUrl(preview.items[0]?.sourceUrl ?? "");
+
   return (
-    <article
-      className={`fp-card ${isTop ? "fp-card-feature" : "fp-card-hover"} relative p-6`}
+    <Card
+      emphasis={isSingleSource}
+      className={`${isTop ? "fp-card-feature" : "fp-card-hover"} relative p-6`}
       style={{
         opacity: pending ? 0.5 : undefined,
         viewTransitionName: cardTransitionName(c.id),
       }}
     >
-      {isTop ? (
+      {isTop && !isSingleSource ? (
         <div
           className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white"
           style={{
@@ -529,16 +454,32 @@ function ClusterCard({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2 fp-eyebrow">
-            <span>
-              #{rank} in {preview.folder.name}
-            </span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>{c.sourceCount} sources</span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span style={{ textTransform: "none", fontWeight: 400 }}>
-              {relativeTime(c.latestPublishedAt)}
-            </span>
-            <span className="fp-chip fp-chip-emerald ml-1">fit {fit.toFixed(2)}</span>
+            {isSingleSource ? (
+              <>
+                <span>Saved</span>
+                <span style={{ color: "var(--border-strong)" }}>·</span>
+                <span style={{ textTransform: "none", fontWeight: 400 }}>{sourceName}</span>
+                <span style={{ color: "var(--border-strong)" }}>·</span>
+                <span style={{ textTransform: "none", fontWeight: 400 }}>
+                  marked {relativeTime(c.latestPublishedAt)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span>
+                  #{rank} in {preview.folder.name}
+                </span>
+                <span style={{ color: "var(--border-strong)" }}>·</span>
+                <span style={{ textTransform: "none", fontWeight: 400 }}>
+                  {c.sourceCount} sources
+                </span>
+                <span style={{ color: "var(--border-strong)" }}>·</span>
+                <span style={{ textTransform: "none", fontWeight: 400 }}>
+                  {relativeTime(c.latestPublishedAt)}
+                </span>
+                <span className="fp-chip fp-chip-emerald ml-1">fit {fit.toFixed(2)}</span>
+              </>
+            )}
           </div>
           <h3
             className={`mt-2 leading-snug font-semibold ${
@@ -550,18 +491,20 @@ function ClusterCard({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {dedupeSourceChips(preview.items).map((chip, idx) => (
-          <span key={`${idx}:${chip.sourceId}`} className="fp-chip">
-            {chip.label}
-            {chip.count > 1 ? (
-              <span style={{ color: "var(--fg-muted)" }}> · {chip.count}</span>
-            ) : null}
-          </span>
-        ))}
-      </div>
+      {!isSingleSource && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {dedupeSourceChips(preview.items).map((chip, idx) => (
+            <span key={`${idx}:${chip.sourceId}`} className="fp-chip">
+              {chip.label}
+              {chip.count > 1 ? (
+                <span style={{ color: "var(--fg-muted)" }}> · {chip.count}</span>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      )}
 
-      {c.signals ? (
+      {!isSingleSource && c.signals ? (
         <div
           className="mt-4 grid grid-cols-1 gap-3 rounded-lg p-3 sm:grid-cols-3"
           style={{ background: "var(--bg-subtle)" }}
@@ -581,10 +524,10 @@ function ClusterCard({
           draftsByOutlet={preview.draftsByOutlet}
         />
         <button type="button" className="fp-btn fp-btn-ghost" onClick={dismiss} disabled={pending}>
-          {pending ? "Dismissing" : "Not now"}
+          {pending ? "Dismissing" : isSingleSource ? "Unsave" : "Not now"}
         </button>
       </div>
-    </article>
+    </Card>
   );
 }
 
@@ -609,6 +552,9 @@ function PeekRow({
   const c = preview.cluster;
   const headline = preview.items[0]?.title ?? "Untitled cluster";
   const fit = c.signals?.composite ?? 0;
+  const isSingleSource = c.sourceCount === 1;
+  const sourceName =
+    preview.items[0]?.displayName || hostFromUrl(preview.items[0]?.sourceUrl ?? "");
 
   function dismiss() {
     onDismiss(c.id);
@@ -649,6 +595,7 @@ function PeekRow({
       style={{
         opacity: pending ? 0.5 : undefined,
         viewTransitionName: cardTransitionName(c.id),
+        borderLeft: isSingleSource ? "3px solid var(--ink-primary)" : undefined,
       }}
     >
       <button
@@ -661,7 +608,7 @@ function PeekRow({
           className="text-xs tabular shrink-0"
           style={{ color: "var(--fg-subtle)", minWidth: "1.5rem" }}
         >
-          #{rank}
+          {isSingleSource ? "S" : `#${rank}`}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{headline}</span>
@@ -669,21 +616,33 @@ function PeekRow({
             className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]"
             style={{ color: "var(--fg-muted)" }}
           >
-            <span>{c.sourceCount} sources</span>
-            <span style={{ color: "var(--border-strong)" }}>·</span>
-            <span>{relativeTime(c.latestPublishedAt)}</span>
+            {isSingleSource ? (
+              <>
+                <span>Saved · {sourceName}</span>
+                <span style={{ color: "var(--border-strong)" }}>·</span>
+                <span>{relativeTime(c.latestPublishedAt)}</span>
+              </>
+            ) : (
+              <>
+                <span>{c.sourceCount} sources</span>
+                <span style={{ color: "var(--border-strong)" }}>·</span>
+                <span>{relativeTime(c.latestPublishedAt)}</span>
+              </>
+            )}
           </span>
         </span>
       </button>
-      <span className="fp-chip fp-chip-emerald shrink-0">fit {fit.toFixed(2)}</span>
+      {!isSingleSource && (
+        <span className="fp-chip fp-chip-emerald shrink-0">fit {fit.toFixed(2)}</span>
+      )}
       <button
         type="button"
         className="fp-btn fp-btn-ghost shrink-0"
         onClick={dismiss}
         disabled={pending}
-        aria-label={`Dismiss ${headline}`}
+        aria-label={`${isSingleSource ? "Unsave" : "Dismiss"} ${headline}`}
       >
-        {pending ? "Dismissing" : "Not now"}
+        {pending ? "Dismissing" : isSingleSource ? "Unsave" : "Not now"}
       </button>
     </div>
   );

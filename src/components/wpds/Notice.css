@@ -1,0 +1,23 @@
+.wpds-notice {
+  border-left: 4px solid;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  background: var(--surface-canvas);
+}
+.wpds-notice-info {
+  border-color: var(--accent-blue);
+  background: #f0f6fc;
+}
+.wpds-notice-warn {
+  border-color: var(--warn-fg);
+  background: var(--warn-bg);
+}
+.wpds-notice-error {
+  border-color: var(--error-fg);
+  background: var(--error-bg);
+}
+.wpds-notice-success {
+  border-color: var(--success-fg);
+  background: var(--success-bg);
+}

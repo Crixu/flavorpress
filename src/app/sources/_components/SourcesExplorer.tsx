@@ -16,6 +16,7 @@ import {
   bulkAssignSourcesToFolderAction,
   deleteSourceAction,
   pauseSourceAction,
+  pollSourceAction,
   resumeSourceAction,
 } from "@/lib/v1/actions";
 import { SubmitButton } from "../../_components/SubmitButton";
@@ -85,13 +86,22 @@ export function SourcesExplorer({
       <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
         <div className="overflow-x-auto">
           <div className="min-w-[720px]">
-            <div className="grid grid-cols-12 gap-3 border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500">
-              <div className="col-span-1">Pick</div>
-              <div className="col-span-4">Source</div>
-              <div className="col-span-1">Type</div>
-              <div className="col-span-2">Folder</div>
-              <div className="col-span-2 text-right">Activity</div>
-              <div className="col-span-2 text-right">Actions</div>
+            <div
+              className="border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500"
+              style={{
+                display: "grid",
+                gridTemplateColumns: GRID_COLS,
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <div />
+              <div>Source</div>
+              <div>Trust</div>
+              <div className="text-right">Activity</div>
+              <div className="text-right">Last poll</div>
+              <div>Folder</div>
+              <div className="text-right">Actions</div>
             </div>
 
             {groups.map((group) => (
@@ -135,6 +145,9 @@ export function SourcesExplorer({
   );
 }
 
+/** Shared column template for header and rows. */
+const GRID_COLS = "28px 1fr 56px 80px 90px 56px 80px";
+
 function ExplorerRow({
   row,
   folders,
@@ -149,81 +162,92 @@ function ExplorerRow({
   const meta = KIND_META[row.kind] ?? KIND_META.rss!;
   const paused = row.paused_until !== null && row.paused_until > Date.now();
   const waiting = !paused && row.backoff_until !== null && row.backoff_until > Date.now();
+  const name = row.display_name || hostFromUrl(row.url);
+
   return (
     <div
-      className={`grid grid-cols-12 items-center gap-3 px-4 py-3 text-xs ${
+      className={`px-4 py-2 text-xs ${
         selected
           ? "bg-indigo-50/60"
           : paused || waiting
             ? "bg-amber-50/40 hover:bg-amber-50/70"
             : "hover:bg-stone-50"
       }`}
+      style={{ display: "grid", gridTemplateColumns: GRID_COLS, gap: 8, alignItems: "center" }}
     >
-      <div className="col-span-1">
+      {/* Checkbox */}
+      <div>
         <input
           type="checkbox"
           checked={selected}
           onChange={onToggle}
-          aria-label={`Select ${row.display_name || hostFromUrl(row.url)}`}
+          aria-label={`Select ${name}`}
           className="h-4 w-4 rounded border-stone-300"
         />
       </div>
-      <div className="col-span-4 min-w-0">
-        <div className="flex items-center gap-2">
+
+      {/* Name + URL + kind chip + status */}
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Link
             href={`/sources/${row.id}`}
             prefetch={false}
             className="font-medium text-stone-900 hover:underline"
           >
-            {row.display_name || hostFromUrl(row.url)}
+            {name}
           </Link>
+          <span
+            className={`rounded px-1 py-0.5 text-[10px] uppercase tracking-wider ${meta.color}`}
+          >
+            {meta.label}
+          </span>
           {paused ? (
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-amber-800">
-              Paused · resumes {relativeFuture(row.paused_until!)}
+            <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] uppercase tracking-wider text-amber-800">
+              Paused
             </span>
           ) : waiting ? (
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-amber-800">
-              Waiting · retries {relativeFuture(row.backoff_until!)}
+            <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] uppercase tracking-wider text-amber-800">
+              Waiting
             </span>
           ) : null}
         </div>
-        <div className="truncate text-[11px] text-stone-500">{row.url}</div>
+        <div className="truncate text-[11px] text-stone-400">{row.url}</div>
         {row.last_error ? (
-          <div className="mt-0.5 truncate text-[11px] text-rose-600">{row.last_error}</div>
+          <div className="truncate text-[11px] text-rose-600">{row.last_error}</div>
         ) : null}
-        <div className="mt-1.5 flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-stone-500">Trust</span>
-          <TrustBoostControl sourceId={row.id} trust={row.trust_score} />
+      </div>
+
+      {/* Trust */}
+      <div>
+        <TrustBoostControl sourceId={row.id} trust={row.trust_score} />
+      </div>
+
+      {/* Activity */}
+      <div className="text-right text-stone-500">
+        <div className="text-[11px]">
+          {row.items_24h > 0 ? `+${row.items_24h} today` : `${row.item_count} total`}
         </div>
-      </div>
-      <div className="col-span-1">
-        <span
-          className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${meta.color}`}
-        >
-          {meta.label}
-        </span>
-      </div>
-      <div className="col-span-2">
-        <InlineFolderPicker sourceId={row.id} currentFolderId={row.folder_id} folders={folders} />
-      </div>
-      <div className="col-span-2 text-right text-stone-500">
-        <div>{row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "never"}</div>
         <FreshnessLine lastItemAt={row.last_item_at} itemCount={row.item_count} />
       </div>
-      <div className="col-span-2 flex flex-wrap justify-end gap-1.5">
-        <Link
-          href={`/sources/${row.id}`}
-          prefetch={false}
-          className="rounded border border-stone-200 px-2 py-1 text-[11px] hover:bg-stone-50"
-        >
-          Open
-        </Link>
+
+      {/* Last poll */}
+      <div className="text-right text-[11px] text-stone-400">
+        {row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "never"}
+      </div>
+
+      {/* Routing: folder picker */}
+      <div>
+        <InlineFolderPicker sourceId={row.id} currentFolderId={row.folder_id} folders={folders} />
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-wrap justify-end gap-1">
         {paused ? (
           <form action={resumeSourceAction}>
             <input type="hidden" name="sourceId" value={row.id} />
             <SubmitButton
-              className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 hover:bg-amber-100"
-              pendingLabel="Resuming"
+              className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] text-amber-800 hover:bg-amber-100"
+              pendingLabel="..."
             >
               Resume
             </SubmitButton>
@@ -235,8 +259,8 @@ function ExplorerRow({
         <form action={deleteSourceAction}>
           <input type="hidden" name="sourceId" value={row.id} />
           <SubmitButton
-            className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
-            pendingLabel="Removing"
+            className="rounded border border-rose-200 px-2 py-1 text-[10px] text-rose-700 hover:bg-rose-50"
+            pendingLabel="..."
           >
             Remove
           </SubmitButton>
@@ -328,63 +352,103 @@ function BulkActionBar({
   folders: FolderRow[];
   onClear: () => void;
 }) {
-  const [pending, startTransition] = useTransition();
+  const [movePending, startMoveTransition] = useTransition();
+  const [syncPending, startSyncTransition] = useTransition();
   const [folderId, setFolderId] = useState<string>("");
 
   if (selected.size === 0) return null;
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleMove(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData();
     fd.set("folderId", folderId);
     for (const id of selected) fd.append("sourceId", id);
-    startTransition(async () => {
+    startMoveTransition(async () => {
       await bulkAssignSourcesToFolderAction(fd);
       onClear();
       setFolderId("");
     });
   }
 
+  function handleSyncSelected() {
+    startSyncTransition(async () => {
+      for (const id of selected) {
+        const fd = new FormData();
+        fd.set("sourceId", id);
+        await pollSourceAction(fd);
+      }
+      onClear();
+    });
+  }
+
   const targetLabel =
     folderId === "" ? "Ungrouped" : (folders.find((f) => f.id === folderId)?.name ?? "folder");
+  const pending = movePending || syncPending;
 
   return (
     <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2">
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-center gap-3 rounded-xl border border-stone-300 bg-white px-4 py-3 shadow-lg"
-      >
+      <div className="flex items-center gap-3 rounded-xl border border-stone-300 bg-white px-4 py-3 shadow-lg">
         <span className="text-sm font-medium text-stone-900">{selected.size} selected</span>
-        <span className="text-stone-300">→</span>
-        <select
-          value={folderId}
-          onChange={(e) => setFolderId(e.target.value)}
-          className="rounded border border-stone-300 px-2 py-1 text-xs"
-          aria-label="Target folder"
-        >
-          <option value="">Ungrouped</option>
-          {folders.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
+        <span className="h-4 w-px bg-stone-200" />
+
+        {/* Move to folder */}
+        <form onSubmit={handleMove} className="flex items-center gap-2">
+          <select
+            value={folderId}
+            onChange={(e) => setFolderId(e.target.value)}
+            className="rounded border border-stone-300 px-2 py-1 text-xs"
+            aria-label="Target folder"
+            disabled={pending}
+          >
+            <option value="">Ungrouped</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded bg-stone-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-900 disabled:opacity-60"
+          >
+            {movePending ? "Moving..." : `Move to ${targetLabel}`}
+          </button>
+        </form>
+
+        <span className="h-4 w-px bg-stone-200" />
+
+        {/* Sync selected */}
         <button
-          type="submit"
+          type="button"
+          onClick={handleSyncSelected}
           disabled={pending}
-          className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="rounded border border-stone-200 px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-60"
         >
-          {pending ? "Moving…" : `Move ${selected.size} to ${targetLabel}`}
+          {syncPending ? "Syncing..." : "Sync selected"}
         </button>
+
+        {/* Re-tag: not yet implemented */}
+        <button
+          type="button"
+          disabled
+          title="Re-tag: coming soon"
+          className="rounded border border-stone-200 px-3 py-1.5 text-xs text-stone-400 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Re-tag
+        </button>
+
+        <span className="h-4 w-px bg-stone-200" />
+
         <button
           type="button"
           onClick={onClear}
           disabled={pending}
-          className="rounded border border-stone-200 px-3 py-1.5 text-sm hover:bg-stone-50 disabled:opacity-60"
+          className="rounded border border-stone-200 px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-60"
         >
           Cancel
         </button>
-      </form>
+      </div>
     </div>
   );
 }
@@ -431,7 +495,7 @@ function relativeTime(ms: number): string {
   return `${day}d ago`;
 }
 
-function relativeFuture(ms: number): string {
+function _relativeFuture(ms: number): string {
   const diff = ms - Date.now();
   if (diff <= 0) return "soon";
   const min = Math.ceil(diff / 60000);

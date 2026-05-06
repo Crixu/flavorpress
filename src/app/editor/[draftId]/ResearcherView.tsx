@@ -1,9 +1,13 @@
 /**
  * Researcher mode editor view. The user writes their own post in their
- * own surface (WordPress, an editor, paper); we show notes — angles,
- * verbatim quotes, concrete facts — that they can mine. No headline
+ * own surface (WordPress, an editor, paper); we show notes - angles,
+ * verbatim quotes, concrete facts - that they can mine. No headline
  * picker, no voice match, no push-to-WordPress; this artefact is meant
  * to be read alongside the writer's own draft, not turned into one.
+ *
+ * Layout: single-column notebook (max-width 760px, centered). Three
+ * sections stacked - Angles, Quotes, Leads - each with per-section
+ * remix controls inline at the bottom. No right rail, no sources rail.
  */
 
 import Link from "next/link";
@@ -54,8 +58,8 @@ export function ResearcherView({
   sibling,
 }: Props) {
   return (
-    <div className="space-y-6">
-      <header className="space-y-1.5">
+    <article className="fp-researcher-notebook">
+      <header className="fp-researcher-h">
         <div className="fp-eyebrow">
           <Link href="/" className="hover:underline" style={{ color: "var(--fg-subtle)" }}>
             ← Today
@@ -69,325 +73,207 @@ export function ResearcherView({
           </span>
           <span>{sourceCount} sources</span>
         </div>
-        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "26ch" }}>
-          {topic}
-        </h1>
-        <p className="text-sm" style={{ color: "var(--fg-muted)", maxWidth: "60ch" }}>
+        <h1 className="fp-researcher-title">{topic}</h1>
+        <p className="fp-researcher-lede">
           Raw material to write from. Pick an angle, lift a verbatim quote, chase a lead. Quotes are
           checked against the source text; leads are claims to verify before you use them.
         </p>
-        {sibling ? <div className="pt-1">{sibling}</div> : null}
+        <div className="fp-researcher-header-actions">
+          {sibling ? <div>{sibling}</div> : null}
+          {wpEditLink ? (
+            <a href={wpEditLink} target="_blank" rel="noreferrer" className="fp-btn fp-btn-primary">
+              Open in WordPress →
+            </a>
+          ) : (
+            <SendResearchToWpForm
+              draftId={draftId}
+              topic={topic}
+              className="fp-btn fp-btn-primary"
+              pendingLabel="Saving draft"
+            >
+              Draft in WordPress →
+            </SendResearchToWpForm>
+          )}
+        </div>
       </header>
 
-      <div
-        className="overflow-hidden"
-        style={{
-          background: "var(--surface)",
-          borderRadius: "var(--radius-xl)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div
-          className="flex flex-wrap items-center gap-3 px-6 py-3"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
-          <span className="fp-eyebrow">Researcher</span>
-          <span
-            className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px]"
-            style={{
-              background: "var(--bg-subtle)",
-              color: "var(--fg-muted)",
-            }}
-          >
-            <span style={{ fontWeight: 600 }}>
-              {notes.ideas.length} ideas · {notes.quotes.length} quotes · {notes.facts.length} leads
-            </span>
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            {wpEditLink ? (
-              <a
-                href={wpEditLink}
-                target="_blank"
-                rel="noreferrer"
-                className="fp-btn fp-btn-primary"
-              >
-                Open in WordPress →
-              </a>
-            ) : (
-              <SendResearchToWpForm
-                draftId={draftId}
-                topic={topic}
-                className="fp-btn fp-btn-primary"
-                pendingLabel="Saving draft"
-              >
-                Draft in WordPress →
-              </SendResearchToWpForm>
-            )}
-          </div>
+      <section className="fp-researcher-section">
+        <h2 className="fp-researcher-section-h">
+          <span className="fp-researcher-section-dot" style={{ background: "#9C4A22" }} />
+          Angles
+          <span className="fp-researcher-section-count">{notes.ideas.length}</span>
+        </h2>
+        <p className="fp-researcher-section-desc">Angles you might take. Pick one to write from.</p>
+        {notes.ideas.length > 0 ? (
+          <ul className="fp-researcher-angles">
+            {notes.ideas.map((idea, i) => (
+              <IdeasItem key={i} idea={idea} />
+            ))}
+          </ul>
+        ) : (
+          <p className="fp-researcher-empty">No angles yet.</p>
+        )}
+        <div className="fp-researcher-section-actions">
+          <RemixIdeasButton draftId={draftId} />
         </div>
+      </section>
 
-        <div className="grid grid-cols-12">
-          <aside
-            className="col-span-12 p-5 lg:col-span-3"
-            style={{
-              background: "#FAF7F1",
-              borderRight: "1px solid var(--border)",
-            }}
-          >
-            <header
-              className="mb-4 flex items-baseline justify-between gap-2 pb-3"
-              style={{ borderBottom: "1px solid var(--border)" }}
-            >
-              <div className="flex items-baseline gap-2.5">
-                <span
-                  aria-hidden
-                  className="inline-block h-2.5 w-2.5 translate-y-[1px] rounded-full"
-                  style={{ background: "var(--fg-subtle)" }}
-                />
-                <span className="fp-eyebrow">Sources</span>
-                <span
-                  className="rounded-full px-2 py-0.5 font-mono text-[10.5px]"
-                  style={{ background: "var(--surface)", color: "var(--fg-muted)" }}
-                >
-                  {sources.length}
-                </span>
-              </div>
-            </header>
-            <p
-              className="-mt-2 mb-3 text-[11.5px] leading-snug"
-              style={{ color: "var(--fg-subtle)" }}
-            >
-              Where the notes came from. Open one to read the original.
-            </p>
-            <ul className="space-y-2 text-xs">
-              {sources.map((row) => (
-                <li
-                  key={row.id}
-                  className="rounded-2xl p-3"
-                  style={{
-                    background: "var(--surface)",
-                    boxShadow: "var(--shadow-xs)",
-                  }}
-                >
-                  <a
-                    href={row.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[12.5px] font-medium hover:underline"
-                    style={{ color: "var(--fg)" }}
-                  >
-                    {row.display_name ?? hostFromUrl(row.source_url)}
-                  </a>
-                  <div
-                    className="mt-0.5 font-mono text-[10px]"
-                    style={{ color: "var(--fg-subtle)" }}
-                  >
-                    {relativeTime(row.published_at)}
-                  </div>
-                  <div
-                    className="mt-1.5 line-clamp-3 leading-snug"
-                    style={{ color: "var(--fg-muted)" }}
-                  >
-                    {row.title}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-              <div className="fp-eyebrow mb-2">Add a source</div>
-              <p className="mb-2 text-[11px] leading-snug" style={{ color: "var(--fg-subtle)" }}>
-                Paste an article URL to widen the input. Then hit Remix or More quotes to pull it
-                into the notes.
-              </p>
-              <AddSourceForm draftId={draftId} clusterId={clusterId} />
-            </div>
-          </aside>
-
-          <div className="col-span-12 px-10 pt-10 pb-16 lg:col-span-9">
-            <div className="mx-auto max-w-[760px] space-y-10">
-              <IdeasSection ideas={notes.ideas} draftId={draftId} />
-              <QuotesSection quotes={notes.quotes} draftId={draftId} />
-              <FactsSection facts={notes.facts} />
-
-              <div
-                className="flex flex-wrap items-center justify-between gap-3 pt-6"
-                style={{ borderTop: "1px solid var(--border)" }}
-              >
-                <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
-                  Done with these notes? Delete to keep your drafts list tidy.
-                </p>
-                <div className="flex items-center gap-4">
-                  <FlagMismatchButton draftId={draftId} clusterId={clusterId} />
-                  <form action={deleteDraftAction}>
-                    <input type="hidden" name="draftId" value={draftId} />
-                    <input type="hidden" name="redirectTo" value="/drafts" />
-                    <button
-                      type="submit"
-                      className="text-[12px] hover:underline"
-                      style={{ color: "var(--fg-subtle)" }}
-                    >
-                      Delete notes
-                    </button>
-                  </form>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({
-  label,
-  count,
-  description,
-  dotColor,
-  action,
-}: {
-  label: string;
-  count: number;
-  description: string;
-  dotColor: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <header
-      className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3"
-      style={{ borderBottom: "1px solid var(--border)" }}
-    >
-      <div className="flex items-baseline gap-2.5">
-        <span
-          aria-hidden
-          className="inline-block h-2.5 w-2.5 translate-y-[1px] rounded-full"
-          style={{ background: dotColor }}
-        />
-        <span className="fp-eyebrow">{label}</span>
-        <span
-          className="rounded-full px-2 py-0.5 font-mono text-[10.5px]"
-          style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
-        >
-          {count}
-        </span>
-      </div>
-      <div className="flex items-baseline gap-3">
-        <p className="text-[12px]" style={{ color: "var(--fg-subtle)", maxWidth: "32ch" }}>
-          {description}
+      <section className="fp-researcher-section">
+        <h2 className="fp-researcher-section-h">
+          <span className="fp-researcher-section-dot" style={{ background: "var(--fg-muted)" }} />
+          Quotes
+          <span className="fp-researcher-section-count">{notes.quotes.length}</span>
+        </h2>
+        <p className="fp-researcher-section-desc">
+          Verbatim from the source. Lift with attribution.
         </p>
-        {action ? <div>{action}</div> : null}
-      </div>
-    </header>
-  );
-}
+        {notes.quotes.length > 0 ? (
+          <ul className="fp-researcher-quotes">
+            {notes.quotes.map((q, i) => (
+              <QuoteItem key={i} quote={q} />
+            ))}
+          </ul>
+        ) : (
+          <p className="fp-researcher-empty">No quotes yet.</p>
+        )}
+        <div className="fp-researcher-section-actions">
+          <MoreQuotesButton draftId={draftId} atCap={notes.quotes.length >= QUOTE_CAP} />
+        </div>
+      </section>
 
-function IdeasSection({ ideas, draftId }: { ideas: ResearchIdea[]; draftId: string }) {
-  if (ideas.length === 0) return null;
-  return (
-    <section className="space-y-4">
-      <SectionHeader
-        label="Ideas"
-        count={ideas.length}
-        description="Angles you might take. Pick one to write from."
-        dotColor="#9C4A22"
-        action={<RemixIdeasButton draftId={draftId} />}
-      />
-      <ul className="space-y-3">
-        {ideas.map((idea, i) => (
-          <li
-            key={i}
-            className="rounded-2xl p-4"
-            style={{
-              background: "var(--rose-tint)",
-              color: "#9C4A22",
-            }}
-          >
-            <div className="text-[14px] font-semibold leading-snug">{idea.angle}</div>
-            {idea.rationale ? (
-              <div className="mt-1 text-[12.5px] leading-snug">{idea.rationale}</div>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
+      <section className="fp-researcher-section">
+        <h2 className="fp-researcher-section-h">
+          <span
+            className="fp-researcher-section-dot"
+            style={{ background: "var(--border-strong)" }}
+          />
+          Leads
+          <span className="fp-researcher-section-count">{notes.facts.length}</span>
+        </h2>
+        <p className="fp-researcher-section-desc">
+          Paraphrased; verify against the source before publishing.
+        </p>
+        {notes.facts.length > 0 ? (
+          <ul className="fp-researcher-facts">
+            {notes.facts.map((f, i) => (
+              <FactItem key={i} fact={f} />
+            ))}
+          </ul>
+        ) : (
+          <p className="fp-researcher-empty">No leads yet.</p>
+        )}
+      </section>
 
-function QuotesSection({ quotes, draftId }: { quotes: ResearchQuote[]; draftId: string }) {
-  if (quotes.length === 0) return null;
-  return (
-    <section className="space-y-4">
-      <SectionHeader
-        label="Quotes"
-        count={quotes.length}
-        description="Verbatim from the source. Lift with attribution."
-        dotColor="var(--fg-muted)"
-        action={<MoreQuotesButton draftId={draftId} atCap={quotes.length >= QUOTE_CAP} />}
-      />
-      <ul className="space-y-3">
-        {quotes.map((q, i) => (
-          <li
-            key={i}
-            className="rounded-2xl p-4"
-            style={{
-              background: "var(--bg-subtle)",
-              fontFamily: "var(--font-serif), Georgia, serif",
-            }}
-          >
-            <blockquote className="text-[15px] leading-relaxed" style={{ color: "var(--fg)" }}>
-              &ldquo;{q.text}&rdquo;
-            </blockquote>
-            <div
-              className="mt-2 text-[12px]"
-              style={{ color: "var(--fg-muted)", fontFamily: "inherit" }}
-            >
-              {q.speaker ? `${q.speaker} · ` : ""}
-              <a href={q.sourceUrl} target="_blank" rel="noreferrer" className="hover:underline">
-                {hostFromUrl(q.sourceUrl)}
-              </a>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
+      <section className="fp-researcher-section">
+        <h2 className="fp-researcher-section-h">
+          <span className="fp-researcher-section-dot" style={{ background: "var(--fg-subtle)" }} />
+          Sources
+          <span className="fp-researcher-section-count">{sources.length}</span>
+        </h2>
+        <p className="fp-researcher-section-desc">
+          Where the notes came from. Open one to read the original.
+        </p>
+        {sources.length > 0 ? (
+          <ul className="fp-researcher-sources">
+            {sources.map((row) => (
+              <SourceItem key={row.id} row={row} />
+            ))}
+          </ul>
+        ) : null}
+        <div className="fp-researcher-section-actions">
+          <div className="fp-researcher-add-source">
+            <p className="fp-researcher-add-source-hint">
+              Paste an article URL to widen the input. Then hit Remix or More quotes to pull it into
+              the notes.
+            </p>
+            <AddSourceForm draftId={draftId} clusterId={clusterId} />
+          </div>
+        </div>
+      </section>
 
-function FactsSection({ facts }: { facts: ResearchFact[] }) {
-  if (facts.length === 0) return null;
-  return (
-    <section className="space-y-4">
-      <SectionHeader
-        label="Leads"
-        count={facts.length}
-        description="Paraphrased; verify against the source before publishing."
-        dotColor="var(--border-strong)"
-      />
-      <ul className="space-y-2">
-        {facts.map((f, i) => (
-          <li
-            key={i}
-            className="rounded-xl p-3 text-[13.5px] leading-snug"
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <span style={{ color: "var(--fg)" }}>{f.text}</span>{" "}
-            <a
-              href={f.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
+      <div className="fp-researcher-footer">
+        <p className="fp-researcher-footer-label">
+          Done with these notes? Delete to keep your drafts list tidy.
+        </p>
+        <div className="fp-researcher-footer-actions">
+          <FlagMismatchButton draftId={draftId} clusterId={clusterId} />
+          <form action={deleteDraftAction}>
+            <input type="hidden" name="draftId" value={draftId} />
+            <input type="hidden" name="redirectTo" value="/drafts" />
+            <button
+              type="submit"
               className="text-[12px] hover:underline"
               style={{ color: "var(--fg-subtle)" }}
-              title="Open the cited source to verify this lead"
             >
-              verify ↗
-            </a>
-          </li>
-        ))}
-      </ul>
-    </section>
+              Delete notes
+            </button>
+          </form>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function IdeasItem({ idea }: { idea: ResearchIdea }) {
+  return (
+    <li className="fp-researcher-angle">
+      <div className="fp-researcher-angle-text">{idea.angle}</div>
+      {idea.rationale ? (
+        <div className="fp-researcher-angle-rationale">{idea.rationale}</div>
+      ) : null}
+    </li>
+  );
+}
+
+function QuoteItem({ quote }: { quote: ResearchQuote }) {
+  return (
+    <li className="fp-researcher-quote">
+      <blockquote>
+        <p>&ldquo;{quote.text}&rdquo;</p>
+      </blockquote>
+      <footer>
+        <cite>
+          {quote.speaker ? `${quote.speaker} · ` : ""}
+          <a href={quote.sourceUrl} target="_blank" rel="noreferrer" className="hover:underline">
+            {hostFromUrl(quote.sourceUrl)}
+          </a>
+        </cite>
+      </footer>
+    </li>
+  );
+}
+
+function FactItem({ fact }: { fact: ResearchFact }) {
+  return (
+    <li className="fp-researcher-fact">
+      <p>{fact.text}</p>
+      <a
+        href={fact.sourceUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="hover:underline"
+        title="Open the cited source to verify this lead"
+      >
+        verify ↗
+      </a>
+    </li>
+  );
+}
+
+function SourceItem({ row }: { row: SourceRow }) {
+  return (
+    <li className="fp-researcher-source">
+      <a
+        href={row.source_url}
+        target="_blank"
+        rel="noreferrer"
+        className="fp-researcher-source-name hover:underline"
+      >
+        {row.display_name ?? hostFromUrl(row.source_url)}
+      </a>
+      <div className="fp-researcher-source-meta">{relativeTime(row.published_at)}</div>
+      <div className="fp-researcher-source-title">{row.title}</div>
+    </li>
   );
 }
 

@@ -4,9 +4,10 @@
  * Tinder-style swipe deck.
  *
  * One card at a time, drag to throw it off-screen. Threshold for a
- * commit is 110px. Right = mark, left = dismiss. Keyboard shortcuts
- * (← / →) mirror the gesture. Server actions fire optimistically; if
- * the action returns a formed cluster batch we surface a banner.
+ * commit is 110px. Right = save, left = skip. Keyboard shortcuts
+ * (left/right arrows, space) mirror the gesture. Server actions fire
+ * optimistically; if the action returns a formed cluster batch we
+ * surface a banner.
  *
  * The deck renders three cards stacked back-to-front to give a "pile
  * of stories" feel: when the top card flies away, the cards behind
@@ -41,6 +42,8 @@ export interface ReaderItem {
 interface Props {
   initialItems: ReaderItem[];
   initialMarkedCount: number;
+  /** Total items in the current folder scope (from server) for the "N of M" strip. */
+  totalQueueCount: number;
 }
 
 type Direction = "left" | "right";
@@ -63,9 +66,10 @@ const SWIPE_COMMIT_PX = 110;
 const FLY_DURATION_MS = 260;
 const STACK_TRANSITION_MS = 260;
 
-export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
+export function SwipeDeck({ initialItems, initialMarkedCount, totalQueueCount }: Props) {
   const [queue, setQueue] = useState<ReaderItem[]>(initialItems);
   const [markedCount, setMarkedCount] = useState(initialMarkedCount);
+  const [savedThisSession, setSavedThisSession] = useState(0);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const [leaving, setLeaving] = useState<LeavingCard | null>(null);
@@ -73,9 +77,16 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
   const [bannerMsg, setBannerMsg] = useState<string | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Track how many items started in the deck so we can compute the index.
+  const initialCountRef = useRef(initialItems.length);
+
   const top = queue[0] ?? null;
   const next = queue[1] ?? null;
   const nextNext = queue[2] ?? null;
+
+  // Current index = how many we've consumed from the initial set.
+  const triaged = initialCountRef.current - queue.length;
+  const currentIndex = triaged + 1;
 
   // Keyboard support. Bind once, scoped to whatever card is on top.
   useEffect(() => {
@@ -95,6 +106,9 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         commitSwipe("left");
+      } else if (e.key === " ") {
+        e.preventDefault();
+        window.open(top.canonicalUrl, "_blank", "noreferrer");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -152,6 +166,7 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
     }, FLY_DURATION_MS + 50);
 
     if (direction === "right") {
+      setSavedThisSession((n) => n + 1);
       void (async () => {
         const res = await markItemAction(swiped.id);
         setMarkedCount(res.markedCount);
@@ -176,6 +191,9 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
     if (!last || leaving) return;
     setHistory((h) => h.slice(0, -1));
     setQueue((q) => [last.item, ...q]);
+    if (last.direction === "right") {
+      setSavedThisSession((n) => Math.max(0, n - 1));
+    }
     void (async () => {
       const res = await unmarkItemAction(last.item.id);
       setMarkedCount(res.markedCount);
@@ -229,15 +247,14 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
 
   return (
     <div className="space-y-5">
+      {/* Counter strip */}
       <div className="flex items-center justify-between gap-3 text-xs">
-        <div className="min-w-0" style={{ color: "var(--fg-muted)" }}>
-          <span>
-            {queue.length} left in deck · {markedCount} marked
-          </span>
-          {history.length > 0 ? (
-            <span style={{ color: "var(--fg-subtle)" }}> · {history.length} triaged</span>
-          ) : null}
-        </div>
+        <span style={{ color: "var(--fg-muted)" }}>
+          {top
+            ? `${currentIndex} of ${totalQueueCount}`
+            : `${totalQueueCount} of ${totalQueueCount}`}
+          {savedThisSession > 0 ? ` · ${savedThisSession} saved this session` : ""}
+        </span>
         <button
           type="button"
           onClick={formClustersNow}
@@ -302,7 +319,7 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
               >
                 {pendingClustering
                   ? "Forming clusters…"
-                  : `Form clusters from ${markedCount} marked →`}
+                  : `Form clusters from ${markedCount} saved →`}
               </button>
             ) : null}
           </div>
@@ -329,6 +346,15 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
         onRight={() => commitSwipe("right")}
         onUndo={undo}
       />
+
+      {/* Always-visible keyboard hints */}
+      <p
+        className="text-center text-xs"
+        style={{ color: "var(--fg-subtle)" }}
+        aria-label="Keyboard shortcuts"
+      >
+        <kbd>&#8592;</kbd> skip &middot; <kbd>&#8594;</kbd> save &middot; <kbd>space</kbd> open
+      </p>
     </div>
   );
 }
@@ -399,20 +425,35 @@ function Card({
         userSelect: "none",
       }}
     >
-      <div className="flex items-center gap-2 text-xs" style={{ color: "var(--fg-subtle)" }}>
-        <span className="fp-eyebrow">{item.sourceName || "Source"}</span>
-        {item.folderName ? (
-          <>
-            <span>·</span>
-            <span>{item.folderName}</span>
-          </>
-        ) : null}
-        <span>·</span>
-        <span>{relativeTime(item.publishedAt)}</span>
+      {/* Source eyebrow row */}
+      <div
+        className="flex items-start justify-between gap-2 text-xs"
+        style={{ color: "var(--fg-subtle)" }}
+      >
+        <span className="fp-eyebrow">
+          {item.sourceKind ? `${item.sourceKind.toUpperCase()} · ` : ""}
+          {item.sourceName || "Source"}
+          {" · "}
+          {relativeTime(item.publishedAt)}
+        </span>
+        <a
+          href={item.canonicalUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 underline"
+          style={{ color: "var(--fg-subtle)" }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          Open original &#8599;
+        </a>
       </div>
-      <h2 className="fp-h1-serif mt-3" style={{ fontSize: 26, lineHeight: 1.2 }}>
+
+      {/* Title - Newsreader serif, 28px */}
+      <h2 className="fp-h1-serif mt-3" style={{ fontSize: 28, lineHeight: 1.2 }}>
         {item.title}
       </h2>
+
+      {/* Also covered by badge */}
       {item.alsoCoveredBy.length > 0 ? (
         <div
           className="mt-2 inline-flex max-w-full items-center gap-1.5 self-start rounded-full px-2.5 py-1 text-[11px]"
@@ -431,12 +472,16 @@ function Card({
           </span>
         </div>
       ) : null}
+
+      {/* Summary block */}
       <p
         className="mt-3 flex-1 overflow-hidden text-sm leading-relaxed"
         style={{ color: "var(--fg-muted)" }}
       >
         {item.lede}
       </p>
+
+      {/* Reddit-specific stats */}
       {item.sourceKind === "reddit" && (item.score !== null || item.commentCount !== null) ? (
         <div
           className="mt-3 flex flex-wrap items-center gap-3 text-[11px] tabular"
@@ -444,7 +489,7 @@ function Card({
         >
           {item.score !== null ? (
             <span title={`${item.score.toLocaleString()} upvotes`}>
-              ↑ {compactNumber(item.score)}
+              &#8593; {compactNumber(item.score)}
             </span>
           ) : null}
           {item.commentCount !== null ? (
@@ -454,21 +499,7 @@ function Card({
           ) : null}
         </div>
       ) : null}
-      <div className="mt-4 flex items-center justify-between text-xs">
-        <a
-          href={item.canonicalUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-          style={{ color: "var(--fg-subtle)" }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          Open original →
-        </a>
-        <span className="tabular" style={{ color: "var(--fg-subtle)" }}>
-          {hostname(item.canonicalUrl)}
-        </span>
-      </div>
+
       {overlay && !muted ? <SwipeOverlay direction={overlay} /> : null}
     </article>
   );
@@ -495,7 +526,7 @@ function SwipeOverlay({ direction }: { direction: Direction }) {
           marginRight: isRight ? 0 : "auto",
         }}
       >
-        {isRight ? "Mark" : "Skip"}
+        {isRight ? "Save" : "Skip"}
       </div>
     </div>
   );
@@ -516,7 +547,7 @@ function ActionBar({
 }) {
   return (
     <div className="flex items-center justify-center gap-3">
-      <IconButton label="Skip (←)" onClick={onLeft} disabled={!canSwipe} tone="rose">
+      <IconButton label="Skip (left arrow)" onClick={onLeft} disabled={!canSwipe} tone="rose">
         <svg
           width="22"
           height="22"
@@ -531,7 +562,7 @@ function ActionBar({
           <line x1="6" y1="18" x2="18" y2="6" />
         </svg>
       </IconButton>
-      <IconButton label="Undo (⌘Z)" onClick={onUndo} disabled={!canUndo} tone="neutral" small>
+      <IconButton label="Undo (Cmd+Z)" onClick={onUndo} disabled={!canUndo} tone="neutral" small>
         <svg
           width="18"
           height="18"
@@ -546,7 +577,7 @@ function ActionBar({
           <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
         </svg>
       </IconButton>
-      <IconButton label="Mark (→)" onClick={onRight} disabled={!canSwipe} tone="emerald">
+      <IconButton label="Save (right arrow)" onClick={onRight} disabled={!canSwipe} tone="emerald">
         <svg
           width="22"
           height="22"
@@ -625,12 +656,4 @@ function compactNumber(n: number): string {
   if (abs >= 10_000) return `${(n / 1000).toFixed(0)}k`;
   if (abs >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
   return n.toLocaleString();
-}
-
-function hostname(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
 }

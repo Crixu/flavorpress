@@ -1,0 +1,16 @@
+.wpds-md {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.wpds-md-side {
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-subtle);
+  overflow-y: auto;
+}
+.wpds-md-detail {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+}

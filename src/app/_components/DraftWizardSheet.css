@@ -1,0 +1,140 @@
+.wpds-wiz-stepbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: -18px -18px 18px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-default);
+}
+.wpds-wiz-step-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  font-weight: 600;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+.wpds-wiz-step {
+  flex: 1;
+  height: 3px;
+  background: var(--border-default);
+  border-radius: 2px;
+}
+.wpds-wiz-step.on {
+  background: var(--ink-primary);
+}
+
+.wpds-wiz-cluster {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 18px;
+}
+.wpds-wiz-cluster-h {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.wpds-wiz-cluster-meta {
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.wpds-wiz-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.wpds-wiz-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wpds-wiz-pill {
+  padding: 5px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  cursor: pointer;
+  background: var(--surface-canvas);
+  color: var(--ink-primary);
+  font-family: inherit;
+  transition: all var(--duration) var(--ease);
+}
+.wpds-wiz-pill:hover {
+  border-color: var(--ink-primary);
+}
+.wpds-wiz-pill.on {
+  background: var(--ink-primary);
+  color: #fff;
+  border-color: var(--ink-primary);
+}
+
+.wpds-wiz-angle {
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.wpds-wiz-angle.on {
+  border-color: var(--ink-primary);
+  box-shadow: inset 3px 0 0 var(--ink-primary);
+  padding-left: 11px;
+}
+.wpds-wiz-angle-k {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.wpds-wiz-angle-t {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+.wpds-wiz-angle-w {
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  line-height: 1.55;
+}
+.wpds-wiz-angle-custom {
+  border-style: dashed;
+}
+.wpds-wiz-angle-custom textarea {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  resize: none;
+  min-height: 36px;
+  outline: none;
+  background: transparent;
+}
+
+.wpds-wiz-loading {
+  color: var(--ink-muted);
+  font-size: 13px;
+  padding: 18px 0;
+  text-align: center;
+}
+
+.wpds-wiz-error {
+  background: var(--error-bg);
+  color: var(--error-fg);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  margin-bottom: 14px;
+}

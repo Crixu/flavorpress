@@ -1,8 +1,8 @@
 /**
- * Settings panel.
+ * Settings panel - master-detail layout.
  *
  * Anthropic key, draft model, and inbound webhook secret. Lookup
- * precedence is DB → process.env, so anyone running with .env-only keeps
+ * precedence is DB -> process.env, so anyone running with .env-only keeps
  * working; values stored here override when present.
  */
 
@@ -19,11 +19,13 @@ import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 import { LibraryMaintenance } from "./_components/LibraryMaintenance";
+import { SettingsSidebar } from "./_components/SettingsSidebar";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   searchParams: Promise<{
+    section?: string;
     saved?: string;
     cleared?: string;
     error?: string;
@@ -43,6 +45,8 @@ const extensionErrorMessages: Record<string, string> = Object.fromEntries(
 export default async function SettingsPage({ searchParams }: PageProps) {
   await ensureSchema();
   const sp = await searchParams;
+  const section = sp.section ?? "authentication";
+
   const [snapshot, auth, draftCountR] = await Promise.all([
     loadSettingsSnapshot(extensionSettingFields.map((f) => f.key)),
     resolveAnthropicAuth().catch(
@@ -59,51 +63,112 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
 
   return (
-    <div className="space-y-8" style={{ maxWidth: 720 }}>
-      <header className="space-y-2">
-        <div className="fp-eyebrow">Settings</div>
-        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "20ch" }}>
-          Configure FlavorPress without editing .env.
-        </h1>
-        <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          Values you save here are stored locally in the FlavorPress database and override any
-          matching <code>.env</code> entry. Clear a value to fall back to the environment variable.
+    <div className="fp-settings-shell">
+      <SettingsSidebar active={section} />
+      <div className="fp-settings-detail">
+        {sp.saved ? <Banner kind="success">Saved {labelFor(sp.saved)}.</Banner> : null}
+        {sp.cleared ? (
+          <Banner kind="success">Cleared {labelFor(sp.cleared)}. Falling back to .env.</Banner>
+        ) : null}
+        {sp.extension && (sp.state === "enabled" || sp.state === "disabled") ? (
+          <Banner kind="success">
+            {sp.state === "enabled" ? "Enabled" : "Disabled"} {extensionLabelFor(sp.extension)}.
+          </Banner>
+        ) : null}
+        {sp.error === "anthropic_key_invalid" ? (
+          <Banner kind="error">
+            Anthropic key didn&apos;t match the expected <code>sk-ant-...</code> format. Nothing was
+            saved.
+          </Banner>
+        ) : null}
+        {sp.error && extensionErrorMessages[sp.error] ? (
+          <Banner kind="error">{extensionErrorMessages[sp.error]}</Banner>
+        ) : null}
+        {sp.error === "invalid_key" ? <Banner kind="error">Unknown setting key.</Banner> : null}
+        {sp.error === "invalid_extension" ? <Banner kind="error">Unknown extension.</Banner> : null}
+
+        {section === "authentication" && (
+          <AuthSectionPane mode={auth.mode} hasApiKey={auth.apiKey !== null} snapshot={snapshot} />
+        )}
+        {section === "models" && <ModelsSectionPane snapshot={snapshot} />}
+        {section === "extensions" && (
+          <ExtensionsSectionPane
+            snapshot={snapshot}
+            disabledExtensionIds={snapshot.disabledExtensionIds}
+          />
+        )}
+        {section === "library" && <LibrarySectionPane draftCount={draftCount} />}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Authentication section
+ * -------------------------------------------------------------------------*/
+
+function AuthSectionPane({
+  mode,
+  hasApiKey,
+  snapshot,
+}: {
+  mode: AuthMode;
+  hasApiKey: boolean;
+  snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Authentication</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          How FlavorPress connects to Anthropic for drafting and fact-check.
         </p>
-      </header>
+      </div>
 
-      <AuthModeRow mode={auth.mode} hasApiKey={auth.apiKey !== null} />
+      <AuthModeRow mode={mode} hasApiKey={hasApiKey} />
 
-      {sp.saved ? <Banner kind="success">✓ Saved {labelFor(sp.saved)}.</Banner> : null}
-      {sp.cleared ? (
-        <Banner kind="success">✓ Cleared {labelFor(sp.cleared)}. Falling back to .env.</Banner>
-      ) : null}
-      {sp.extension && (sp.state === "enabled" || sp.state === "disabled") ? (
-        <Banner kind="success">
-          ✓ {sp.state === "enabled" ? "Enabled" : "Disabled"} {extensionLabelFor(sp.extension)}.
-        </Banner>
-      ) : null}
-      {sp.error === "anthropic_key_invalid" ? (
-        <Banner kind="error">
-          ⚠ Anthropic key didn't match the expected <code>sk-ant-…</code> format. Nothing was saved.
-        </Banner>
-      ) : null}
-      {sp.error && extensionErrorMessages[sp.error] ? (
-        <Banner kind="error">⚠ {extensionErrorMessages[sp.error]}</Banner>
-      ) : null}
-      {sp.error === "invalid_key" ? <Banner kind="error">⚠ Unknown setting key.</Banner> : null}
-      {sp.error === "invalid_extension" ? <Banner kind="error">⚠ Unknown extension.</Banner> : null}
+      <details className="fp-card p-5">
+        <summary
+          className="cursor-pointer select-none text-sm font-medium"
+          style={{ color: "var(--fg)" }}
+        >
+          Advanced
+        </summary>
+        <div className="mt-4 space-y-4">
+          <SettingForm
+            title="Anthropic API key"
+            hint="Used for drafting when configured, and required for fact-check. Without a key, drafting can use your local Claude Code login; if neither auth path is available, drafts fall back to a deterministic stub for local dev."
+            settingKey={SETTING_KEYS.anthropicApiKey}
+            envVar="ANTHROPIC_API_KEY"
+            source={snapshot.anthropicApiKey.source}
+            preview={snapshot.anthropicApiKey.preview}
+            inputType="password"
+            placeholder="sk-ant-..."
+            saveLabel="Save key"
+          />
+        </div>
+      </details>
+    </div>
+  );
+}
 
-      <SettingForm
-        title="Anthropic API key"
-        hint="Used for drafting when configured, and required for fact-check. Without a key, drafting can use your local Claude Code login; if neither auth path is available, drafts fall back to a deterministic stub for local dev."
-        settingKey={SETTING_KEYS.anthropicApiKey}
-        envVar="ANTHROPIC_API_KEY"
-        source={snapshot.anthropicApiKey.source}
-        preview={snapshot.anthropicApiKey.preview}
-        inputType="password"
-        placeholder="sk-ant-..."
-        saveLabel="Save key"
-      />
+/* ---------------------------------------------------------------------------
+ * Models section
+ * -------------------------------------------------------------------------*/
+
+function ModelsSectionPane({
+  snapshot,
+}: {
+  snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Models</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          Anthropic model used for draft generation.
+        </p>
+      </div>
 
       <SettingForm
         title="Draft model"
@@ -119,57 +184,147 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           snapshot.anthropicDraftModel.source === "db" ? snapshot.anthropicDraftModel.value : ""
         }
       />
-
-      {extensionSettingFields.map((field) => {
-        const snap = snapshot.extensionSettings[field.key] ?? { value: null, source: "none" };
-        return (
-          <SettingForm
-            key={field.key}
-            title={field.title}
-            hint={field.hint}
-            settingKey={field.key}
-            envVar={field.envVar}
-            source={snap.source}
-            preview={snap.value}
-            inputType={field.inputType}
-            placeholder={field.placeholder}
-            saveLabel={field.saveLabel}
-            defaultValue={field.inputType === "password" ? undefined : (snap.value ?? "")}
-          />
-        );
-      })}
-
-      <ExtensionsSection disabledExtensionIds={snapshot.disabledExtensionIds} />
-
-      <LibraryMaintenance draftCount={draftCount} />
-
-      <ExportSection />
     </div>
   );
 }
 
-function ExportSection() {
+/* ---------------------------------------------------------------------------
+ * Extensions section
+ * -------------------------------------------------------------------------*/
+
+function ExtensionsSectionPane({
+  snapshot,
+  disabledExtensionIds,
+}: {
+  snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
+  disabledExtensionIds: string[];
+}) {
+  const disabled = new Set(disabledExtensionIds);
+
   return (
-    <section className="fp-card p-5 space-y-3">
+    <div className="space-y-6">
       <div>
-        <div className="text-base font-semibold">Export your data</div>
-        <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          Download a JSON snapshot of your drafts, voice profiles, outlets, source folders, sources,
-          and source-to-outlet assignments. Application Passwords and other secrets are stripped
-          before download.
+        <h2 className="text-lg font-semibold tracking-tight">Extensions</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          Toggle which inspectors run on each draft. Disabling an extension stops loading its
+          annotations and hides its right-rail panel; the underlying data stays in the database so
+          you can re-enable later.
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <a className="fp-btn fp-btn-primary" href="/api/export" download>
-          Download export
-        </a>
-        <span className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
-          Generated on demand. Nothing is stored on disk.
-        </span>
-      </div>
-    </section>
+
+      <ul className="fp-card divide-y" style={{ borderColor: "var(--border)" }}>
+        {EXTENSION_METADATA.map((ext) => {
+          const isEnabled = !disabled.has(ext.id);
+          return (
+            <li key={ext.id} className="flex items-start gap-4 p-4">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-semibold">{ext.label}</span>
+                  <span className={isEnabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}>
+                    {isEnabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+                  {ext.description}
+                </p>
+              </div>
+              <form action={toggleExtensionAction} className="shrink-0">
+                <input type="hidden" name="extensionId" value={ext.id} />
+                <input type="hidden" name="enabled" value={isEnabled ? "0" : "1"} />
+                <SubmitButton
+                  className={isEnabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
+                  pendingLabel={isEnabled ? "Disabling" : "Enabling"}
+                >
+                  {isEnabled ? "Disable" : "Enable"}
+                </SubmitButton>
+              </form>
+            </li>
+          );
+        })}
+      </ul>
+
+      {extensionSettingFields.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold" style={{ color: "var(--fg-muted)" }}>
+            Extension settings
+          </h3>
+          {extensionSettingFields.map((field) => {
+            const snap = snapshot.extensionSettings[field.key] ?? { value: null, source: "none" };
+            return (
+              <SettingForm
+                key={field.key}
+                title={field.title}
+                hint={field.hint}
+                settingKey={field.key}
+                envVar={field.envVar}
+                source={snap.source}
+                preview={snap.value}
+                inputType={field.inputType}
+                placeholder={field.placeholder}
+                saveLabel={field.saveLabel}
+                defaultValue={field.inputType === "password" ? undefined : (snap.value ?? "")}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
+
+/* ---------------------------------------------------------------------------
+ * Library section
+ * -------------------------------------------------------------------------*/
+
+function LibrarySectionPane({ draftCount }: { draftCount: number }) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Library</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          Maintenance jobs, data export, and destructive operations.
+        </p>
+      </div>
+
+      <div className="fp-card p-5 space-y-3">
+        <div>
+          <div className="text-base font-semibold">Export your data</div>
+          <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+            Download a JSON snapshot of your drafts, voice profiles, outlets, source folders,
+            sources, and source-to-outlet assignments. Application Passwords and other secrets are
+            stripped before download.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <a className="fp-btn fp-btn-primary" href="/api/export" download>
+            Download export
+          </a>
+          <span className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
+            Generated on demand. Nothing is stored on disk.
+          </span>
+        </div>
+      </div>
+
+      <LibraryMaintenance draftCount={draftCount} />
+
+      <div className="fp-danger-zone">
+        <div className="fp-danger-zone-h">Danger zone</div>
+        <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--fg-muted)" }}>
+          These actions are permanent. Drafted clusters and their items are preserved by the cleanup
+          job, but the operations below cannot be undone.
+        </p>
+        <p className="text-xs" style={{ color: "var(--fg-muted)" }}>
+          Use the &quot;Clean up old clusters&quot; control in the maintenance panel above to remove
+          stale library data. Export your data first if you need a backup.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Shared sub-components (unchanged from original)
+ * -------------------------------------------------------------------------*/
 
 function AuthModeRow({ mode, hasApiKey }: { mode: AuthMode; hasApiKey: boolean }) {
   const config =
@@ -198,52 +353,6 @@ function AuthModeRow({ mode, hasApiKey }: { mode: AuthMode; hasApiKey: boolean }
       <p className="text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
         {config.line}
       </p>
-    </section>
-  );
-}
-
-function ExtensionsSection({ disabledExtensionIds }: { disabledExtensionIds: string[] }) {
-  const disabled = new Set(disabledExtensionIds);
-  return (
-    <section className="fp-card p-5 space-y-4">
-      <div>
-        <div className="text-base font-semibold">Editor extensions</div>
-        <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          Toggle which inspectors run on each draft. Disabling an extension stops loading its
-          annotations and hides its right-rail panel; the underlying data stays in the database so
-          you can re-enable later.
-        </p>
-      </div>
-      <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
-        {EXTENSION_METADATA.map((ext) => {
-          const isEnabled = !disabled.has(ext.id);
-          return (
-            <li key={ext.id} className="flex items-start gap-4 py-3">
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[14px] font-semibold">{ext.label}</span>
-                  <span className={isEnabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}>
-                    {isEnabled ? "Enabled" : "Disabled"}
-                  </span>
-                </div>
-                <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                  {ext.description}
-                </p>
-              </div>
-              <form action={toggleExtensionAction} className="shrink-0">
-                <input type="hidden" name="extensionId" value={ext.id} />
-                <input type="hidden" name="enabled" value={isEnabled ? "0" : "1"} />
-                <SubmitButton
-                  className={isEnabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
-                  pendingLabel={isEnabled ? "Disabling" : "Enabling"}
-                >
-                  {isEnabled ? "Disable" : "Enable"}
-                </SubmitButton>
-              </form>
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }
@@ -380,7 +489,7 @@ function Banner({
           };
   return (
     <div
-      className="rounded-lg px-4 py-3 text-sm"
+      className="rounded-lg px-4 py-3 text-sm mb-6"
       style={{
         background: palette.bg,
         color: palette.fg,

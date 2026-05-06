@@ -1,37 +1,24 @@
 /**
- * Per-outlet voice profile detail.
+ * Per-outlet voice profile detail - master-detail layout.
  *
- * Two halves:
- *   - Auto-derived stats (read-only): archive size, sentence length stats,
- *     em-dash density, hedge frequency, quote density, top function words.
- *     These come from the archive analyzer; the user can rebuild but not
- *     edit individual values.
- *   - User-curated lists (editable): banned terms ("don't say 'leverage'")
- *     and signature terms ("we always use 'shipping' not 'launching'").
- *     Chip-input UI: type a term, press Add. Click X to remove.
+ * The sidebar shows all outlets; this route pre-selects outletId.
+ * The right pane renders the full voice editor for the selected outlet.
  */
 
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
-import { getOutlet, getOutletCredentials } from "@/lib/v1/outlets";
+import { getOutlet, getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
 import { getOutletPostCount, MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
-import { HelpTrigger } from "@/components/Help";
-import { PendingMessage, SubmitButton } from "@/app/_components/SubmitButton";
-import {
-  addVoiceTermAction,
-  removeVoiceTermAction,
-  buildVoiceProfileAction,
-  saveBlogDescriptionAction,
-  deriveBlogDescriptionAction,
-} from "@/lib/v1/actions";
-import { VoiceSetupPicker } from "./_components/VoiceSetupPicker";
+import { canUseAuthorizeFlow } from "@/lib/v1/origin";
+import { Notice } from "@/components/wpds";
+import { VoiceShell } from "../_components/VoiceShell";
+import { OutletDetail } from "../_components/OutletDetail";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ outletId: string }>;
-  searchParams: Promise<{ thin?: string }>;
+  searchParams: Promise<{ thin?: string; wp_connected?: string }>;
 }
 
 export default async function VoiceDetailPage({ params, searchParams }: PageProps) {
@@ -39,247 +26,74 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
   await ensureSingleUser();
   const { outletId } = await params;
   const sp = await searchParams;
-  const outlet = await getOutlet(outletId);
+
+  const [outlet, outlets, authorizeAvailable] = await Promise.all([
+    getOutlet(outletId),
+    listOutlets(SINGLE_USER_ID),
+    canUseAuthorizeFlow(),
+  ]);
+
   if (!outlet || outlet.userId !== SINGLE_USER_ID) notFound();
 
   const r = await db.execute({
     sql: `SELECT * FROM voice_profiles WHERE outlet_id = ?`,
     args: [outletId],
   });
-  const profile = r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
 
-  const banned: string[] = profile
-    ? (JSON.parse(String(profile.banned_terms ?? "[]")) as string[])
-    : [];
-  const signature: string[] = profile
-    ? (JSON.parse(String(profile.signature_terms ?? "[]")) as string[])
-    : [];
-  const description = profile ? String((profile as Record<string, unknown>).description ?? "") : "";
-  const archiveSize = profile ? Number(profile.archive_index_size ?? 0) : 0;
-  const sentenceMean = profile ? Number(profile.sentence_length_mean ?? 0) : 0;
-  const sentenceVar = profile ? Number(profile.sentence_length_variance ?? 0) : 0;
-  const emDash = profile ? Number(profile.em_dash_density ?? 0) : 0;
-  const hedge = profile ? Number(profile.hedge_frequency ?? 0) : 0;
-  const quoteDensity = profile ? Number(profile.quote_density ?? 0) : 0;
-  const lastBuilt = profile ? Number(profile.last_rebuilt_at ?? 0) : 0;
-  const seedLabel = profile
-    ? formatSeedMethod((profile as Record<string, unknown>).seed_method)
-    : null;
+  let profileData = null;
+  if (row) {
+    const banned: string[] = JSON.parse(String(row.banned_terms ?? "[]")) as string[];
+    const signature: string[] = JSON.parse(String(row.signature_terms ?? "[]")) as string[];
 
-  // Top function words (best effort: stored as packed Float64Array; show top
-  // 10 indices ranked by frequency). For now we render archive size + flag
-  // that fingerprint exists; the per-word view is v1.1.
-  const hasFingerprint = profile && (profile.function_word_distribution as unknown) !== null;
+    profileData = {
+      archiveSize: Number(row.archive_index_size ?? 0),
+      sentenceMean: Number(row.sentence_length_mean ?? 0),
+      sentenceVar: Number(row.sentence_length_variance ?? 0),
+      emDash: Number(row.em_dash_density ?? 0),
+      hedge: Number(row.hedge_frequency ?? 0),
+      quoteDensity: Number(row.quote_density ?? 0),
+      lastBuilt: Number(row.last_rebuilt_at ?? 0),
+      seedLabel: formatSeedMethod((row as Record<string, unknown>).seed_method),
+      hasFingerprint: (row.function_word_distribution as unknown) !== null,
+      banned,
+      signature,
+      description: String((row as Record<string, unknown>).description ?? ""),
+    };
+  }
 
-  // Cold-start probe. If the outlet is connected and has no profile yet,
-  // count published posts so we can route to the right empty state. The
-  // ?thin=N override comes from buildVoiceProfileAction redirecting here
-  // when the archive is too thin to auto-train; honor it without re-probing.
+  // Cold-start probe for thin/empty archives.
   const thinOverride = sp.thin !== undefined ? Number.parseInt(sp.thin, 10) : NaN;
   let archivePostCount: number | null =
     Number.isFinite(thinOverride) && thinOverride >= 0 ? thinOverride : null;
-  if (!profile && outlet.connected && archivePostCount === null) {
+
+  if (!row && outlet.connected && archivePostCount === null) {
     const creds = await getOutletCredentials(outletId);
     if (creds) {
       try {
         archivePostCount = await getOutletPostCount(creds);
       } catch {
-        // Probe failure (offline, transient WP error) falls through to the
-        // default archive-train empty state. The action itself rechecks
-        // before writing, so a thin archive can't sneak through.
         archivePostCount = null;
       }
     }
   }
+
   const isThinArchive = archivePostCount !== null && archivePostCount < MIN_VOICE_TRAIN_POSTS;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          href="/voice"
-          className="text-xs font-medium transition hover:underline"
-          style={{ color: "var(--fg-muted)" }}
-        >
-          ← All outlets
-        </Link>
+    <VoiceShell outlets={outlets} selectedId={outletId} authorizeAvailable={authorizeAvailable}>
+      <div className="space-y-4">
+        {sp.wp_connected ? (
+          <Notice tone="success">WordPress connected. Build the voice profile next.</Notice>
+        ) : null}
+        <OutletDetail
+          outlet={outlet}
+          profile={profileData}
+          isThinArchive={isThinArchive}
+          archivePostCount={archivePostCount}
+        />
       </div>
-
-      <header className="space-y-1.5">
-        <div className="fp-eyebrow">
-          <HelpTrigger id="voice-profile">Voice profile</HelpTrigger>
-        </div>
-        <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "26ch" }}>
-          {outlet.displayName ?? outlet.baseUrl}
-        </h1>
-        <a
-          href={outlet.baseUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm font-mono break-all hover:underline"
-          style={{ color: "var(--fg-muted)" }}
-        >
-          {outlet.baseUrl}
-        </a>
-      </header>
-
-      {profile && isThinArchive ? (
-        <section className="fp-card-feature p-4">
-          <div className="text-sm font-semibold">Archive still too thin to re-train.</div>
-          <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-            This outlet has {archivePostCount} {archivePostCount === 1 ? "post" : "posts"}. Archive
-            re-training needs at least {MIN_VOICE_TRAIN_POSTS} published posts, so the current
-            sample-seeded fingerprint is still active.
-          </p>
-        </section>
-      ) : null}
-
-      {!profile ? (
-        isThinArchive ? (
-          <ThinArchiveEmptyState outletId={outletId} postCount={archivePostCount ?? 0} />
-        ) : (
-          <section className="fp-card-feature p-6">
-            <div className="text-base font-semibold">No voice profile yet.</div>
-            <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-              Build the profile from your last 50 published posts. Takes about 30 seconds.
-            </p>
-            <form action={buildVoiceProfileAction} className="mt-4">
-              <input type="hidden" name="outletId" value={outletId} />
-              <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Building voice">
-                Build voice profile
-              </SubmitButton>
-              <PendingMessage>
-                Pulling recent posts and extracting this outlet's voice.
-              </PendingMessage>
-            </form>
-            <details className="mt-6">
-              <summary
-                className="cursor-pointer text-sm font-medium"
-                style={{ color: "var(--fg-muted)" }}
-              >
-                Or seed voice manually (free-write, interview, or paste)
-              </summary>
-              <div className="mt-4">
-                <VoiceSetupPicker outletId={outletId} hasProfile={false} />
-              </div>
-            </details>
-          </section>
-        )
-      ) : (
-        <>
-          {/* Stats grid */}
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold tracking-tight">
-                Fingerprint{" "}
-                <span className="ml-1 text-xs font-normal" style={{ color: "var(--fg-subtle)" }}>
-                  auto-derived · read-only
-                </span>
-              </h2>
-              <form action={buildVoiceProfileAction}>
-                <input type="hidden" name="outletId" value={outletId} />
-                <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Re-training">
-                  ↻ Re-train from archive
-                </SubmitButton>
-              </form>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <Stat label="Posts in archive" value={String(archiveSize)} hint="archive-overlap" />
-              <Stat label="Avg sentence" value={`${sentenceMean.toFixed(1)}w`} />
-              <Stat label="Sentence variance" value={sentenceVar.toFixed(1)} />
-              <Stat label="Em-dash / 1k" value={emDash.toFixed(2)} />
-              <Stat label="Hedge / 1k" value={hedge.toFixed(2)} />
-              <Stat label="Quote / 1k" value={quoteDensity.toFixed(2)} />
-            </div>
-            <div className="mt-2 text-[11px]" style={{ color: "var(--fg-muted)" }}>
-              Last built {lastBuilt ? new Date(lastBuilt).toLocaleString() : "—"}
-              {seedLabel ? ` · seed: ${seedLabel}` : ""}
-              {hasFingerprint ? " · function-word distribution captured" : ""}
-            </div>
-          </section>
-
-          {/* Editable: blog description */}
-          <BlogDescriptionEditor outletId={outletId} description={description} />
-
-          {/* Editable: signature terms */}
-          <section>
-            <h2 className="mb-2 text-base font-semibold tracking-tight">
-              <HelpTrigger id="signature-terms">Signature terms</HelpTrigger>
-              <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
-                phrases this voice prefers
-              </span>
-            </h2>
-            <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-              Words and phrases drafts should reach for. The model nudges toward these when
-              generating. Auto-detected from your archive; add or remove freely.
-            </p>
-            <ChipEditor
-              outletId={outletId}
-              list="signature"
-              terms={signature}
-              placeholder="add a signature term, e.g. shipping"
-              variant="emerald"
-            />
-          </section>
-
-          {/* Editable: banned terms */}
-          <section>
-            <h2 className="mb-2 text-base font-semibold tracking-tight">
-              <HelpTrigger id="banned-terms">Banned terms</HelpTrigger>
-              <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
-                words drafts must avoid
-              </span>
-            </h2>
-            <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-              The model rewrites around these. Useful for AI-slop words ("leverage", "delve",
-              "tapestry") or jargon you've outgrown.
-            </p>
-            <ChipEditor
-              outletId={outletId}
-              list="banned"
-              terms={banned}
-              placeholder="add a banned term, e.g. leverage"
-              variant="rose"
-            />
-          </section>
-        </>
-      )}
-
-      {profile ? <RedoVoiceSetup outletId={outletId} /> : null}
-    </div>
-  );
-}
-
-function ThinArchiveEmptyState({ outletId, postCount }: { outletId: string; postCount: number }) {
-  const isEmpty = postCount === 0;
-  return (
-    <section className="fp-card-feature p-6">
-      <div className="text-base font-semibold">
-        {isEmpty
-          ? "Brand-new site, no archive yet."
-          : `Archive too thin to auto-train (${postCount} ${postCount === 1 ? "post" : "posts"}).`}
-      </div>
-      <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-        Voice training needs at least {MIN_VOICE_TRAIN_POSTS} published posts to extract a stable
-        fingerprint; below that the model nudges drafts toward generic prose. Pick a path below; we
-        extract the same fingerprint either way. Re-train from the archive later once you have{" "}
-        {MIN_VOICE_TRAIN_POSTS}+ posts on the site.
-      </p>
-      <div className="mt-4">
-        <VoiceSetupPicker outletId={outletId} hasProfile={false} />
-      </div>
-    </section>
-  );
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="fp-stat">
-      <div className="text-2xl font-light tabular">{value}</div>
-      <div className="text-[11px]" style={{ color: "var(--fg-muted)" }}>
-        {hint ? <HelpTrigger id={hint}>{label}</HelpTrigger> : label}
-      </div>
-    </div>
+    </VoiceShell>
   );
 }
 
@@ -296,129 +110,4 @@ function formatSeedMethod(value: unknown): string {
     default:
       return "not recorded";
   }
-}
-
-function BlogDescriptionEditor({
-  outletId,
-  description,
-}: {
-  outletId: string;
-  description: string;
-}) {
-  return (
-    <section>
-      <h2 className="mb-2 text-base font-semibold tracking-tight">
-        Blog description
-        <span className="ml-2 text-xs font-normal" style={{ color: "var(--fg-muted)" }}>
-          two or three sentences the drafter sees
-        </span>
-      </h2>
-      <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-        What this blog is about. The model reads it before every draft so clusters get framed in
-        context, not as generic news. Auto-derive pulls from your homepage; edit the result freely.
-      </p>
-      <form action={saveBlogDescriptionAction} className="space-y-3">
-        <input type="hidden" name="outletId" value={outletId} />
-        <textarea
-          name="description"
-          rows={4}
-          maxLength={1000}
-          defaultValue={description}
-          placeholder="e.g. A blog about distributed systems and the people who run them, written by a former SRE who left the on-call rotation and kept the opinions."
-          className="fp-input w-full"
-          style={{ fontSize: "14px", lineHeight: "1.5" }}
-        />
-        <div className="flex flex-wrap gap-2">
-          <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Saving">
-            Save description
-          </SubmitButton>
-        </div>
-      </form>
-      <form action={deriveBlogDescriptionAction} className="mt-2">
-        <input type="hidden" name="outletId" value={outletId} />
-        <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Reading homepage">
-          ↻ Auto-derive from homepage
-        </SubmitButton>
-        <PendingMessage>Reading the site root and homepage to draft a description.</PendingMessage>
-      </form>
-    </section>
-  );
-}
-
-function RedoVoiceSetup({ outletId }: { outletId: string }) {
-  return (
-    <section className="fp-card p-6">
-      <div className="text-base font-semibold">Re-do voice setup.</div>
-      <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-        Replace the current fingerprint by writing fresh prose, answering a short interview, or
-        pasting samples. Your signature and banned terms get recomputed.
-      </p>
-      <div className="mt-4">
-        <VoiceSetupPicker outletId={outletId} hasProfile={true} />
-      </div>
-    </section>
-  );
-}
-
-function ChipEditor({
-  outletId,
-  list,
-  terms,
-  placeholder,
-  variant,
-}: {
-  outletId: string;
-  list: "banned" | "signature";
-  terms: string[];
-  placeholder: string;
-  variant: "emerald" | "rose";
-}) {
-  const chipClass = variant === "emerald" ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose";
-  const chipStyle = variant === "rose" ? { textDecoration: "line-through" as const } : undefined;
-  return (
-    <div className="space-y-3">
-      <form action={addVoiceTermAction} className="flex flex-wrap gap-2">
-        <input type="hidden" name="outletId" value={outletId} />
-        <input type="hidden" name="list" value={list} />
-        <input
-          type="text"
-          name="term"
-          required
-          maxLength={64}
-          placeholder={placeholder}
-          className="fp-input flex-1 min-w-[240px]"
-        />
-        <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Adding">
-          + Add
-        </SubmitButton>
-      </form>
-      {terms.length === 0 ? (
-        <div
-          className="rounded-md border border-dashed p-3 text-xs"
-          style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
-        >
-          None yet.
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {terms.map((t) => (
-            <form action={removeVoiceTermAction} key={`${list}-${t}`} className="inline-flex">
-              <input type="hidden" name="outletId" value={outletId} />
-              <input type="hidden" name="list" value={list} />
-              <input type="hidden" name="term" value={t} />
-              <SubmitButton
-                className={`${chipClass} inline-flex items-center gap-1 transition hover:opacity-80`}
-                style={{ ...chipStyle, cursor: "pointer" }}
-                title={`Remove "${t}"`}
-                pendingLabel="Removing"
-              >
-                <span>{t}</span>
-                <span style={{ opacity: 0.6 }}>×</span>
-              </SubmitButton>
-            </form>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }

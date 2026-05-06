@@ -31,14 +31,15 @@ import { askMergeOracle } from "./merge-oracle";
 
 export const CLUSTER_WINDOW_MS = 72 * 60 * 60 * 1000;
 
-// Trust-weighted fire threshold. A cluster fires when the SUM of distinct
-// source trust scores in the cluster reaches this value AND there are at
-// least 2 distinct domains. Default new-source trust is 0.5, so two fresh
-// feeds covering the same story add to 1.0 and fire. One trusted source
-// (trust 1.0) still cannot fire alone — the diversity guard requires 2+
-// domains. The replacement for the old "source count >= N" rule: lets one
-// strong source carry more weight than three weak ones, while still
-// preventing single-source firings.
+// Trust-weighted fire threshold. For multi-source clusters (2+ distinct
+// domains), the cluster fires when the SUM of distinct source trust scores
+// reaches this value. Default new-source trust is 0.5, so two fresh feeds
+// covering the same story add to 1.0 and fire.
+//
+// Single-source clusters (sourceCount === 1) bypass this guard entirely and
+// fire immediately: they represent an item the user explicitly saved (marked
+// as follow-up) and show on Today as a draftable card without waiting for
+// corroboration. WPDS redesign, Task 0.4 (2026-05-06).
 const CLUSTER_TRUST_FIRE_SUM = 1.0;
 
 const TRIGRAM_THRESHOLD = 0.4; // lowered from 0.6; real news rewrites diverge
@@ -268,7 +269,10 @@ async function maybeFireCluster(
   const sourceCount = Number(row.source_count);
   const distinctDomains = Number(row.distinct_domains);
   const trustSum = Number(row.trust_sum);
-  if (row.state === "forming" && trustSum >= CLUSTER_TRUST_FIRE_SUM && distinctDomains >= 2) {
+  const singleSource = sourceCount === 1;
+  const multiSourceReady =
+    !singleSource && trustSum >= CLUSTER_TRUST_FIRE_SUM && distinctDomains >= 2;
+  if (row.state === "forming" && (singleSource || multiSourceReady)) {
     await db.execute({
       sql: `UPDATE clusters SET state = 'fired', fired_at = ? WHERE id = ?`,
       args: [Date.now(), clusterId],

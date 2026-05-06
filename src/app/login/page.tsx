@@ -1,4 +1,5 @@
 import { isAuthConfigured } from "@/lib/auth";
+import { Card, Field, Button, Notice } from "@/components/wpds";
 import { loginAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -22,66 +23,70 @@ export default async function LoginPage({ searchParams }: PageProps) {
   const configured = isAuthConfigured();
 
   return (
-    <div className="mx-auto max-w-[420px] pt-12">
-      <section className="fp-card space-y-6 p-6">
-        <header className="space-y-2">
-          <div className="fp-eyebrow">Writer access</div>
-          <h1 className="fp-h1 fp-h1-serif text-[34px] leading-[1.05]">Sign in to FlavorPress</h1>
-          <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-            One writer, one WordPress site, one protected drafting workspace.
+    <div
+      style={{
+        minHeight: "calc(100vh - 92px)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "64px 16px",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        <header style={{ marginBottom: 24, textAlign: "center" }}>
+          <h1
+            style={{
+              fontFamily: "var(--font-serif), Georgia, serif",
+              fontSize: 30,
+              fontWeight: 500,
+              letterSpacing: "-0.01em",
+              margin: "0 0 6px",
+              color: "var(--ink-primary)",
+            }}
+          >
+            Sign in to FlavorPress
+          </h1>
+          <p
+            style={{
+              fontSize: 13,
+              color: "var(--ink-tertiary)",
+              fontStyle: "italic",
+              margin: 0,
+            }}
+          >
+            One writer, one WordPress site.
           </p>
         </header>
 
-        {!configured ? (
-          <Banner>
-            Set <code>FLAVORPRESS_AUTH_USER</code>, <code>FLAVORPRESS_AUTH_PASSWORD</code>, and{" "}
-            <code>FLAVORPRESS_SESSION_SECRET</code> before signing in.
-          </Banner>
-        ) : null}
-        {error ? <Banner>{error}</Banner> : null}
+        <Card>
+          {!configured ? (
+            <div style={{ marginBottom: 14 }}>
+              <Notice tone="warn">
+                Set <code>FLAVORPRESS_AUTH_USER</code>, <code>FLAVORPRESS_AUTH_PASSWORD</code>, and{" "}
+                <code>FLAVORPRESS_SESSION_SECRET</code> before signing in.
+              </Notice>
+            </div>
+          ) : null}
+          {error ? (
+            <div style={{ marginBottom: 14 }}>
+              <Notice tone="error">{error}</Notice>
+            </div>
+          ) : null}
 
-        <form action={loginAction} className="space-y-4">
-          <input type="hidden" name="next" value={next} />
-          <label className="block space-y-1.5 text-sm font-medium">
-            <span>Username</span>
-            <input
-              className="fp-input w-full"
-              name="username"
-              autoComplete="username"
-              required
-              autoFocus
-            />
-          </label>
-          <label className="block space-y-1.5 text-sm font-medium">
-            <span>Password</span>
-            <input
-              className="fp-input w-full"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          <button className="fp-btn fp-btn-primary w-full" type="submit">
-            Sign in
-          </button>
-        </form>
-      </section>
-    </div>
-  );
-}
-
-function Banner({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="rounded-[var(--radius-md)] border px-3 py-2 text-sm leading-relaxed"
-      style={{
-        background: "var(--amber-tint)",
-        borderColor: "var(--border)",
-        color: "var(--amber)",
-      }}
-    >
-      {children}
+          <form action={loginAction}>
+            <input type="hidden" name="next" value={next} />
+            <Field label="Username">
+              <input name="username" type="text" autoComplete="username" required autoFocus />
+            </Field>
+            <Field label="Password">
+              <input name="password" type="password" autoComplete="current-password" required />
+            </Field>
+            <Button type="submit" style={{ width: "100%", justifyContent: "center" }}>
+              Sign in
+            </Button>
+          </form>
+        </Card>
+      </div>
     </div>
   );
 }
