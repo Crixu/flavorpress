@@ -595,7 +595,6 @@ function PeekRow({
       style={{
         opacity: pending ? 0.5 : undefined,
         viewTransitionName: cardTransitionName(c.id),
-        borderLeft: isSingleSource ? "3px solid var(--ink-primary)" : undefined,
       }}
     >
       <button
