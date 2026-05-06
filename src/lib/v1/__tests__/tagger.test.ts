@@ -7,11 +7,6 @@ vi.mock("@/lib/anthropic", () => ({
       .filter((b) => b.type === "text")
       .map((b) => b.text ?? "")
       .join(""),
-  extractJson: (text: string) => {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("no json");
-    return JSON.parse(match[0]);
-  },
   MODEL: "claude-sonnet-4-6",
 }));
 
@@ -37,6 +32,14 @@ describe("normalizeTag", () => {
 
   it("returns null for tags longer than 32 chars", () => {
     expect(normalizeTag("a".repeat(40))).toBeNull();
+  });
+
+  it("strips trailing hyphens after normalization", () => {
+    expect(normalizeTag("extraction-")).toBe("extraction");
+  });
+
+  it("strips multiple trailing hyphens", () => {
+    expect(normalizeTag("ai---")).toBe("ai");
   });
 });
 
@@ -107,6 +110,20 @@ describe("extractItemTags", () => {
     });
     const tags = await extractItemTags({ title: "x", body: "y" });
     expect(tags).toEqual(["espresso", "slow-espresso"]);
+  });
+
+  it("uses injected client and skips createAnthropicClient", async () => {
+    vi.mocked(createAnthropicClient).mockClear();
+    const fakeClient = {
+      messages: {
+        create: vi.fn().mockResolvedValue({
+          content: [{ type: "text", text: JSON.stringify({ tags: ["espresso", "roasting"] }) }],
+        }),
+      },
+    };
+    const tags = await extractItemTags({ title: "x", body: "y" }, { client: fakeClient as never });
+    expect(tags).toEqual(["espresso", "roasting"]);
+    expect(vi.mocked(createAnthropicClient)).not.toHaveBeenCalled();
   });
 
   it("caps at 8 tags", async () => {

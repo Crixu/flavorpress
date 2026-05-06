@@ -1,10 +1,14 @@
 import "server-only";
 
-import { createAnthropicClient, extractText, MODEL } from "../anthropic";
+import { type AnthropicLike, createAnthropicClient, extractText, MODEL } from "../anthropic";
 
 export interface TagInput {
   title: string;
   body: string;
+}
+
+export interface TagOptions {
+  client?: AnthropicLike;
 }
 
 const TAG_MAX_LEN = 32;
@@ -31,7 +35,8 @@ export function normalizeTag(raw: string): string | null {
     .toLowerCase()
     .replace(/[!?.,;:'"`]+$/g, "")
     .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+$/g, "");
   if (!trimmed || trimmed.length > TAG_MAX_LEN) return null;
   return trimmed;
 }
@@ -40,13 +45,17 @@ export function normalizeTag(raw: string): string | null {
  * Extract LLM tags from an article. Returns up to 8 normalized tags;
  * empty array on any failure (no client, parse error, network).
  */
-export async function extractItemTags(input: TagInput): Promise<string[]> {
-  let client;
-  try {
-    const result = await createAnthropicClient();
-    client = result.client;
-  } catch {
-    return [];
+export async function extractItemTags(input: TagInput, opts: TagOptions = {}): Promise<string[]> {
+  let client: AnthropicLike | null = opts.client ?? null;
+  if (!client) {
+    // createAnthropicClient() can throw on misconfigured CLI states; isolate that
+    // from the network-call try so we always fail closed (return []).
+    try {
+      const result = await createAnthropicClient();
+      client = result.client;
+    } catch {
+      return [];
+    }
   }
   if (!client) return [];
 
