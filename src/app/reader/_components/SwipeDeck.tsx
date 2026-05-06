@@ -80,16 +80,21 @@ export function SwipeDeck({ initialItems, initialMarkedCount }: Props) {
   // Keyboard support. Bind once, scoped to whatever card is on top.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!top || leaving) return;
+      if (leaving) return;
+      const isUndo = (e.key === "z" || e.key === "Z") && (e.metaKey || e.ctrlKey) && !e.shiftKey;
+      if (isUndo) {
+        if (history.length === 0) return;
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (!top) return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
         commitSwipe("right");
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         commitSwipe("left");
-      } else if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        undo();
       }
     }
     window.addEventListener("keydown", onKey);
