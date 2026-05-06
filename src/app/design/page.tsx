@@ -1,927 +1,720 @@
 /**
- * FlavorPress design system reference.
+ * FlavorPress design system reference - WPDS-aligned.
  *
- * Single source of truth for Canvas: tokens (color, type, shape, motion),
- * components (button, chip, card, input, stat, skeleton), and patterns
- * (page header, empty state, progress strip, annotations). Documents what
- * already ships in globals.css; does not introduce new primitives.
+ * Documents the tokens, primitives, and patterns that compose every surface in
+ * the app. The full spec lives in docs/design-system.md; this page is the
+ * runtime live demo.
  *
  * If a screen needs something this page does not show, the screen is doing
- * something the system does not yet support; either reuse what exists, or
+ * something the system does not yet support. Either reuse what exists, or
  * promote the new pattern here so the next screen can reuse it too.
  */
 
 import type { Metadata } from "next";
+import {
+  Button,
+  Card,
+  Chip,
+  Notice,
+  StatusBadge,
+  Field,
+  MasterDetail,
+} from "@/components/wpds";
+import { SideSheetDemo } from "./_components/SideSheetDemo";
 
 export const metadata: Metadata = {
   title: "Design system · FlavorPress",
-  description: "Tokens, components, and patterns for the FlavorPress UI.",
+  description: "WPDS-aligned tokens, primitives, and patterns for the FlavorPress UI.",
 };
 
-export default function DesignSystemPage() {
+export default function DesignPage() {
   return (
-    <div className="space-y-16">
-      <Hero />
-      <Section
-        eyebrow="01"
-        title="Principles"
-        intro="Five guardrails behind every UI choice. If a screen breaks one, the screen is wrong, not the rule."
-      >
-        <Principles />
+    <div className="fp-main">
+      <header style={{ marginBottom: 40 }}>
+        <div
+          style={{
+            fontSize: 10,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: "var(--ink-muted)",
+            fontWeight: 600,
+            marginBottom: 8,
+          }}
+        >
+          FlavorPress
+        </div>
+        <h1
+          style={{
+            fontFamily: "var(--font-serif), Georgia, serif",
+            fontSize: 36,
+            fontWeight: 500,
+            margin: "0 0 8px",
+            letterSpacing: "-0.01em",
+            lineHeight: 1.1,
+            color: "var(--ink-primary)",
+          }}
+        >
+          Design system
+        </h1>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--ink-tertiary)",
+            fontStyle: "italic",
+            margin: 0,
+          }}
+        >
+          WPDS-aligned tokens, primitives, and patterns. The full spec lives in{" "}
+          <a
+            href="https://github.com/Automattic/flavorpress/blob/main/docs/design-system.md"
+            style={{ color: "var(--accent-blue)" }}
+          >
+            docs/design-system.md
+          </a>
+          .
+        </p>
+      </header>
+
+      {/* Tokens */}
+      <Section eyebrow="01" title="Tokens">
+        <SubHead>Surfaces</SubHead>
+        <SwatchGrid>
+          <Swatch varName="--surface-canvas" value="#ffffff" />
+          <Swatch varName="--surface-subtle" value="#fafafa" />
+          <Swatch varName="--surface-muted" value="#f6f7f7" />
+          <Swatch varName="--surface-tag" value="#f0f0f1" />
+        </SwatchGrid>
+
+        <SubHead>Ink</SubHead>
+        <SwatchGrid>
+          <Swatch varName="--ink-primary" value="#1e1e1e" />
+          <Swatch varName="--ink-secondary" value="#3c434a" />
+          <Swatch varName="--ink-tertiary" value="#646970" />
+          <Swatch varName="--ink-muted" value="#787c82" />
+        </SwatchGrid>
+
+        <SubHead>Border</SubHead>
+        <SwatchGrid>
+          <Swatch varName="--border-default" value="#dcdcde" />
+          <Swatch varName="--border-strong" value="#1e1e1e" />
+          <Swatch varName="--border-input" value="#8c8f94" />
+        </SwatchGrid>
+
+        <SubHead>Accent</SubHead>
+        <SwatchGrid>
+          <Swatch varName="--accent" value="#1e1e1e" />
+          <Swatch varName="--accent-blue" value="#3858e9" />
+        </SwatchGrid>
+
+        <SubHead>Semantic</SubHead>
+        <SwatchGrid>
+          <Swatch varName="--success-bg" value="#e6f7ec" />
+          <Swatch varName="--success-fg" value="#0a5a2e" />
+          <Swatch varName="--warn-bg" value="#fdf6e3" />
+          <Swatch varName="--warn-fg" value="#896200" />
+          <Swatch varName="--error-bg" value="#fcebec" />
+          <Swatch varName="--error-fg" value="#8a1f24" />
+        </SwatchGrid>
+
+        <SubHead>Radius</SubHead>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {(
+            [
+              { label: "sm", value: "2px", token: "--radius-sm" },
+              { label: "md", value: "4px", token: "--radius-md" },
+              { label: "lg", value: "6px", token: "--radius-lg" },
+              { label: "pill", value: "999px", token: "--radius-pill" },
+            ] as const
+          ).map((r) => (
+            <div
+              key={r.token}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 12px",
+                border: "1px solid var(--border-default)",
+                borderRadius: 4,
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  background: "var(--surface-tag)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: r.value,
+                }}
+              />
+              <div>
+                <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--ink-primary)" }}>
+                  {r.token}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>{r.value}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <SubHead>Motion</SubHead>
+        <div
+          style={{
+            fontSize: 13,
+            color: "var(--ink-secondary)",
+            lineHeight: 1.7,
+            fontFamily: "monospace",
+          }}
+        >
+          <div>
+            <span style={{ color: "var(--ink-muted)" }}>--duration:</span> 150ms
+          </div>
+          <div>
+            <span style={{ color: "var(--ink-muted)" }}>--ease:</span>{" "}
+            cubic-bezier(0.22, 1, 0.36, 1)
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 6, fontStyle: "italic" }}>
+          Reduced-motion media query in globals.css zeros all transitions. Never bypass it.
+        </p>
       </Section>
 
-      <Section
-        eyebrow="02"
-        title="Voice"
-        intro="Copy rules apply to chat, code comments, draft prompts, button labels, empty states, error messages."
-      >
-        <VoiceRules />
+      {/* Type */}
+      <Section eyebrow="02" title="Type scale">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <TypeRow
+            label="Display"
+            spec="36px / Newsreader / weight 500"
+            token="--type-display"
+          >
+            <span
+              style={{
+                fontFamily: "var(--font-serif), Georgia, serif",
+                fontSize: 36,
+                fontWeight: 500,
+                letterSpacing: "-0.01em",
+                lineHeight: 1.1,
+                color: "var(--ink-primary)",
+              }}
+            >
+              Publishing tool
+            </span>
+          </TypeRow>
+          <TypeRow label="H1" spec="24px / Inter / weight 600" token="--type-h1">
+            <span
+              style={{
+                fontSize: 24,
+                fontWeight: 600,
+                lineHeight: 1.2,
+                color: "var(--ink-primary)",
+              }}
+            >
+              Sources
+            </span>
+          </TypeRow>
+          <TypeRow
+            label="H2 editorial"
+            spec="18px / Newsreader / weight 500"
+            token="--type-h2"
+          >
+            <span
+              style={{
+                fontFamily: "var(--font-serif), Georgia, serif",
+                fontSize: 18,
+                fontWeight: 500,
+                color: "var(--ink-primary)",
+              }}
+            >
+              Cluster title
+            </span>
+          </TypeRow>
+          <TypeRow label="H2 dense" spec="18px / Inter / weight 600" token="--type-h2">
+            <span
+              style={{ fontSize: 18, fontWeight: 600, color: "var(--ink-primary)" }}
+            >
+              Section header
+            </span>
+          </TypeRow>
+          <TypeRow label="Body" spec="13px / Inter" token="--type-body">
+            <span style={{ fontSize: 13, color: "var(--ink-secondary)", lineHeight: 1.6 }}>
+              Excerpt copy, default body text, form labels.
+            </span>
+          </TypeRow>
+          <TypeRow label="Meta" spec="11px / Inter" token="--type-meta">
+            <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>
+              Eyebrows, footnotes, stats
+            </span>
+          </TypeRow>
+          <TypeRow label="Eyebrow" spec="10px / Inter / uppercase / 0.06em" token="--type-eyebrow">
+            <span
+              style={{
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--ink-muted)",
+                fontWeight: 600,
+              }}
+            >
+              Section label
+            </span>
+          </TypeRow>
+        </div>
       </Section>
 
-      <Section
-        eyebrow="03"
-        title="Color"
-        intro="Warm cream paper, deep ink. Peach is the editorial accent; mint confirms; amber warns; plum carries information. Tints are 8–14% washes for backgrounds, never for text on white."
-      >
-        <ColorTokens />
+      {/* Buttons */}
+      <Section eyebrow="03" title="Button">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
+          Four variants. Primary is the most important action on a surface; use it once.
+          Secondary for everything else. Danger for destructive actions. Link for
+          "skip / dismiss / not a story" affordances.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          <Button>Primary</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="danger">Danger</Button>
+          <Button variant="link">Link</Button>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          <Button disabled>Disabled primary</Button>
+          <Button variant="secondary" disabled>
+            Disabled secondary
+          </Button>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button size="sm">SM Primary</Button>
+          <Button size="sm" variant="secondary">
+            SM Secondary
+          </Button>
+          <Button size="sm" variant="danger">
+            SM Danger
+          </Button>
+          <Button size="sm" variant="link">
+            SM Link
+          </Button>
+        </div>
       </Section>
 
-      <Section
-        eyebrow="04"
-        title="Typography"
-        intro="Inter for UI; Newsreader for editorial body and display H1. Tabular numerals on anything counted. ss01 + cv11 stylistic sets enabled globally; do not override per surface."
-      >
-        <TypeScale />
+      {/* Cards */}
+      <Section eyebrow="04" title="Card">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
+          White surface, hairline border, 4px radius, 18x20px padding. Hover lifts
+          border to ink-muted. Emphasis variant adds a black left spine for single-source
+          and "saved" cards.
+        </p>
+        <Card style={{ marginBottom: 10 }}>
+          <strong>Default card</strong>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--ink-secondary)" }}>
+            White surface, hairline border, 4px radius.
+          </p>
+        </Card>
+        <Card emphasis>
+          <strong>Emphasis card</strong>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--ink-secondary)" }}>
+            Black left spine for "saved by user" and single-source treatment.
+          </p>
+        </Card>
       </Section>
 
-      <Section
-        eyebrow="05"
-        title="Shape & elevation"
-        intro="Chunky radii, soft diffuse shadows. Every interactive surface gets at least shadow-xs so it lifts off the cream paper."
-      >
-        <ShapeAndElevation />
+      {/* Chips and badges */}
+      <Section eyebrow="05" title="Chip and StatusBadge">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
+          Chips are pill-shaped filter selectors. Active state inverts (black bg, white
+          text). StatusBadge shows connection state, trust level, or default-outlet flag.
+        </p>
+        <SubHead>Chip</SubHead>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+          <Chip label="All" count={28} active />
+          <Chip label="Coffee" count={9} />
+          <Chip label="Tech" count={7} />
+          <Chip label="Science" count={4} />
+        </div>
+        <SubHead>StatusBadge</SubHead>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <StatusBadge status="ok">Connected</StatusBadge>
+          <StatusBadge status="warn">Action needed</StatusBadge>
+          <StatusBadge status="error">Disconnected</StatusBadge>
+          <StatusBadge status="default-outlet">Default</StatusBadge>
+        </div>
       </Section>
 
-      <Section
-        eyebrow="06"
-        title="Motion"
-        intro="One duration, one ease. View transitions on cluster reorder; reduced-motion users get an instant cut."
-      >
-        <MotionTokens />
+      {/* Notices */}
+      <Section eyebrow="06" title="Notice">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
+          Left-bordered banner with semantic background tint. For inline page-level
+          messages. Avoid inside cards; cards already carry the message.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Notice tone="info">Info: lead with the fact, not the setup.</Notice>
+          <Notice tone="warn">Warn: stale draft, started 2 days ago.</Notice>
+          <Notice tone="error">Error: connection failed.</Notice>
+          <Notice tone="success">Success: voice profile saved.</Notice>
+        </div>
       </Section>
 
-      <Section
-        eyebrow="07"
-        title="Buttons"
-        intro="Three variants, pill-shaped, 14px label, 36px tall. Primary is ink on cream; ghost is outlined on white; danger is amber on hairline. All three share focus glow, hover lift, and an 0.72-opacity disabled state."
-      >
-        <Buttons />
+      {/* Field */}
+      <Section eyebrow="07" title="Field">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
+          Label + child input + optional hint. Label is uppercase eyebrow style. Inputs
+          inside .wpds-field get the standard 1px input border and focus ring.
+        </p>
+        <Card>
+          <Field label="Site URL" hint="The base URL of your WordPress site.">
+            <input type="url" placeholder="https://example.com" />
+          </Field>
+          <Field label="Description" hint="Used to build your voice profile.">
+            <textarea rows={3} placeholder="Wry, lightly contrarian..." />
+          </Field>
+          <Field label="App password">
+            <input type="password" placeholder="xxxx xxxx xxxx xxxx" />
+          </Field>
+        </Card>
       </Section>
 
-      <Section
-        eyebrow="08"
-        title="Chips"
-        intro="Tinted pills for status and metadata. 11px, no shadow. Pick the colour by meaning, not aesthetics: mint = positive, peach = editorial accent, amber = warning, plum/ink = informational."
-      >
-        <Chips />
+      {/* SideSheet */}
+      <Section eyebrow="08" title="SideSheet">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
+          Right-side overlay, default 480px wide. Closes on Escape and scrim click.
+          Title renders in Newsreader. Footer pinned to bottom with subtle background.
+          Use for: Draft Wizard, Add Feed, Connect WP Site.
+        </p>
+        <SideSheetDemo />
       </Section>
 
-      <Section
-        eyebrow="09"
-        title="Inputs"
-        intro="One input shape, two heights. Focus state is a peach hairline plus the shared glow ring; never a blue browser default."
-      >
-        <Inputs />
+      {/* MasterDetail */}
+      <Section eyebrow="09" title="MasterDetail">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
+          Two-pane layout: 220px sidebar (configurable) + flexible right pane. Sidebar
+          uses surface-subtle. Used by /voice and /settings.
+        </p>
+        <div
+          style={{
+            border: "1px solid var(--border-default)",
+            borderRadius: 4,
+            overflow: "hidden",
+            minHeight: 160,
+          }}
+        >
+          <MasterDetail
+            sidebar={
+              <nav style={{ padding: "12px 0" }}>
+                {["General", "Voice", "Sources", "Outlets"].map((item, i) => (
+                  <div
+                    key={item}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      color: i === 0 ? "var(--ink-primary)" : "var(--ink-secondary)",
+                      boxShadow: i === 0 ? "inset 3px 0 0 var(--ink-primary)" : undefined,
+                      fontWeight: i === 0 ? 500 : undefined,
+                      cursor: "default",
+                    }}
+                  >
+                    {item}
+                  </div>
+                ))}
+              </nav>
+            }
+          >
+            <div style={{ padding: 20 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  color: "var(--ink-muted)",
+                  fontWeight: 600,
+                  marginBottom: 8,
+                }}
+              >
+                General
+              </div>
+              <p style={{ fontSize: 13, color: "var(--ink-secondary)", margin: 0 }}>
+                Detail pane content. Selected sidebar item gets an inset left shadow
+                (3px, ink-primary).
+              </p>
+            </div>
+          </MasterDetail>
+        </div>
       </Section>
 
-      <Section
-        eyebrow="10"
-        title="Cards"
-        intro="Three card moods. Default (cream paper, no border), feature (peach surface, draws the eye to one moment), gradient (peach-cream wash for onboarding warmth)."
-      >
-        <Cards />
+      {/* Patterns */}
+      <Section eyebrow="10" title="Patterns">
+        <SubHead>Page header</SubHead>
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
+          Used at the top of every full-page surface. page-title is Newsreader 30px weight
+          500. page-sub is italic 13px tertiary ink. Canonical: src/app/page.tsx.
+        </p>
+        <div
+          style={{
+            border: "1px solid var(--border-default)",
+            borderRadius: 4,
+            padding: "16px 20px",
+          }}
+        >
+          <header className="page-header">
+            <h1 className="page-title">Today</h1>
+            <div className="page-sub">Three clusters worth drafting</div>
+            <div className="page-actions">
+              <Button variant="secondary">Sync sources</Button>
+            </div>
+          </header>
+        </div>
+
+        <SubHead style={{ marginTop: 24 }}>Cluster card</SubHead>
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
+          Default: white Card + meta eyebrow + title + summary + source list + tag row +
+          action row. Single-source variant uses Card emphasis with a different eyebrow.
+          Canonical: src/app/_components/TodayFolderStreams.tsx.
+        </p>
+        <Card>
+          <div
+            style={{
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--ink-muted)",
+              fontWeight: 600,
+              marginBottom: 6,
+            }}
+          >
+            Cluster · 4 sources · 2h ago
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--font-serif), Georgia, serif",
+              fontSize: 18,
+              fontWeight: 500,
+              color: "var(--ink-primary)",
+              marginBottom: 6,
+            }}
+          >
+            Coffee shops are opening earlier to capture the morning commute
+          </div>
+          <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 8 }}>
+            Three independent operators in Seattle extended opening to 5:30 AM this week,
+            citing foot traffic data from the downtown transit hub.
+          </p>
+          <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 8 }}>
+            The Stranger · Seattle Times · Eater Seattle
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12 }}>
+            {["coffee", "seattle", "hospitality"].map((tag) => (
+              <span
+                key={tag}
+                style={{
+                  fontSize: 11,
+                  padding: "2px 7px",
+                  borderRadius: 999,
+                  background: "var(--surface-tag)",
+                  color: "var(--ink-secondary)",
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Button>Draft for outlet</Button>
+            <Button variant="secondary">Open cluster</Button>
+            <Button variant="link" style={{ marginLeft: "auto" }}>
+              Not a story
+            </Button>
+          </div>
+        </Card>
+
+        <SubHead style={{ marginTop: 24 }}>Compact row (Sources)</SubHead>
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)" }}>
+          Grid layout: checkbox + name+URL+tags + stats + last-poll + trust + routing
+          button + sync button. Hairline border-default divider between rows, no card
+          frame. Canonical: src/app/sources/_components/SourcesExplorer.tsx.
+        </p>
       </Section>
 
-      <Section
-        eyebrow="11"
-        title="Feedback"
-        intro="States users see when the app is thinking. Skeleton on first paint, indeterminate bar during a known job, pulse ring on the live thing, spinner inline with copy."
-      >
-        <Feedback />
-      </Section>
-
-      <Section
-        eyebrow="12"
-        title="Patterns"
-        intro="Compositions that recur across pages. If you find yourself rebuilding one of these, use the snippet below verbatim so screens stay quiet next to each other."
-      >
-        <Patterns />
-      </Section>
-
-      <Section
-        eyebrow="13"
-        title="Avoid"
-        intro="The shortlist of moves that read as AI slop or break voice. These are dropped, not deferred."
-      >
-        <DontList />
+      {/* Anti-patterns */}
+      <Section eyebrow="11" title="Anti-patterns">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
+          Flag these in code review. They break voice, introduce scope creep, or make the
+          product look like an AI slop factory.
+        </p>
+        <ul
+          style={{
+            fontSize: 13,
+            color: "var(--ink-secondary)",
+            lineHeight: 1.8,
+            paddingLeft: 18,
+            margin: 0,
+          }}
+        >
+          <li>No new hex codes in JSX. Use tokens. If the token does not exist, propose adding it to globals.css first.</li>
+          <li>No pictographic emojis in chips, headers, buttons, or copy. Typographic glyphs (→ ↗ ✓ ✕) are fine.</li>
+          <li>No em-dashes in code, comments, or copy. Use semicolons or rephrase.</li>
+          <li>No setup-then-reveal sentences in copy. Lead with the fact.</li>
+          <li>No closures, sign-offs, or "want me to" appendixes in any user-facing text.</li>
+          <li>No multi-tenant chrome: no org switchers, role pickers, network admin links, or audit log links.</li>
+          <li>No push notifications, digest emails, or scheduled auto-publish. This is a pull-based product.</li>
+          <li>No "preview" buttons on cluster cards; the primary action ships the user toward writing.</li>
+          <li>No voice-match score on cluster cards. Voice match is a post-draft check, not a pre-draft filter.</li>
+          <li>No mobile-first breakpoints below 720px. Graceful degradation is fine; pixel-perfect mobile is out of scope.</li>
+          <li>No tag editing UI. Tags are LLM-extracted at ingest; they are a matching primitive, not a user-curated taxonomy.</li>
+        </ul>
       </Section>
     </div>
   );
 }
 
-function Hero() {
-  return (
-    <header className="space-y-3">
-      <div className="fp-eyebrow">FlavorPress · Canvas</div>
-      <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "20ch" }}>
-        The cream-paper, deep-ink design system.
-      </h1>
-      <p className="max-w-2xl text-base leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-        Tokens, components, and patterns that hold the prototype together. The brief is editorial,
-        not enterprise; everything below earns its place by helping a single prosumer turn reading
-        into a same-day draft, in their voice, without looking like an AI slop factory.
-      </p>
-    </header>
-  );
-}
+// ------ Helpers ------
 
 function Section({
   eyebrow,
   title,
-  intro,
   children,
 }: {
   eyebrow: string;
   title: string;
-  intro: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-5">
-      <div className="space-y-1.5">
-        <div className="fp-eyebrow">{eyebrow}</div>
-        <h2 className="fp-h1-serif" style={{ fontSize: 28, lineHeight: 1.15, fontWeight: 500 }}>
-          {title}
-        </h2>
-        <p className="max-w-3xl text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          {intro}
-        </p>
+    <section style={{ marginBottom: 56 }}>
+      <div
+        style={{
+          fontSize: 10,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--ink-muted)",
+          fontWeight: 600,
+          marginBottom: 4,
+        }}
+      >
+        {eyebrow}
       </div>
-      <div className="fp-divider" />
-      <div>{children}</div>
+      <h2
+        style={{
+          fontFamily: "var(--font-serif), Georgia, serif",
+          fontSize: 22,
+          fontWeight: 500,
+          margin: "0 0 18px",
+          color: "var(--ink-primary)",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {title}
+      </h2>
+      {children}
     </section>
   );
 }
 
-function Principles() {
-  const items = [
-    {
-      h: "Reading turns into writing",
-      b: "Every visible affordance moves the user from a feed item toward a WordPress draft. Decoration that does not advance that loop is removed, not styled.",
-    },
-    {
-      h: "Voice over volume",
-      b: "Drafts match the user's last 50 posts before they match anything else. Generic copy, generic charts, generic empty states all read as slop; we do not ship them.",
-    },
-    {
-      h: "Same day or not at all",
-      b: "If a feature cannot get a user to a publishable draft today, it gets deferred. No background queues, no overnight digests, no schedulers.",
-    },
-    {
-      h: "Pull, never push",
-      b: "Notifications, emails, and badges are out of scope. The app is a destination the user opens, not a stream that interrupts them.",
-    },
-    {
-      h: "One outlet, one editor, one keyboard",
-      b: "Single-site, single-user. No orgs, no roles, no shared cursors. Multi-tenant features get DROP, not DEFER.",
-    },
-  ];
-  return (
-    <ol className="grid gap-4 md:grid-cols-2">
-      {items.map((it, i) => (
-        <li key={it.h} className="fp-card p-5">
-          <div className="text-xs tabular" style={{ color: "var(--fg-subtle)" }}>
-            {String(i + 1).padStart(2, "0")}
-          </div>
-          <div className="mt-1 text-sm font-medium">{it.h}</div>
-          <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-            {it.b}
-          </p>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function VoiceRules() {
-  const rules: Array<{ k: string; bad: string; good: string }> = [
-    {
-      k: "Lead with the fact",
-      bad: "Here is what we are going to do: we will poll your feeds and then…",
-      good: "Polling your feeds for the first time.",
-    },
-    {
-      k: "No em dashes",
-      bad: "Three steps — connect, train, plug in — and you are done.",
-      good: "Three steps from a blank slate to your first draft.",
-    },
-    {
-      k: "No closures or CTAs in chat",
-      bad: "Hope this helps! Want me to make those changes?",
-      good: "Done. Buttons updated; see /design for the canonical set.",
-    },
-    {
-      k: "Match the user's language",
-      bad: "User wrote in German; reply auf Englisch.",
-      good: "User wrote in German; reply auf Deutsch.",
-    },
-    {
-      k: "Prose first, lists for collections",
-      bad: "A bulleted list summarising a single decision.",
-      good: "A short paragraph; a list only when items are genuinely parallel.",
-    },
-  ];
-  return (
-    <div className="space-y-3">
-      {rules.map((r) => (
-        <div key={r.k} className="fp-card p-5">
-          <div className="text-sm font-medium">{r.k}</div>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <Quote tone="bad" label="Avoid">
-              {r.bad}
-            </Quote>
-            <Quote tone="good" label="Use">
-              {r.good}
-            </Quote>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Quote({
-  tone,
-  label,
+function SubHead({
   children,
+  style,
 }: {
-  tone: "bad" | "good";
-  label: string;
   children: React.ReactNode;
+  style?: React.CSSProperties;
 }) {
-  const isGood = tone === "good";
   return (
     <div
-      className="rounded-[14px] p-3"
       style={{
-        background: isGood ? "var(--emerald-tint)" : "var(--rose-tint)",
-        color: "var(--fg)",
+        fontSize: 11,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        color: "var(--ink-muted)",
+        fontWeight: 600,
+        margin: "16px 0 8px",
+        ...style,
       }}
     >
-      <div className="fp-eyebrow" style={{ color: isGood ? "#3f7556" : "#9c4a22", fontSize: 10 }}>
-        {label}
-      </div>
-      <p className="mt-1 text-sm leading-relaxed">{children}</p>
+      {children}
     </div>
   );
 }
 
-const COLORS: Array<{
-  group: string;
-  swatches: Array<{ name: string; cssVar: string; hex: string; on?: "ink" | "paper" }>;
-}> = [
-  {
-    group: "Surfaces",
-    swatches: [
-      { name: "bg", cssVar: "--bg", hex: "#f5f1ea" },
-      { name: "bg-subtle", cssVar: "--bg-subtle", hex: "#efe9dd" },
-      { name: "surface", cssVar: "--surface", hex: "#ffffff" },
-      { name: "surface-elev", cssVar: "--surface-elev", hex: "#ffffff" },
-    ],
-  },
-  {
-    group: "Ink",
-    swatches: [
-      { name: "fg", cssVar: "--fg", hex: "#1a1814", on: "ink" },
-      { name: "fg-muted", cssVar: "--fg-muted", hex: "#6e695f", on: "ink" },
-      { name: "fg-subtle", cssVar: "--fg-subtle", hex: "#a39a8b", on: "ink" },
-    ],
-  },
-  {
-    group: "Border",
-    swatches: [
-      { name: "border", cssVar: "--border", hex: "#e5decf" },
-      { name: "border-strong", cssVar: "--border-strong", hex: "#d5cdb9" },
-    ],
-  },
-  {
-    group: "Brand & semantic",
-    swatches: [
-      { name: "indigo (ink CTA)", cssVar: "--indigo", hex: "#1a1814", on: "ink" },
-      { name: "rose (peach accent)", cssVar: "--rose", hex: "#ff8b60", on: "ink" },
-      { name: "emerald (mint OK)", cssVar: "--emerald", hex: "#6fb593", on: "ink" },
-      { name: "amber (warn)", cssVar: "--amber", hex: "#874a1a", on: "ink" },
-      { name: "plum (info)", cssVar: "--plum", hex: "#9f7aea", on: "ink" },
-    ],
-  },
-  {
-    group: "Tints",
-    swatches: [
-      { name: "indigo-tint", cssVar: "--indigo-tint", hex: "#f0eae0" },
-      { name: "rose-tint", cssVar: "--rose-tint", hex: "#ffe3c9" },
-      { name: "emerald-tint", cssVar: "--emerald-tint", hex: "#e2f0ea" },
-      { name: "amber-tint", cssVar: "--amber-tint", hex: "#fce2c7" },
-      { name: "plum-tint", cssVar: "--plum-tint", hex: "#f0e5f5" },
-    ],
-  },
-];
-
-function ColorTokens() {
+function SwatchGrid({ children }: { children: React.ReactNode }) {
   return (
-    <div className="space-y-6">
-      {COLORS.map((g) => (
-        <div key={g.group}>
-          <div className="mb-2 text-xs font-medium" style={{ color: "var(--fg-muted)" }}>
-            {g.group}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {g.swatches.map((s) => (
-              <div key={s.cssVar} className="fp-card overflow-hidden">
-                <div
-                  className="h-20 w-full"
-                  style={{
-                    background: `var(${s.cssVar})`,
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                />
-                <div className="p-3">
-                  <div className="text-sm font-medium">{s.name}</div>
-                  <div
-                    className="mt-0.5 font-mono text-[11px] tabular"
-                    style={{ color: "var(--fg-muted)" }}
-                  >
-                    {s.cssVar} · {s.hex}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+        gap: 8,
+        marginBottom: 4,
+      }}
+    >
+      {children}
     </div>
   );
 }
 
-function TypeScale() {
-  const samples: Array<{
-    label: string;
-    body: string;
-    className?: string;
-    style?: React.CSSProperties;
-    note: string;
-  }> = [
-    {
-      label: "Editorial H1 — fp-h1 fp-h1-serif",
-      body: "Your reading turns into your writing.",
-      className: "fp-h1 fp-h1-serif",
-      note: "Newsreader 500, clamp(32, 4.5vw, 48), -0.02em letter-spacing. Page heroes only.",
-    },
-    {
-      label: "Section heading — Newsreader 500 · 28",
-      body: "Three streams worth your attention",
-      className: "fp-h1-serif",
-      style: { fontSize: 28, lineHeight: 1.15, fontWeight: 500 },
-      note: "Used by /design Section, cluster section titles, the focus card on onboarding.",
-    },
-    {
-      label: "Card heading — Inter 600 · 14",
-      body: "Connect your WordPress",
-      style: { fontSize: 14, fontWeight: 600 },
-      note: "Default for fp-card titles, list items, dialog titles.",
-    },
-    {
-      label: "Body — Inter 400 · 14 / 1.55",
-      body: "Each folder is a reading lane. Open the strongest cluster, ask for more, or set that lane aside for now.",
-      style: { fontSize: 14, lineHeight: 1.55 },
-      note: "Default UI body. Set color: var(--fg-muted) for secondary lines.",
-    },
-    {
-      label: "Eyebrow — fp-eyebrow",
-      body: "MONDAY, MAY 4",
-      className: "fp-eyebrow",
-      note: "11px, 0.16em tracking, var(--fg-subtle). Date stamps, section numbers, step counters.",
-    },
-    {
-      label: "Tabular — .tabular",
-      body: "0123456789 · 12 of 38 · 4.7%",
-      className: "tabular",
-      style: { fontSize: 14 },
-      note: "Required on any number that gets read against another number.",
-    },
-    {
-      label: "Editorial body — .serif",
-      body: "The orchard had been there since before the war, and the warden walked it every Sunday.",
-      className: "serif",
-      style: { fontSize: 17, lineHeight: 1.6 },
-      note: "Newsreader for the manuscript column inside /editor only.",
-    },
-  ];
+function Swatch({ varName, value }: { varName: string; value: string }) {
   return (
-    <div className="space-y-3">
-      {samples.map((s) => (
-        <div key={s.label} className="fp-card p-5">
-          <div className="text-xs" style={{ color: "var(--fg-subtle)" }}>
-            {s.label}
-          </div>
-          <div className={`mt-2 ${s.className ?? ""}`} style={s.style}>
-            {s.body}
-          </div>
-          <div className="mt-3 text-xs" style={{ color: "var(--fg-muted)" }}>
-            {s.note}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ShapeAndElevation() {
-  const radii: Array<{ name: string; varName: string; px: string }> = [
-    { name: "sm", varName: "--radius-sm", px: "10px" },
-    { name: "md", varName: "--radius-md", px: "14px" },
-    { name: "lg", varName: "--radius-lg", px: "20px" },
-    { name: "xl", varName: "--radius-xl", px: "28px" },
-  ];
-  const shadows: Array<{ name: string; varName: string; use: string }> = [
-    { name: "xs", varName: "--shadow-xs", use: "Buttons at rest, stat tiles." },
-    { name: "sm", varName: "--shadow-sm", use: "Default card lift." },
-    { name: "md", varName: "--shadow-md", use: "Card hover, focus, modal at rest." },
-    { name: "lg", varName: "--shadow-lg", use: "Floating menus, popovers." },
-    { name: "glow", varName: "--shadow-glow", use: "Focus ring on inputs and buttons." },
-  ];
-  return (
-    <div className="space-y-6">
-      <div>
-        <div className="mb-2 text-xs font-medium" style={{ color: "var(--fg-muted)" }}>
-          Radii
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-          {radii.map((r) => (
-            <div key={r.name} className="fp-card p-4">
-              <div
-                className="mb-3 h-16 w-full"
-                style={{
-                  background: "var(--bg-subtle)",
-                  borderRadius: `var(${r.varName})`,
-                  border: "1px solid var(--border)",
-                }}
-              />
-              <div className="text-sm font-medium">radius-{r.name}</div>
-              <div
-                className="mt-0.5 font-mono text-[11px] tabular"
-                style={{ color: "var(--fg-muted)" }}
-              >
-                {r.varName} · {r.px}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div>
-        <div className="mb-2 text-xs font-medium" style={{ color: "var(--fg-muted)" }}>
-          Shadows
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-          {shadows.map((s) => (
-            <div
-              key={s.name}
-              className="rounded-[20px] bg-white p-5"
-              style={{ boxShadow: `var(${s.varName})` }}
-            >
-              <div className="text-sm font-medium">shadow-{s.name}</div>
-              <div
-                className="mt-0.5 font-mono text-[11px] tabular"
-                style={{ color: "var(--fg-muted)" }}
-              >
-                {s.varName}
-              </div>
-              <div className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>
-                {s.use}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MotionTokens() {
-  return (
-    <div className="grid gap-3 md:grid-cols-3">
-      <div className="fp-card p-5">
-        <div className="text-sm font-medium">Duration</div>
-        <div className="mt-1 font-mono text-[12px] tabular" style={{ color: "var(--fg-muted)" }}>
-          --duration · 240ms
-        </div>
-        <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Single duration for hover, focus, transform, and color transitions.
-          Reorder/view-transitions run at 260ms.
-        </p>
-      </div>
-      <div className="fp-card p-5">
-        <div className="text-sm font-medium">Ease</div>
-        <div className="mt-1 font-mono text-[12px] tabular" style={{ color: "var(--fg-muted)" }}>
-          --ease · cubic-bezier(0.16, 1, 0.3, 1)
-        </div>
-        <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>
-          One ease for everything. Anti-twitch curve; the alternate --ease-out exists but should not
-          be reached for without a reason.
-        </p>
-      </div>
-      <div className="fp-card p-5">
-        <div className="text-sm font-medium">Reduced motion</div>
-        <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>
-          prefers-reduced-motion forces all transitions, animations, and view-transitions to 0ms.
-          Components must remain legible without motion; do not hide state behind animation.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function Buttons() {
-  return (
-    <div className="space-y-4">
-      <div className="fp-card p-6">
-        <div className="mb-3 text-xs" style={{ color: "var(--fg-muted)" }}>
-          At rest
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button className="fp-btn fp-btn-primary">Draft from this cluster →</button>
-          <button className="fp-btn fp-btn-ghost">Set aside</button>
-          <button className="fp-btn fp-btn-danger">Disconnect outlet</button>
-        </div>
-      </div>
-      <div className="fp-card p-6">
-        <div className="mb-3 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Disabled / pending
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button className="fp-btn fp-btn-primary" aria-disabled disabled>
-            <span className="fp-spinner" /> Drafting…
-          </button>
-          <button className="fp-btn fp-btn-ghost" aria-disabled disabled>
-            Save
-          </button>
-        </div>
-      </div>
-      <div className="fp-card p-6">
-        <div className="mb-3 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Focus ring (Tab to focus)
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button className="fp-btn fp-btn-primary">Connect WordPress</button>
-          <button className="fp-btn fp-btn-ghost">Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Chips() {
-  return (
-    <div className="fp-card p-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="fp-chip">Default</span>
-        <span className="fp-chip fp-chip-emerald">✓ Voice match 92%</span>
-        <span className="fp-chip fp-chip-rose">Featured</span>
-        <span className="fp-chip fp-chip-amber">⚠ Stuck feed</span>
-        <span className="fp-chip fp-chip-indigo">3 sources</span>
-      </div>
-      <div className="mt-4 text-xs" style={{ color: "var(--fg-muted)" }}>
-        Typographic glyphs (→ ✓ ⚠) are fine inside chips and copy. Pictographic emojis are not used
-        anywhere in the UI.
-      </div>
-    </div>
-  );
-}
-
-function Inputs() {
-  return (
-    <div className="fp-card p-6 space-y-4">
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Source URL</label>
-        <input className="fp-input" placeholder="https://example.com/feed.xml" defaultValue="" />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Voice notes</label>
-        <textarea
-          className="fp-textarea"
-          rows={3}
-          placeholder="Anything stylometry would miss; banned vocab, pet phrases, sentences you would never write."
-        />
-      </div>
-    </div>
-  );
-}
-
-function Cards() {
-  return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <div className="fp-card fp-card-hover p-5">
-        <div className="fp-eyebrow">Default</div>
-        <div className="mt-2 text-sm font-medium">fp-card</div>
-        <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Cream paper, no border, soft shadow. Add fp-card-hover for the 2px lift on hover.
-        </p>
-      </div>
-      <div className="fp-card-feature p-5">
-        <div className="fp-eyebrow">Feature</div>
-        <div className="mt-2 text-sm font-medium">fp-card-feature</div>
-        <p className="mt-1 text-xs">
-          Peach surface for the one moment a screen wants the eye on. Used on the onboarding focus
-          card and empty-cluster panels. One per screen.
-        </p>
-      </div>
-      <div className="fp-card fp-gradient-surface p-5">
-        <div className="fp-eyebrow">Gradient</div>
-        <div className="mt-2 text-sm font-medium">fp-gradient-surface</div>
-        <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Peach-cream + plum wash. Reserved for warmth-forward surfaces; do not stack two on the
-          same screen.
-        </p>
-      </div>
-      <div className="md:col-span-3">
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-          <Stat label="Sources polled" value="38" hint="last 5 min" />
-          <Stat label="Items today" value="217" hint="across 12 feeds" />
-          <Stat label="Clusters fired" value="6" hint="3+ source convergence" />
-          <Stat label="Drafts ready" value="2" hint="awaiting your call" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div className="fp-stat">
-      <div className="fp-eyebrow">{label}</div>
-      <div className="mt-1 tabular" style={{ fontSize: 28, fontWeight: 500, lineHeight: 1.1 }}>
-        {value}
-      </div>
-      <div className="mt-0.5 text-xs" style={{ color: "var(--fg-muted)" }}>
-        {hint}
-      </div>
-    </div>
-  );
-}
-
-function Feedback() {
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <div className="fp-card p-5">
-        <div className="text-sm font-medium">Skeleton</div>
-        <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Shimmer on first paint while data loads. Match the shape of the real content; do not show
-          a generic spinner if a skeleton exists.
-        </p>
-        <div className="mt-3 space-y-2">
-          <div className="fp-skeleton h-4 w-3/4" />
-          <div className="fp-skeleton h-4 w-1/2" />
-          <div className="fp-skeleton h-20 w-full" />
-        </div>
-      </div>
-      <div className="fp-card p-5">
-        <div className="text-sm font-medium">Indeterminate progress</div>
-        <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Used while drafting; we know it is happening, we do not know how long.
-        </p>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: 8,
+        border: "1px solid var(--border-default)",
+        borderRadius: 4,
+      }}
+    >
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          background: `var(${varName})`,
+          borderRadius: 4,
+          border: "1px solid var(--border-default)",
+          flexShrink: 0,
+        }}
+      />
+      <div style={{ minWidth: 0 }}>
         <div
-          className="relative mt-3 h-1 overflow-hidden rounded-full"
-          style={{ background: "var(--border)" }}
+          style={{
+            fontSize: 11,
+            fontFamily: "monospace",
+            color: "var(--ink-primary)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
         >
-          <div
-            className="fp-bar-indeterminate absolute h-full w-1/3 rounded-full"
-            style={{ background: "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 100%)" }}
-          />
+          {varName}
         </div>
-      </div>
-      <div className="fp-card p-5">
-        <div className="text-sm font-medium">Inline pending</div>
-        <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          For background actions that report back inline. Status dot, label, no shouting.
-        </p>
-        <div className="mt-3 fp-pending-message">
-          <span className="fp-pending-dot" /> Re-polling 5 sources…
-        </div>
-      </div>
-      <div className="fp-card p-5">
-        <div className="text-sm font-medium">Pulse ring</div>
-        <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          For the live thing: the source currently fetching, the stage that is running, the cluster
-          that just fired.
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <span className="relative inline-flex h-2.5 w-2.5">
-            <span
-              className="fp-pulse-ring absolute inline-flex h-full w-full rounded-full"
-              style={{ background: "var(--emerald)" }}
-            />
-            <span
-              className="relative inline-flex h-full w-full rounded-full"
-              style={{ background: "var(--emerald)" }}
-            />
-          </span>
-          <span className="text-sm">Polling theverge.com</span>
-        </div>
+        <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>{value}</div>
       </div>
     </div>
   );
 }
 
-function Patterns() {
+function TypeRow({
+  label,
+  spec,
+  token,
+  children,
+}: {
+  label: string;
+  spec: string;
+  token: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="space-y-6">
-      <div className="fp-card p-6">
-        <div className="fp-eyebrow mb-3">Pattern · Page header</div>
-        <header className="space-y-1.5">
-          <div className="fp-eyebrow">Monday, May 4</div>
-          <h3 className="fp-h1 fp-h1-serif" style={{ fontSize: 36 }}>
-            Three clusters worth your attention
-          </h3>
-          <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-            Each folder is a reading lane. Open the strongest cluster, ask for more, or set that
-            lane aside for now.
-          </p>
-        </header>
-      </div>
-
-      <div className="fp-card p-6">
-        <div className="fp-eyebrow mb-3">Pattern · Empty state</div>
-        <div className="fp-card-feature p-8 text-center" style={{ background: "var(--surface)" }}>
-          <div
-            className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl"
-            style={{ background: "var(--indigo-tint)" }}
-          >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--indigo)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-          </div>
-          <h4 className="fp-h1-serif" style={{ fontSize: 20 }}>
-            Polling your feeds for the first time.
-          </h4>
-          <p className="mx-auto mt-2 max-w-md text-sm" style={{ color: "var(--fg-muted)" }}>
-            Items appear as the first fetch completes. A cluster fires when 3 sources converge on
-            the same story within 72 hours.
-          </p>
-          <div className="mt-4 flex justify-center">
-            <button className="fp-btn fp-btn-primary">Run first poll →</button>
-          </div>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "160px 1fr",
+        gap: 12,
+        alignItems: "center",
+        padding: "12px 0",
+        borderBottom: "1px solid var(--border-default)",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-secondary)", marginBottom: 2 }}>
+          {label}
         </div>
-      </div>
-
-      <div className="fp-card p-6">
-        <div className="fp-eyebrow mb-3">Pattern · Progress strip</div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">Welcome guide</span>
-          <span className="tabular" style={{ color: "var(--fg-muted)" }}>
-            2 of 3 done
-          </span>
+        <div style={{ fontSize: 10, color: "var(--ink-muted)", fontFamily: "monospace" }}>
+          {token}
         </div>
-        <div
-          className="mt-3 h-1.5 overflow-hidden rounded-full"
-          style={{ background: "var(--border)" }}
-        >
-          <div
-            className="h-full rounded-full"
-            style={{
-              width: "66%",
-              background: "linear-gradient(90deg, var(--indigo) 0%, var(--rose) 100%)",
-            }}
-          />
-        </div>
-        <ol className="mt-3 grid grid-cols-3 gap-2 text-xs">
-          {[
-            { id: 1, label: "Connect", state: "done" },
-            { id: 2, label: "Voice", state: "done" },
-            { id: 3, label: "Sources", state: "current" },
-          ].map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center gap-1.5"
-              style={{
-                color:
-                  s.state === "done"
-                    ? "var(--emerald)"
-                    : s.state === "current"
-                      ? "var(--indigo)"
-                      : "var(--fg-subtle)",
-              }}
-            >
-              <span
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold tabular"
-                style={{
-                  background:
-                    s.state === "done"
-                      ? "var(--emerald-tint)"
-                      : s.state === "current"
-                        ? "var(--indigo)"
-                        : "var(--bg-subtle)",
-                  color:
-                    s.state === "done"
-                      ? "var(--emerald)"
-                      : s.state === "current"
-                        ? "#fff"
-                        : "var(--fg-subtle)",
-                }}
-              >
-                {s.state === "done" ? "✓" : s.id}
-              </span>
-              <span style={{ fontWeight: s.state === "current" ? 500 : 400 }}>{s.label}</span>
-            </li>
-          ))}
-        </ol>
+        <div style={{ fontSize: 10, color: "var(--ink-muted)", marginTop: 1 }}>{spec}</div>
       </div>
-
-      <div className="fp-card p-6">
-        <div className="fp-eyebrow mb-3">Pattern · Editor annotations</div>
-        <p className="serif" style={{ fontSize: 17, lineHeight: 1.6 }}>
-          The orchard had been there{" "}
-          <mark data-fp-ext data-fp-tone="positive">
-            since before the war
-          </mark>
-          , and the warden walked it{" "}
-          <mark data-fp-ext data-fp-tone="neutral">
-            every Sunday
-          </mark>
-          ; the grafts had{" "}
-          <mark data-fp-ext data-fp-tone="negative">
-            begun to fail
-          </mark>{" "}
-          by the third spring.
-        </p>
-        <p className="mt-3 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Tone-coded underlines for inline extension findings. Positive = mint, neutral = amber,
-          negative = peach. Active annotation gets a 2px ink ring on focus.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function DontList() {
-  const items: Array<{ k: string; why: string }> = [
-    {
-      k: "No pictographic emojis in UI chrome",
-      why: "Buttons, headers, chips stay typographic. Glyphs like → ✓ ⚠ are fine; 🚀 🎉 ✨ are not.",
-    },
-    {
-      k: "No em dashes",
-      why: "Use semicolons or two sentences. Em dashes read as AI-default punctuation.",
-    },
-    {
-      k: "No setup-then-reveal headlines",
-      why: 'Lead with the fact. "Here\'s what changed: …" becomes "Drafts now sort by voice match."',
-    },
-    {
-      k: "No closures or CTAs",
-      why: 'Skip "Hope this helps," "Let me know," "Want me to…" in chat, copy, and empty states.',
-    },
-    {
-      k: "No horizontal rules",
-      why: "Use the dotted .fp-divider or whitespace. Solid <hr> reads as Markdown spillover.",
-    },
-    {
-      k: "No multi-tenant chrome",
-      why: 'No org switcher, no role badges, no "Acme team" copy. Single-site-single-user is the rule.',
-    },
-    {
-      k: "No push surfaces",
-      why: "No badges counting unread, no notification bells, no email digests. Pull-not-push is structural.",
-    },
-  ];
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {items.map((it) => (
-        <div key={it.k} className="fp-card p-5">
-          <div className="text-sm font-medium">{it.k}</div>
-          <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-            {it.why}
-          </p>
-        </div>
-      ))}
+      <div>{children}</div>
     </div>
   );
 }
