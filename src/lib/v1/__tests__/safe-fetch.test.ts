@@ -81,11 +81,11 @@ describe("safeFetch", () => {
     );
     _setPinnedFetchForTests(fetchMock);
 
-    await expect(safeFetchText("https://example.com/feed", { timeoutMs: 20 })).rejects.toMatchObject(
-      {
-        code: "aborted",
-      },
-    );
+    await expect(
+      safeFetchText("https://example.com/feed", { timeoutMs: 20 }),
+    ).rejects.toMatchObject({
+      code: "aborted",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

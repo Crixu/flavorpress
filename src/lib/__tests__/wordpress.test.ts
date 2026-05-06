@@ -8,6 +8,7 @@ import {
 import {
   blocksToHtml,
   getOutletPostCount,
+  htmlToBlocks,
   MIN_VOICE_TRAIN_POSTS,
   type WPCredentials,
 } from "../wordpress";
@@ -60,8 +61,24 @@ describe("blocksToHtml", () => {
     const raw =
       '<!-- wp:paragraph --><p onclick="alert(1)">Hello <a href="javascript:alert(1)">bad</a><a href="https://example.com">source</a><script>alert(1)</script></p><!-- /wp:paragraph -->';
 
-    expect(blocksToHtml(raw)).toBe(
-      '<p>Hello bad<a href="https://example.com">source</a></p>',
-    );
+    expect(blocksToHtml(raw)).toBe('<p>Hello bad<a href="https://example.com">source</a></p>');
+  });
+});
+
+describe("htmlToBlocks", () => {
+  it("preserves headings and lists as Gutenberg blocks", () => {
+    const html = [
+      "<p>Intro</p>",
+      "<h2>Five signals</h2>",
+      "<ol><li>One</li><li>Two</li></ol>",
+      "<h3>What now?</h3>",
+      "<ul><li>Check source</li></ul>",
+    ].join("");
+
+    expect(htmlToBlocks(html)).toContain("<!-- wp:heading -->\n<h2>Five signals</h2>");
+    expect(htmlToBlocks(html)).toContain('<!-- wp:list {"ordered":true} -->');
+    expect(htmlToBlocks(html)).toContain("<ol><li>One</li><li>Two</li></ol>");
+    expect(htmlToBlocks(html)).toContain('<!-- wp:heading {"level":3} -->');
+    expect(htmlToBlocks(html)).toContain("<!-- wp:list -->\n<ul><li>Check source</li></ul>");
   });
 });

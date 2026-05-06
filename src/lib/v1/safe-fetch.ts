@@ -112,8 +112,11 @@ export function _resetPinnedFetchForTests(): void {
 }
 
 export async function safeFetch(input: string | URL, init: SafeFetchInit = {}): Promise<Response> {
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, maxRedirects = DEFAULT_MAX_REDIRECTS, ...fetchInit } =
-    init;
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxRedirects = DEFAULT_MAX_REDIRECTS,
+    ...fetchInit
+  } = init;
   let current = parseHttpUrl(input);
   let requestInit: RequestInit = { ...fetchInit };
   let previousOrigin = current.origin;
