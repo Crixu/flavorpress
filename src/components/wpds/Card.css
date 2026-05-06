@@ -1,0 +1,13 @@
+.wpds-card {
+  background: var(--surface-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  transition: border-color var(--duration) var(--ease);
+}
+.wpds-card:hover {
+  border-color: var(--ink-muted);
+}
+.wpds-card-emphasis {
+  border-left: 3px solid var(--ink-primary);
+}
