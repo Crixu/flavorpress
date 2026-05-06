@@ -12,6 +12,7 @@
 import { db, ensureSchema } from "../db";
 import { getBus } from "./event-bus";
 import { extractItemEntities } from "./entity-extractor";
+import { tagItem } from "./tag-ingest";
 import { BackoffError } from "./polite-fetch";
 import { traceLogger, newTraceId } from "./trace";
 import type { Item, ItemIngestedPayload, Source, SourceKind } from "./types";
@@ -207,6 +208,11 @@ export async function runConnector<TRaw>(
           itemId: id,
         });
       }
+
+      // Fire-and-forget LLM topic tagging. Does not block ingestion latency.
+      void tagItem(id).catch((err) => {
+        console.error("[tag-ingest]", err);
+      });
 
       ingestedCount++;
       await getBus().emit<ItemIngestedPayload>(
