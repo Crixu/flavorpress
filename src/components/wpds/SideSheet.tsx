@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import "./SideSheet.css";
 
 interface Props {
@@ -13,14 +14,15 @@ interface Props {
 }
 
 export function SideSheet({ open, onClose, title, width = 480, children, footer }: Props) {
+  // Portal to document.body so the sheet escapes any ancestor that creates
+  // a containing block for fixed positioning (e.g. cluster cards set
+  // view-transition-name, which traps position: fixed inside the card).
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
-    // Mark the body so the page can shift content left and avoid drawing
-    // under the sheet. Width is exposed as a CSS var for responsive padding.
     document.body.setAttribute("data-wpds-sheet-open", "true");
     document.body.style.setProperty("--wpds-sheet-width", `${width}px`);
     return () => {
@@ -31,7 +33,7 @@ export function SideSheet({ open, onClose, title, width = 480, children, footer 
   }, [open, onClose, width]);
 
   if (!open) return null;
-  return (
+  const sheet = (
     <>
       <div className="wpds-sidesheet-scrim" data-testid="wpds-sidesheet-scrim" onClick={onClose} />
       <aside className="wpds-sidesheet" style={{ width }}>
@@ -46,4 +48,6 @@ export function SideSheet({ open, onClose, title, width = 480, children, footer 
       </aside>
     </>
   );
+  if (typeof document === "undefined") return null;
+  return createPortal(sheet, document.body);
 }
