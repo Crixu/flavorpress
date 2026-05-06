@@ -21,6 +21,7 @@
 
 import { db } from "@/lib/db";
 import { BackoffError, USER_AGENT, registrableDomain, takeToken } from "@/lib/v1/polite-fetch";
+import { safeFetch, safeReadText } from "@/lib/v1/safe-fetch";
 import type { RawItem, SourceConnector, ConnectorContext } from "@/lib/v1/source-connector";
 import type { Source } from "@/lib/v1/types";
 import { getRedditEngagementThresholds } from "./server";
@@ -112,7 +113,7 @@ async function fetchJson(source: Source, url: string): Promise<RedditListing | n
   if (source.lastEtag) headers["If-None-Match"] = source.lastEtag;
   if (source.lastModified) headers["If-Modified-Since"] = source.lastModified;
 
-  const res = await fetch(url, { headers, redirect: "follow" });
+  const res = await safeFetch(url, { headers });
 
   if (res.status === 304) {
     await db.execute({
@@ -154,7 +155,7 @@ async function fetchJson(source: Source, url: string): Promise<RedditListing | n
     args: [etag, lastModified, source.id],
   });
 
-  const text = await res.text();
+  const text = await safeReadText(res);
   try {
     return JSON.parse(text) as RedditListing;
   } catch {

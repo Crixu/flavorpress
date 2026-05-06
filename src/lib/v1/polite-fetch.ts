@@ -26,6 +26,7 @@
  */
 
 import { db } from "../db";
+import { safeFetch, safeReadText } from "./safe-fetch";
 import type { Source } from "./types";
 
 export class BackoffError extends Error {
@@ -155,7 +156,7 @@ export async function politeFetch(source: Source): Promise<PoliteResult> {
   if (source.lastEtag) headers["If-None-Match"] = source.lastEtag;
   if (source.lastModified) headers["If-Modified-Since"] = source.lastModified;
 
-  const res = await fetch(source.url, { headers, redirect: "follow" });
+  const res = await safeFetch(source.url, { headers });
 
   if (res.status === 304) {
     await db.execute({
@@ -197,7 +198,7 @@ export async function politeFetch(source: Source): Promise<PoliteResult> {
     args: [etag, lastModified, source.id],
   });
 
-  let body = await res.text();
+  let body = await safeReadText(res);
   if (body.charCodeAt(0) === 0xfeff) body = body.slice(1);
   return { kind: "ok", body };
 }

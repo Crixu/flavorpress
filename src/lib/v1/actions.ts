@@ -10,9 +10,21 @@ import { after } from "next/server";
 import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
+import { isDraftFormat, DEFAULT_DRAFT_FORMAT, type DraftFormat } from "./draft-format";
+import { generateAngleSuggestions, type AngleSuggestion } from "./angle-generator";
+import { getDraftWizardPrefs, setDraftWizardPrefs } from "./wizard-prefs";
+import { WIZARD_LENGTHS, type WizardLength, type DraftWizardPrefs } from "./wizard-prefs-shared";
 import { rerollHeadlines } from "./headline-reroll";
 import { rewriteParagraph } from "./paragraph-rewrite";
-import { generateResearch, type ResearchNotes } from "./researcher-generator";
+import {
+  extendResearchQuotes,
+  generateResearch,
+  remixResearchIdeas,
+  renderNotesBodyHtml,
+  type ResearchNotes,
+} from "./researcher-generator";
+import { extractFullArticle } from "./extract-article";
+import { canonicalize, hashContent } from "./source-connector";
 import { getRegistry } from "./capability-registry";
 import { extractStyleSheet } from "./style-sheet";
 import {
@@ -42,10 +54,12 @@ import {
 } from "./outlets";
 import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
+import { createWPAuthorizeState } from "./wp-authorize-state";
 import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { findClaimingSourceExtension } from "@/extensions/source-extensions";
 import { getDisabledExtensionIds } from "./settings";
+import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -129,7 +143,12 @@ export async function startWPAuthorizeAction(formData: FormData) {
     await recordOutletError(outletId, "");
   }
 
-  const successUrl = `${origin}/api/wp/callback?outlet_id=${outletId}`;
+  const authorizeState = await createWPAuthorizeState({
+    userId: SINGLE_USER_ID,
+    outletId,
+    expectedSiteUrl: baseUrl,
+  });
+  const successUrl = `${origin}/api/wp/callback?outlet_id=${outletId}&state=${authorizeState.state}`;
   const rejectUrl = `${origin}/voice?wp_rejected=${outletId}`;
   const params = new URLSearchParams({
     app_name: "FlavorPress",
@@ -604,6 +623,259 @@ export async function dismissClusterAction(formData: FormData) {
     revalidatePath("/sources");
   }
   revalidatePath("/");
+}
+
+/**
+ * Negative quality signal for a research cluster: the items don't actually
+ * belong together. Stronger than a passive dismiss, because the writer is
+ * telling us the clustering was wrong, not that they're skipping a real
+ * story. We mark the cluster dismissed, apply a steeper trust hit on the
+ * contributing sources (twice the dismiss penalty), and delete the
+ * research draft so the bad output doesn't linger on /drafts.
+ */
+export async function flagClusterMismatchAction(formData: FormData) {
+  await ensureSchema();
+  const clusterId = String(formData.get("clusterId") ?? "");
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!clusterId) throw new Error("clusterId required.");
+
+  await db.execute({
+    sql: `UPDATE clusters SET state = 'dismissed' WHERE id = ? AND user_id = ?`,
+    args: [clusterId, SINGLE_USER_ID],
+  });
+  await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed * 2);
+
+  if (draftId) {
+    await db.execute({
+      sql: `DELETE FROM drafts WHERE id = ? AND user_id = ?`,
+      args: [draftId, SINGLE_USER_ID],
+    });
+  }
+  revalidatePath("/sources");
+  revalidatePath("/drafts");
+  redirect("/");
+}
+
+/**
+ * Re-roll the ideas section of an existing research notes blob. Quotes
+ * and facts (the grounded, slop-sensitive part) stay frozen; only the
+ * angles change. Persisted notes JSON and the body HTML mirror are both
+ * updated so the WordPress handoff sees the fresh ideas.
+ */
+export async function remixResearchIdeasAction(formData: FormData) {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const r = await db.execute({
+    sql: `SELECT cluster_id, notes FROM drafts
+          WHERE id = ? AND user_id = ? AND mode = 'researcher'`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("research draft not found.");
+  const row = r.rows[0]!;
+  const notesRaw = row.notes ? String(row.notes) : "";
+  if (!notesRaw) throw new Error("research notes missing.");
+  let notes: ResearchNotes;
+  try {
+    notes = JSON.parse(notesRaw) as ResearchNotes;
+  } catch {
+    throw new Error("research notes malformed.");
+  }
+
+  const ideas = await remixResearchIdeas({
+    clusterId: String(row.cluster_id),
+    userId: SINGLE_USER_ID,
+    current: notes,
+  });
+  const updated: ResearchNotes = { ...notes, ideas };
+  const bodyHtml = renderNotesBodyHtml(updated);
+  await db.execute({
+    sql: `UPDATE drafts SET notes = ?, body = ? WHERE id = ? AND user_id = ?`,
+    args: [JSON.stringify(updated), bodyHtml, draftId, SINGLE_USER_ID],
+  });
+  revalidatePath(`/editor/${draftId}`);
+}
+
+/**
+ * Pull additional verbatim quotes for an existing research draft. Existing
+ * quotes are kept verbatim; new ones are appended up to the per-notes cap.
+ * Same grounding rules as the initial generation (verbatim against source
+ * bytes, one quote per source URL).
+ */
+export async function addMoreResearchQuotesAction(formData: FormData) {
+  await ensureSchema();
+  const draftId = String(formData.get("draftId") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const r = await db.execute({
+    sql: `SELECT cluster_id, notes FROM drafts
+          WHERE id = ? AND user_id = ? AND mode = 'researcher'`,
+    args: [draftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) throw new Error("research draft not found.");
+  const row = r.rows[0]!;
+  const notesRaw = row.notes ? String(row.notes) : "";
+  if (!notesRaw) throw new Error("research notes missing.");
+  let notes: ResearchNotes;
+  try {
+    notes = JSON.parse(notesRaw) as ResearchNotes;
+  } catch {
+    throw new Error("research notes malformed.");
+  }
+
+  const quotes = await extendResearchQuotes({
+    clusterId: String(row.cluster_id),
+    userId: SINGLE_USER_ID,
+    current: notes,
+  });
+  const updated: ResearchNotes = { ...notes, quotes };
+  const bodyHtml = renderNotesBodyHtml(updated);
+  // The drafts.quotes column is a flat list used by the receipt + draft-
+  // generator-as-seed paths; mirror the new pool there too.
+  const quotesForCol = updated.quotes.map((q) => ({
+    sourceId: q.sourceUrl,
+    text: q.text,
+    citation: q.sourceUrl,
+  }));
+  await db.execute({
+    sql: `UPDATE drafts SET notes = ?, body = ?, quotes = ? WHERE id = ? AND user_id = ?`,
+    args: [
+      JSON.stringify(updated),
+      bodyHtml,
+      JSON.stringify(quotesForCol),
+      draftId,
+      SINGLE_USER_ID,
+    ],
+  });
+  revalidatePath(`/editor/${draftId}`);
+}
+
+/**
+ * Pin a one-off article URL into an existing research cluster. Fetches
+ * the page with the same Readability extractor used for teaser-recovery,
+ * routes the item through a per-user "Manual additions" source so the
+ * existing items table constraints (source_id, trust scoring) stay
+ * intact, and binds the new item directly to the cluster. The next
+ * "More quotes" / "Remix ideas" run will see the new item alongside the
+ * originals.
+ *
+ * Does NOT re-run research generation; the writer asked to widen the
+ * input, not to discard the curated state. The new sources rail entry
+ * appears immediately; the writer triggers Remix or More quotes when
+ * they want the new article to influence the notes.
+ */
+export async function addSourceToClusterAction(formData: FormData) {
+  await ensureSchema();
+  const clusterId = String(formData.get("clusterId") ?? "");
+  const draftId = String(formData.get("draftId") ?? "");
+  const rawUrl = String(formData.get("url") ?? "").trim();
+  if (!clusterId) throw new Error("clusterId required.");
+  if (!rawUrl) throw new Error("url required.");
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    throw new Error("That doesn't look like a URL.");
+  }
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new Error("URL must be http or https.");
+  }
+
+  const canonicalUrl = canonicalize(parsedUrl.toString());
+
+  // Skip the fetch if we already have this URL on the cluster. A repeat
+  // paste shouldn't double-insert. Also covers the case where the page
+  // was already ingested via a feed and just needs the cluster binding.
+  const existing = await db.execute({
+    sql: `SELECT id, cluster_id FROM items
+          WHERE user_id = ? AND canonical_url = ?`,
+    args: [SINGLE_USER_ID, canonicalUrl],
+  });
+  if (existing.rows.length > 0) {
+    const itemId = String(existing.rows[0]!.id);
+    const existingClusterId = existing.rows[0]!.cluster_id
+      ? String(existing.rows[0]!.cluster_id)
+      : "";
+    if (existingClusterId && existingClusterId !== clusterId) {
+      throw new Error("That URL is already attached to another cluster.");
+    }
+    if (!existingClusterId) {
+      await db.execute({
+        sql: `UPDATE items SET cluster_id = ? WHERE id = ? AND user_id = ?`,
+        args: [clusterId, itemId, SINGLE_USER_ID],
+      });
+      await recomputeClusterSourceCount(clusterId);
+    }
+    if (draftId) revalidatePath(`/editor/${draftId}`);
+    return;
+  }
+
+  const article = await extractFullArticle(parsedUrl.toString());
+  const title = (article?.title ?? parsedUrl.hostname).slice(0, 280);
+  const lede = (article?.excerpt ?? article?.textContent.slice(0, 280) ?? title).trim();
+  const body = article?.textContent ?? null;
+
+  const sourceId = await ensureManualSource(parsedUrl.hostname);
+  const itemId = crypto.randomUUID();
+  const contentHash = hashContent(lede + (body ?? ""));
+  const now = Date.now();
+  await db.execute({
+    sql: `INSERT INTO items
+          (id, source_id, user_id, canonical_url, content_hash, title, lede,
+           body, authors, published_at, fetched_at, cluster_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      itemId,
+      sourceId,
+      SINGLE_USER_ID,
+      canonicalUrl,
+      contentHash,
+      title,
+      lede,
+      body,
+      JSON.stringify(article?.byline ? [article.byline] : []),
+      now,
+      now,
+      clusterId,
+    ],
+  });
+  await recomputeClusterSourceCount(clusterId);
+
+  if (draftId) revalidatePath(`/editor/${draftId}`);
+}
+
+async function recomputeClusterSourceCount(clusterId: string): Promise<void> {
+  await db.execute({
+    sql: `UPDATE clusters SET source_count = (
+            SELECT COUNT(DISTINCT source_id) FROM items WHERE cluster_id = ? AND user_id = ?
+          ) WHERE id = ? AND user_id = ?`,
+    args: [clusterId, SINGLE_USER_ID, clusterId, SINGLE_USER_ID],
+  });
+}
+
+/**
+ * Find-or-create the per-user "Manual additions" source that backs items
+ * pasted by hand into a research view. Real connectors (RSS, Reddit) own
+ * a real feed URL; manual items don't have one, but the items table
+ * requires a source_id, so all manual items share a single virtual
+ * source per user. Marked active=0 so the polling loop ignores it.
+ */
+async function ensureManualSource(displayHost: string): Promise<string> {
+  const r = await db.execute({
+    sql: `SELECT id FROM sources WHERE user_id = ? AND kind = 'manual' LIMIT 1`,
+    args: [SINGLE_USER_ID],
+  });
+  if (r.rows.length > 0) return String(r.rows[0]!.id);
+  const id = crypto.randomUUID();
+  await db.execute({
+    sql: `INSERT INTO sources
+          (id, user_id, kind, url, display_name, trust_score, poll_interval_seconds, active, created_at)
+          VALUES (?, ?, 'manual', ?, ?, 0.5, 0, 0, ?)`,
+    args: [id, SINGLE_USER_ID, `manual://${displayHost}`, "Manual additions", Date.now()],
+  });
+  return id;
 }
 
 /**
@@ -1108,22 +1380,26 @@ export async function buildVoiceProfileAction(formData: FormData) {
     publishedAt: Date.parse(p.date),
   }));
 
-  await persistVoiceProfile(outletId, posts);
+  await persistVoiceProfile(outletId, posts, { method: "archive", transcript: null });
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
 
 /**
- * Seed a voice profile from prose the user pastes manually. Used when the
- * outlet has no published archive yet (brand-new WordPress site) so the
- * archive analyzer has nothing to fingerprint. Multiple samples can be
- * separated by a line containing only `---`.
+ * Seed a voice profile from prose the user pastes manually or types in
+ * the in-app free-write panel. Multiple samples can be separated by a
+ * line containing only `---`. The hidden `method` form field tells us
+ * which onboarding path produced the prose ("paste" or "freewrite") so
+ * the audit row reflects the actual source; defaults to "paste" for
+ * back-compat.
  */
 export async function seedVoiceFromSamplesAction(formData: FormData) {
   await ensureSchema();
   await ensureSingleUser();
   const outletId = String(formData.get("outletId") ?? "");
   const samples = String(formData.get("samples") ?? "").trim();
+  const methodInput = String(formData.get("method") ?? "paste");
+  const method: "paste" | "freewrite" = methodInput === "freewrite" ? "freewrite" : "paste";
   if (!outletId) throw new Error("outletId required.");
   if (!samples) throw new Error("Paste at least one sample of your writing.");
 
@@ -1146,7 +1422,56 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
     publishedAt: now,
   }));
 
-  await persistVoiceProfile(outletId, posts);
+  await persistVoiceProfile(outletId, posts, { method, transcript: samples });
+  revalidatePath("/voice");
+  revalidatePath(`/voice/${outletId}`);
+}
+
+/**
+ * Seed a voice profile from a 7-question Kemp-style interview. Reads the
+ * answers from the form (fields `q1`..`q7`), runs them through Claude to
+ * synthesize a 600-800 word essay in the user's voice, then fingerprints
+ * the essay through the same pipeline as paste/free-write. The transcript
+ * is stored on the profile row as JSON for audit; the synthesized essay
+ * is not persisted separately.
+ */
+export async function seedVoiceFromInterviewAction(formData: FormData) {
+  await ensureSchema();
+  await ensureSingleUser();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+
+  const outlet = await getOutlet(outletId);
+  if (!outlet) throw new Error("Outlet not found.");
+
+  const rawAnswers: string[] = [];
+  for (let i = 1; i <= 7; i++) {
+    rawAnswers.push(String(formData.get(`q${i}`) ?? ""));
+  }
+  const answers = sanitizeAnswers(rawAnswers);
+  const filled = answers.filter((a) => a.length > 0).length;
+  if (filled < 3) {
+    throw new Error(`Answer at least three questions to seed a voice; got ${filled}.`);
+  }
+
+  const essay = await synthesizeVoiceEssay(answers);
+  if (!essay) {
+    throw new Error(
+      "Could not synthesize a voice essay from the interview. Try again, or seed from samples.",
+    );
+  }
+  const wordCount = essay.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 200) {
+    throw new Error(
+      `Synthesized essay was too short (${wordCount} words); try richer answers or seed from samples.`,
+    );
+  }
+
+  const now = Date.now();
+  await persistVoiceProfile(outletId, [{ title: "", body: essay, publishedAt: now }], {
+    method: "interview",
+    transcript: JSON.stringify(answers),
+  });
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1259,6 +1584,7 @@ Write the 2-3 sentence description now.`,
 async function persistVoiceProfile(
   outletId: string,
   posts: { title: string; body: string; publishedAt: number }[],
+  seed: { method: "archive" | "paste" | "freewrite" | "interview"; transcript: string | null },
 ): Promise<void> {
   const styleSheet = extractStyleSheet(posts);
   const yaml = renderStyleYaml(styleSheet);
@@ -1275,8 +1601,9 @@ async function persistVoiceProfile(
           (outlet_id, user_id, style_sheet_yaml, archive_index_size,
            function_word_distribution, sentence_length_mean, sentence_length_variance,
            hedge_frequency, em_dash_density, quote_density,
-           banned_terms, signature_terms, anchored_post_ids, description, last_rebuilt_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           banned_terms, signature_terms, anchored_post_ids, description,
+           seed_method, seed_transcript, last_rebuilt_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       outletId,
       SINGLE_USER_ID,
@@ -1292,6 +1619,8 @@ async function persistVoiceProfile(
       JSON.stringify(styleSheet.signatureTerms),
       JSON.stringify([]),
       preservedDescription,
+      seed.method,
+      seed.transcript,
       Date.now(),
     ],
   });
@@ -1485,11 +1814,24 @@ export async function generateDraftAction(formData: FormData) {
 
   const mode = parseMode(formData.get("mode"));
   const wordCount = mode === "researcher" ? undefined : parseWordCount(formData.get("wordCount"));
+  const submittedFormat = mode === "researcher" ? undefined : parseFormat(formData.get("format"));
+  const customAngle =
+    mode === "researcher"
+      ? undefined
+      : String(formData.get("customAngle") ?? "")
+          .trim()
+          .slice(0, 200) || undefined;
+  const submittedAngleHint = String(formData.get("angleHint") ?? "");
+  const angleHint =
+    submittedAngleHint === "archive" || submittedAngleHint === "gap"
+      ? (submittedAngleHint as "archive" | "gap")
+      : undefined;
 
   // Reuse: if a draft of the same mode already exists for this cluster +
   // outlet, jump to it. Drafter and researcher runs are independent because
   // they produce different artifacts; one shouldn't shadow the other.
   const force = String(formData.get("force") ?? "") === "1";
+  let previousFormat: DraftFormat | undefined;
   if (!force) {
     const existing = await db.execute({
       sql: `SELECT id FROM drafts
@@ -1500,7 +1842,23 @@ export async function generateDraftAction(formData: FormData) {
     if (existing.rows.length > 0) {
       redirect(`/editor/${String(existing.rows[0]!.id)}`);
     }
+  } else if (mode === "drafter") {
+    // Force-regenerate from the home cluster card: preserve the previous
+    // draft's format if the caller didn't explicitly send one. Otherwise a
+    // listicle quietly becomes a narrative on every regen click.
+    const existing = await db.execute({
+      sql: `SELECT format FROM drafts
+            WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = 'drafter'
+            ORDER BY created_at DESC LIMIT 1`,
+      args: [clusterId, outletId, SINGLE_USER_ID],
+    });
+    if (existing.rows.length > 0) {
+      const value = existing.rows[0]!.format;
+      if (isDraftFormat(value)) previousFormat = value as DraftFormat;
+    }
   }
+  const format =
+    mode === "researcher" ? undefined : (submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT);
 
   if (mode === "researcher") {
     const research = await generateResearch({
@@ -1511,13 +1869,113 @@ export async function generateDraftAction(formData: FormData) {
     redirect(`/editor/${research.draftId}`);
   }
 
+  // Drafter mode: persist the wizard's chosen format + length so the next
+  // open of the wizard preselects them and "Just go" can fire without
+  // landing on the original 1000-word default.
+  if (format && wordCount && (WIZARD_LENGTHS as readonly number[]).includes(wordCount)) {
+    await setDraftWizardPrefs({ format, length: wordCount as WizardLength });
+  }
+
+  // If commissioned from a research view, the writer's already vetted some
+  // angles and pulled some quotes. Pass those into the drafter as a seed
+  // so the curated picks survive the handoff. Without this the drafter
+  // re-scans the cluster fresh and the writer's research evaporates.
+  const seedFromDraftId = String(formData.get("seedFromDraftId") ?? "");
+  const researchSeed = seedFromDraftId
+    ? await loadResearchSeed(seedFromDraftId, clusterId, outletId)
+    : undefined;
+
   const draft = await generateDraft({
     clusterId,
     userId: SINGLE_USER_ID,
     outletId,
     wordCount,
+    format,
+    angleHint,
+    customAngle,
+    researchSeed,
   });
   redirect(`/editor/${draft.draftId}`);
+}
+
+async function loadResearchSeed(
+  seedDraftId: string,
+  clusterId: string,
+  outletId: string,
+): Promise<
+  | {
+      topic: string;
+      ideas: { angle: string; rationale: string }[];
+      quotes: { text: string; speaker: string | null; sourceUrl: string }[];
+    }
+  | undefined
+> {
+  const r = await db.execute({
+    sql: `SELECT cluster_id, outlet_id, mode, notes, headline FROM drafts
+          WHERE id = ? AND user_id = ?`,
+    args: [seedDraftId, SINGLE_USER_ID],
+  });
+  if (r.rows.length === 0) return undefined;
+  const row = r.rows[0]!;
+  if (String(row.mode ?? "") !== "researcher") return undefined;
+  // Tenancy guard: only seed from a research draft attached to the same
+  // cluster + outlet the drafter is being commissioned for. A swapped id
+  // shouldn't bleed quotes from one story into another.
+  if (String(row.cluster_id ?? "") !== clusterId) return undefined;
+  if (String(row.outlet_id ?? "") !== outletId) return undefined;
+  const notesRaw = row.notes ? String(row.notes) : null;
+  if (!notesRaw) return undefined;
+  try {
+    const parsed = JSON.parse(notesRaw) as ResearchNotes;
+    return {
+      topic: parsed.topic,
+      ideas: parsed.ideas ?? [],
+      quotes: parsed.quotes ?? [],
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Wizard pre-flight: pull three angle proposals for a cluster + format +
+ * length combination. Called when the user picks a length in the modal.
+ * Returns the array directly (server-action style) so the client can render
+ * them as soon as the call resolves.
+ */
+export async function generateDraftAnglesAction(
+  formData: FormData,
+): Promise<{ angles: AngleSuggestion[] }> {
+  await ensureSchema();
+  const clusterId = String(formData.get("clusterId") ?? "");
+  if (!clusterId) throw new Error("clusterId required.");
+
+  const explicitOutlet = String(formData.get("outletId") ?? "");
+  const outletId = explicitOutlet || (await getDefaultOutlet(SINGLE_USER_ID))?.id || "";
+  if (!outletId) {
+    throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
+  }
+
+  const format = parseFormat(formData.get("format")) ?? DEFAULT_DRAFT_FORMAT;
+  const wordCount = parseWordCount(formData.get("wordCount")) ?? 1000;
+
+  const angles = await generateAngleSuggestions({
+    clusterId,
+    userId: SINGLE_USER_ID,
+    outletId,
+    format,
+    wordCount,
+  });
+  return { angles };
+}
+
+/**
+ * Wizard initial state: the last-used format + length so chips preselect on
+ * open. Called from the cluster card when the modal mounts.
+ */
+export async function getDraftWizardPrefsAction(): Promise<DraftWizardPrefs> {
+  await ensureSchema();
+  return getDraftWizardPrefs();
 }
 
 /**
@@ -1527,10 +1985,10 @@ export async function generateDraftAction(formData: FormData) {
  * cluster/outlet/mode pair (matching the dedupe rule in generateDraftAction).
  *
  * Inputs (form fields):
- *   draftId    — required
- *   angleHint  — "archive" | "gap" | "custom" (defaults to current generator default)
- *   customAngle — required when angleHint=custom; one-line user phrasing
- *   wordCount  — optional integer in [100, 1500]
+ *   draftId - required
+ *   angleHint - "archive" | "gap" | "custom" (defaults to current generator default)
+ *   customAngle - required when angleHint=custom; one-line user phrasing
+ *   wordCount - optional integer in [100, 1500]
  */
 export async function regenerateDraftAction(formData: FormData) {
   await ensureSchema();
@@ -1539,7 +1997,7 @@ export async function regenerateDraftAction(formData: FormData) {
   if (!draftId) throw new Error("draftId required.");
 
   const r = await db.execute({
-    sql: `SELECT cluster_id, outlet_id, mode, wp_post_id, angle_hint, custom_angle FROM drafts
+    sql: `SELECT cluster_id, outlet_id, mode, wp_post_id, angle_hint, custom_angle, format FROM drafts
           WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
@@ -1565,6 +2023,9 @@ export async function regenerateDraftAction(formData: FormData) {
     throw new Error("Custom angle text required when picking the custom angle.");
   }
   const wordCount = parseWordCount(formData.get("wordCount"));
+  const submittedFormat = parseFormat(formData.get("format"));
+  const previousFormat = isDraftFormat(row.format) ? (row.format as DraftFormat) : undefined;
+  const format = submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT;
 
   const draft = await generateDraft({
     clusterId: String(row.cluster_id),
@@ -1573,6 +2034,7 @@ export async function regenerateDraftAction(formData: FormData) {
     angleHint: rawAngle === "custom" ? undefined : angleHint,
     customAngle: customAngle || undefined,
     wordCount,
+    format,
   });
 
   // Drop the previous draft so the editor doesn't accumulate stale rows for
@@ -1595,10 +2057,16 @@ function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error("Word count must be a positive number.");
   }
-  if (n < 100 || n > 1500) {
-    throw new Error("Word count must be between 100 and 1500.");
+  if (n < 100 || n > 2000) {
+    throw new Error("Word count must be between 100 and 2000.");
   }
   return Math.round(n);
+}
+
+function parseFormat(raw: FormDataEntryValue | null): DraftFormat | undefined {
+  if (raw === null || raw === "") return undefined;
+  const value = String(raw);
+  return isDraftFormat(value) ? (value as DraftFormat) : undefined;
 }
 
 function draftBodyHash(bodyHtml: string): string {

@@ -394,7 +394,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
       "Model Context Protocol endpoint at /api/mcp. Exposes capabilities as tools for external AI agents.",
     body: [
       "MCP is the standard protocol Claude Desktop, GPT-style agents, and other tools use to call external capabilities. FlavorPress exposes its registry: cluster_read, generate_draft, voice_check, fact_check, originality_check, publish_post.",
-      "Auth is per-user API keys (v1.1 ships proper key management with scopes). Currently any bearer token authenticates as 'demo' in dev mode.",
+      "Auth uses FLAVORPRESS_MCP_TOKEN for tool calls. If the token is unset, tools/call is disabled; discovery can run without credentials when no Authorization header is sent.",
     ],
     related: ["capability"],
     appearsIn: ["/api/mcp"],

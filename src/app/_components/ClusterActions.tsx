@@ -11,7 +11,9 @@
 
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
-import { generateDraftAction } from "@/lib/v1/actions";
+import { generateDraftAction, getDraftWizardPrefsAction } from "@/lib/v1/actions";
+import { DEFAULT_WIZARD_PREFS, type DraftWizardPrefs } from "@/lib/v1/wizard-prefs-shared";
+import { DraftWizardModal } from "./DraftWizardModal";
 
 interface DraftRef {
   id: string;
@@ -30,6 +32,7 @@ interface OutletOption {
 
 interface Props {
   clusterId: string;
+  clusterTitle: string;
   outlets: OutletOption[];
   defaultOutletId: string | null;
   draftsByOutlet: Record<string, DraftsByMode>;
@@ -38,9 +41,15 @@ interface Props {
 const PRESET_LENGTHS = [200, 400, 600] as const;
 type LengthChoice = (typeof PRESET_LENGTHS)[number] | "custom";
 const MIN_WORDS = 100;
-const MAX_WORDS = 1500;
+const MAX_WORDS = 2000;
 
-export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOutlet }: Props) {
+export function ClusterActions({
+  clusterId,
+  clusterTitle,
+  outlets,
+  defaultOutletId,
+  draftsByOutlet,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>("researcher");
   const [lengthChoice, setLengthChoice] = useState<LengthChoice>(600);
@@ -50,9 +59,27 @@ export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOu
       ? defaultOutletId
       : (outlets[0]?.id ?? null);
   const [selectedOutletId, setSelectedOutletId] = useState<string | null>(initialOutletId);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardPrefs, setWizardPrefs] = useState<DraftWizardPrefs>(DEFAULT_WIZARD_PREFS);
   const draftsForOutlet = selectedOutletId ? (draftsByOutlet[selectedOutletId] ?? null) : null;
   const draft = draftsForOutlet ? (draftsForOutlet[mode] ?? null) : null;
   const showPicker = outlets.length >= 2;
+
+  // Pre-load last-used wizard prefs once so the modal mounts already
+  // populated. Prefs come from the DB so they survive across page loads.
+  useEffect(() => {
+    let cancelled = false;
+    getDraftWizardPrefsAction()
+      .then((prefs) => {
+        if (!cancelled) setWizardPrefs(prefs);
+      })
+      .catch(() => {
+        // Fall back to defaults; prefs are nice-to-have, not load-bearing.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function resolveWordCount(): number | null {
     if (lengthChoice !== "custom") return lengthChoice;
@@ -77,6 +104,8 @@ export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOu
       await generateDraftAction(fd);
     });
   }
+
+  const selectedOutlet = outlets.find((o) => o.id === selectedOutletId) ?? null;
 
   if (pending) {
     return <Drafting variant={draft ? "regenerating" : "drafting"} mode={mode} />;
@@ -161,7 +190,16 @@ export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOu
   const primaryCopy =
     mode === "researcher"
       ? "ideas, quotes, leads you can write from"
-      : `voice-matched ${resolveWordCount() ?? "?"}-word draft`;
+      : `pick format, length, and angle in a quick wizard`;
+
+  function onPrimary() {
+    if (mode === "drafter") {
+      if (!selectedOutletId) return;
+      setWizardOpen(true);
+      return;
+    }
+    trigger(false);
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -170,8 +208,8 @@ export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOu
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={() => trigger(false)}
-          disabled={customInvalid || !selectedOutletId}
+          onClick={onPrimary}
+          disabled={!selectedOutletId || (mode === "researcher" && customInvalid)}
           className="fp-btn fp-btn-primary fp-press"
         >
           {primaryLabel}
@@ -180,7 +218,16 @@ export function ClusterActions({ clusterId, outlets, defaultOutletId, draftsByOu
           {primaryCopy}
         </span>
       </div>
-      {lengthPicker}
+      {wizardOpen && selectedOutletId && selectedOutlet ? (
+        <DraftWizardModal
+          clusterId={clusterId}
+          outletId={selectedOutletId}
+          outletDisplayName={selectedOutlet.displayName}
+          clusterTitle={clusterTitle}
+          prefs={wizardPrefs}
+          onClose={() => setWizardOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,7 @@
  */
 
 import { db, ensureSchema } from "../db";
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
 
 export const SETTING_KEYS = {
   anthropicApiKey: "anthropic_api_key",
@@ -19,6 +20,11 @@ export const SETTING_KEYS = {
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
 
 const DEFAULT_DRAFT_MODEL = "claude-haiku-4-5-20251001";
+const SENSITIVE_SETTING_PATTERN = /(^|_)(api_key|password|secret|token|credential)(_|$)/i;
+
+export function isSensitiveSettingKey(key: string): boolean {
+  return key === SETTING_KEYS.anthropicApiKey || SENSITIVE_SETTING_PATTERN.test(key);
+}
 
 /**
  * Read any app_settings row. Built-in keys live in SETTING_KEYS;
@@ -35,7 +41,15 @@ export async function getSetting(key: string): Promise<string | null> {
   const v = r.rows[0]!.value;
   if (v === null || v === undefined) return null;
   const s = String(v);
-  return s.length > 0 ? s : null;
+  if (s.length === 0) return null;
+  if (!isSensitiveSettingKey(key)) return s;
+  if (isEncryptedSecret(s)) return decryptSecret(s);
+
+  await db.execute({
+    sql: `UPDATE app_settings SET value = ?, updated_at = ? WHERE key = ?`,
+    args: [encryptSecret(s), Date.now(), key],
+  });
+  return s;
 }
 
 export async function setSetting(key: string, value: string | null): Promise<void> {
@@ -47,10 +61,12 @@ export async function setSetting(key: string, value: string | null): Promise<voi
     });
     return;
   }
+  const trimmed = value.trim();
+  const storedValue = isSensitiveSettingKey(key) ? encryptSecret(trimmed) : trimmed;
   await db.execute({
     sql: `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    args: [key, value.trim(), Date.now()],
+    args: [key, storedValue, Date.now()],
   });
 }
 
@@ -135,7 +151,10 @@ export async function loadSettingsSnapshot(
 
   const extensionSettings: SettingsSnapshot["extensionSettings"] = {};
   for (const [key, value] of extensionValues) {
-    extensionSettings[key] = { value, source: value ? "db" : "none" };
+    extensionSettings[key] = {
+      value: value && isSensitiveSettingKey(key) ? previewSecret(value) : value,
+      source: value ? "db" : "none",
+    };
   }
 
   return {

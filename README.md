@@ -48,7 +48,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Open http://localhost:3000. The app boots with an empty SQLite database at `.data/flavorpress.db`. No accounts, no sign-ups, no telemetry — single-user local-first by default.
+Open http://localhost:3000. The app boots with an empty SQLite database at `.data/flavorpress.db`. Local dev accepts `writer` / `flavorpress-dev` unless you set auth env vars. Production requires explicit auth env vars and fails closed when they are missing.
 
 To verify the foundation is wired correctly:
 
@@ -62,16 +62,23 @@ You should see 7 capabilities registered, 3 sources created, 1 cluster fired (en
 
 `.env` keys. Anthropic auth is optional for local drafting when Claude Code is installed and logged in; fact-check still requires an API key.
 
-| Key                        | Required | Purpose                                                                                                                                                                                                                                                                        |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY`        | no       | Claude calls for the draft generator when configured, and required for fact-check. Without it, drafting can use a local Claude Code login; if neither auth path is available, the generator returns a deterministic stub so the loop still closes for local dev.               |
-| `ANTHROPIC_DRAFT_MODEL`    | no       | Model name. Defaults to `claude-haiku-4-5-20251001`.                                                                                                                                                                                                                           |
-| `FLAVORPRESS_LOCAL_CLAUDE` | no       | Set to `1` to force the local Claude Code login path. When unset, FlavorPress auto-detects: if no API key is configured and `claude` is on PATH, it rides your Claude Code login via `@anthropic-ai/claude-agent-sdk` (same approach Conductor uses). Not supported on Vercel. |
-| `LIBSQL_URL`               | no       | Set for hosted Turso. Leave unset for local SQLite at `.data/flavorpress.db`.                                                                                                                                                                                                  |
-| `LIBSQL_AUTH_TOKEN`        | no       | Required if `LIBSQL_URL` is set.                                                                                                                                                                                                                                               |
-| `INBOUND_SECRET`           | no       | Webhook secret for `/api/inbound` (newsletter forwarding, v1.1).                                                                                                                                                                                                               |
-| `FLAVORPRESS_TIER`         | no       | `oss` (default) or `saas`. Gates capability registration: SaaS-only manifests refuse to register on the OSS tier.                                                                                                                                                              |
-| `OPENAI_API_KEY`           | no       | Used for `text-embedding-3-small` once cluster engine layer 3 ships. v1.0 layers 1 and 2 only.                                                                                                                                                                                 |
+| Key                           | Required          | Purpose                                                                                                                                                                                                                                                                        |
+| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`           | no                | Claude calls for the draft generator when configured, and required for fact-check. Without it, drafting can use a local Claude Code login; if neither auth path is available, the generator returns a deterministic stub so the loop still closes for local dev.               |
+| `FLAVORPRESS_AUTH_USER`       | yes in production | Single writer login username. Defaults to `writer` only in local dev.                                                                                                                                                                                                          |
+| `FLAVORPRESS_AUTH_PASSWORD`   | yes in production | Single writer login password. Defaults to `flavorpress-dev` only in local dev.                                                                                                                                                                                                 |
+| `FLAVORPRESS_SESSION_SECRET`  | yes in production | Secret used to sign the HttpOnly session cookie. Use at least 32 random bytes. Defaults to a dev-only value only in local dev.                                                                                                                                                 |
+| `FLAVORPRESS_ORIGIN`          | yes in production | Public app origin, for example `https://your-flavorpress.example.com`. Production fails closed without this so callbacks and mutation checks do not trust arbitrary Host headers.                                                                                              |
+| `FLAVORPRESS_ENCRYPTION_KEY`  | yes in production | AES-GCM key for WordPress Application Passwords and sensitive settings stored in the database. Generate one with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.                                                                           |
+| `FLAVORPRESS_ALLOWED_ORIGINS` | no                | Optional comma-separated allowlist for trusted reverse proxy origins on mutation requests. The current request origin is always allowed.                                                                                                                                       |
+| `ANTHROPIC_DRAFT_MODEL`       | no                | Model name. Defaults to `claude-haiku-4-5-20251001`.                                                                                                                                                                                                                           |
+| `FLAVORPRESS_LOCAL_CLAUDE`    | no                | Set to `1` to force the local Claude Code login path. When unset, FlavorPress auto-detects: if no API key is configured and `claude` is on PATH, it rides your Claude Code login via `@anthropic-ai/claude-agent-sdk` (same approach Conductor uses). Not supported on Vercel. |
+| `LIBSQL_URL`                  | no                | Set for hosted Turso. Leave unset for local SQLite at `.data/flavorpress.db`.                                                                                                                                                                                                  |
+| `LIBSQL_AUTH_TOKEN`           | no                | Required if `LIBSQL_URL` is set.                                                                                                                                                                                                                                               |
+| `INBOUND_SECRET`              | no                | Webhook secret for `/api/inbound` (newsletter forwarding, v1.1).                                                                                                                                                                                                               |
+| `FLAVORPRESS_MCP_TOKEN`       | no                | Bearer token for `/api/mcp` `tools/call`. When unset, tool calls are disabled; discovery works only without an Authorization header.                                                                                                                                            |
+| `FLAVORPRESS_TIER`            | no                | `oss` (default) or `saas`. Gates capability registration: SaaS-only manifests refuse to register on the OSS tier.                                                                                                                                                              |
+| `OPENAI_API_KEY`              | no                | Used for `text-embedding-3-small` once cluster engine layer 3 ships. v1.0 layers 1 and 2 only.                                                                                                                                                                                 |
 
 ## How to use it
 
@@ -143,9 +150,9 @@ Hit Publish to push to WordPress. Default is `status=draft`; pick `publish` for 
 
 ### 6. Extend with capabilities (advanced)
 
-FlavorPress is built around a typed capability registry and an event bus. Every feature — cluster engine, voice draft generator, fact-check, originality, WordPress publish, source connectors — is a manifest. New capabilities ship as new files in `src/lib/v1/capabilities/` plus a `register()` call in `src/lib/v1/bootstrap.ts`.
+FlavorPress is built around a typed capability registry and an event bus. Every feature, including cluster engine, voice draft generator, fact-check, originality, WordPress publish, and source connectors, is a manifest. New capabilities ship as new files in `src/lib/v1/capabilities/` plus a `register()` call in `src/lib/v1/bootstrap.ts`.
 
-Minimal example — a research agent that subscribes to `cluster.threshold_crossed` and pulls primary sources from arXiv:
+Minimal example: a research agent that subscribes to `cluster.threshold_crossed` and pulls primary sources from arXiv:
 
 ```ts
 import { z } from "zod";
@@ -207,9 +214,9 @@ The full architecture spec lives in [`docs/architecture.md`](docs/architecture.m
 - **Multi-tenancy:** single shared libSQL with logical tenancy via `user_id` row filtering. Per-user encryption is application-layer envelope encryption on sensitive columns (Application Password, archive blobs).
 - **Event bus:** Upstash Redis pub/sub primary in production; in-memory `EventEmitter` for local dev and within-request fanout. Every event persists to `event_log` before fanout for audit and replay.
 - **Cluster cache:** canonical-URL + content-hash keyed embedding cache shared across users (no user attribution). Embedding model + version columns on every cache row so model upgrades don't silently break clusters.
-- **Voice profile:** RAG over the user's WordPress archive plus a Burrows' Delta style sheet. Not per-user LoRA — fine-tuning loses to in-context retrieval at MVP scale and the LoRA economics break under 500 published posts per user.
+- **Voice profile:** RAG over the user's WordPress archive plus a Burrows' Delta style sheet. Not per-user LoRA; fine-tuning loses to in-context retrieval at MVP scale and the LoRA economics break under 500 published posts per user.
 - **Capability registry:** typed manifests with version pinning. Drafts in `state='pre-rendered'` keep their original capability version through to publish so a v2 capability ship doesn't break in-flight work.
-- **MCP server:** `/api/mcp` advertises protocol version `2024-11-05`. When MCP 2.0 ships, we serve `/api/mcp/v2` alongside `/api/mcp` (1.x) and the registry routes capability invocations to the right protocol.
+- **MCP server:** `/api/mcp` advertises protocol version `2024-11-05`. `tools/list` discovery works without credentials when no `Authorization` header is sent. `tools/call` requires `Authorization: Bearer <FLAVORPRESS_MCP_TOKEN>` and is disabled when `FLAVORPRESS_MCP_TOKEN` is unset. When MCP 2.0 ships, we serve `/api/mcp/v2` alongside `/api/mcp` (1.x) and the registry routes capability invocations to the right protocol.
 
 ## Development
 

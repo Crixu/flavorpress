@@ -14,3 +14,5 @@ macos/build
 macos/.cache
 coverage
 .changelogs
+docs/superpowers/plans/
+docs/superpowers/specs/

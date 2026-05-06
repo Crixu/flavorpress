@@ -86,4 +86,49 @@ describe("buildExportEnvelope", () => {
       { outletId: "outlet-a", sourceId: "source-a", createdAt: 1300 },
     ]);
   });
+
+  it("exports voice profile seed audit fields", async () => {
+    executeMock.mockImplementation(({ sql }: { sql: string }) => {
+      if (sql.includes("FROM users")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM outlets WHERE")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM voice_profiles")) {
+        return Promise.resolve({
+          rows: [
+            {
+              outlet_id: "outlet-a",
+              style_sheet_yaml: "archive_size: 1",
+              archive_index_size: 1,
+              sentence_length_mean: 12,
+              sentence_length_variance: 3,
+              hedge_frequency: 0,
+              em_dash_density: 0,
+              quote_density: 0,
+              banned_terms: JSON.stringify(["delve"]),
+              signature_terms: JSON.stringify(["shipping"]),
+              anchored_post_ids: JSON.stringify([]),
+              description: "A personal blog.",
+              seed_method: "interview",
+              seed_transcript: JSON.stringify(["one", "two", "three", "", "", "", ""]),
+              last_rebuilt_at: 1500,
+            },
+          ],
+        });
+      }
+      if (sql.includes("FROM source_folders")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM sources WHERE")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM outlet_sources")) return Promise.resolve({ rows: [] });
+      if (sql.includes("FROM drafts")) return Promise.resolve({ rows: [] });
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    const envelope = await buildExportEnvelope();
+
+    expect(envelope.voiceProfiles).toMatchObject([
+      {
+        outletId: "outlet-a",
+        seedMethod: "interview",
+        seedTranscript: JSON.stringify(["one", "two", "three", "", "", "", ""]),
+      },
+    ]);
+  });
 });

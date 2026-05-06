@@ -12,6 +12,7 @@
 import { createClient, type Client } from "@libsql/client";
 import path from "node:path";
 import fs from "node:fs";
+import { assertProductionEncryptionKey } from "./secret-crypto";
 
 const dataDir = path.join(process.cwd(), ".data");
 if (!process.env.LIBSQL_URL && !fs.existsSync(dataDir)) {
@@ -26,7 +27,6 @@ export const db: Client = createClient({ url, authToken });
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
   if (initialized) return;
-  initialized = true;
 
   // === migration: bring older schemas up to v1.1 (1:N outlets) ===
   // Use IF NOT EXISTS for greenfield, then a targeted migration pass.
@@ -42,7 +42,7 @@ export async function ensureSchema(): Promise<void> {
         last_active_at INTEGER
       )`,
 
-      // Outlets — a writer can publish to many WordPress sites; each has its
+      // Outlets - a writer can publish to many WordPress sites; each has its
       // own voice profile, derived from that outlet's archive. The 1:N
       // relationship is fundamental: contextwindow.blog and a side blog
       // are different voices. Drafts pick an outlet at the moment of draft.
@@ -62,6 +62,18 @@ export async function ensureSchema(): Promise<void> {
         UNIQUE(user_id, base_url)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_outlets_user ON outlets(user_id)`,
+
+      `CREATE TABLE IF NOT EXISTS wp_authorize_states (
+        state TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        outlet_id TEXT NOT NULL,
+        expected_site_url TEXT NOT NULL,
+        expected_site_origin TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_wp_authorize_states_expires ON wp_authorize_states(expires_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_wp_authorize_states_outlet ON wp_authorize_states(outlet_id)`,
 
       `CREATE TABLE IF NOT EXISTS source_folders (
         id TEXT PRIMARY KEY,
@@ -227,6 +239,7 @@ export async function ensureSchema(): Promise<void> {
         angle_gap TEXT,
         angle_hint TEXT,
         custom_angle TEXT,
+        format TEXT,
         fact_check_result_id TEXT,
         originality_result_id TEXT,
         trace_id TEXT NOT NULL,
@@ -260,6 +273,8 @@ export async function ensureSchema(): Promise<void> {
         signature_terms TEXT,
         anchored_post_ids TEXT,
         description TEXT,
+        seed_method TEXT,
+        seed_transcript TEXT,
         last_rebuilt_at INTEGER NOT NULL
       )`,
       `CREATE INDEX IF NOT EXISTS idx_voice_user ON voice_profiles(user_id)`,
@@ -402,7 +417,7 @@ export async function ensureSchema(): Promise<void> {
         license_filter TEXT
       )`,
 
-      // Comment-courtroom extension — simulated reader thread.
+      // Comment-courtroom extension - simulated reader thread.
       // The user runs a fixed jury of personas against a draft and gets
       // a nested comment thread back, so they can anticipate how the post
       // might land before publishing. Comments are stored flat with a
@@ -433,8 +448,7 @@ export async function ensureSchema(): Promise<void> {
 
       // App-level settings the user can edit from /settings instead of .env.
       // Single-user prototype so we keep this keyed only by `key`; values are
-      // stored as TEXT (matches the v1-alpha plaintext approach used for
-      // outlet credentials; envelope encryption ships in week 2).
+      // stored as TEXT. Sensitive values use the shared secret envelope.
       `CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
         value TEXT,
@@ -443,6 +457,27 @@ export async function ensureSchema(): Promise<void> {
     ],
     "write",
   );
+
+  await assertEncryptionKeyForExistingSecrets();
+  initialized = true;
+}
+
+async function assertEncryptionKeyForExistingSecrets(): Promise<void> {
+  const [outletSecrets, appSettingSecrets] = await Promise.all([
+    db.execute("SELECT 1 FROM outlets WHERE app_password_encrypted IS NOT NULL LIMIT 1"),
+    db.execute({
+      sql: `SELECT 1 FROM app_settings
+            WHERE key = ?
+               OR lower(key) LIKE '%api_key%'
+               OR lower(key) LIKE '%password%'
+               OR lower(key) LIKE '%secret%'
+               OR lower(key) LIKE '%token%'
+               OR lower(key) LIKE '%credential%'
+            LIMIT 1`,
+      args: ["anthropic_api_key"],
+    }),
+  ]);
+  assertProductionEncryptionKey(outletSecrets.rows.length > 0 || appSettingSecrets.rows.length > 0);
 }
 
 /**
@@ -474,6 +509,14 @@ async function migrateLegacyTables(): Promise<void> {
         if (!cols.includes("description")) {
           console.info("[migrate] voice_profiles: adding description column");
           await db.execute("ALTER TABLE voice_profiles ADD COLUMN description TEXT");
+        }
+        if (!cols.includes("seed_method")) {
+          console.info("[migrate] voice_profiles: adding seed_method column");
+          await db.execute("ALTER TABLE voice_profiles ADD COLUMN seed_method TEXT");
+        }
+        if (!cols.includes("seed_transcript")) {
+          console.info("[migrate] voice_profiles: adding seed_transcript column");
+          await db.execute("ALTER TABLE voice_profiles ADD COLUMN seed_transcript TEXT");
         }
       }
     }
@@ -524,6 +567,10 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("custom_angle")) {
         console.info("[migrate] drafts: adding custom_angle column");
         await db.execute("ALTER TABLE drafts ADD COLUMN custom_angle TEXT");
+      }
+      if (!cols.includes("format")) {
+        console.info("[migrate] drafts: adding format column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN format TEXT");
       }
     }
   } catch {

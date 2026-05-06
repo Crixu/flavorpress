@@ -1,5 +1,5 @@
 /**
- * Outlets — a writer's WordPress publishing destinations.
+ * Outlets - a writer's WordPress publishing destinations.
  *
  * One author can have many outlets. Each outlet has its own voice profile
  * (built from that outlet's WP archive) and its own credentials. Drafts
@@ -10,6 +10,7 @@
  */
 
 import { db, ensureSchema, SINGLE_USER_ID } from "../db";
+import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
 import type { WPCredentials } from "../wordpress";
 
 export type OutletKind = "wp-org" | "wp-com" | "jetpack-managed" | "multisite" | "unknown" | null;
@@ -142,7 +143,7 @@ export async function commitOutletCredentials(
 ): Promise<void> {
   await ensureSchema();
   const cleaned = appPassword.replace(/\s+/g, "");
-  const blob = new Uint8Array(Buffer.from(`${username}:${cleaned}`, "utf8"));
+  const blob = secretStringToBlob(encryptSecret(`${username}:${cleaned}`));
   await db.execute({
     sql: `UPDATE outlets
           SET username = ?, app_password_encrypted = ?, kind = ?,
@@ -241,9 +242,6 @@ export async function disconnectOutlet(
 
 /**
  * Decrypt outlet credentials for the publish capability.
- *
- * v1 alpha stores the credential bytes as `username:password` UTF-8.
- * Envelope encryption (KMS-backed DEK) ships in week 2.
  */
 export async function getOutletCredentials(outletId: string): Promise<WPCredentials | null> {
   await ensureSchema();
@@ -252,18 +250,44 @@ export async function getOutletCredentials(outletId: string): Promise<WPCredenti
     args: [outletId],
   });
   if (r.rows.length === 0) return null;
-  const blob = r.rows[0]!.app_password_encrypted as ArrayBuffer | null;
+  const blob = r.rows[0]!.app_password_encrypted as ArrayBuffer | Uint8Array | null;
   if (!blob) return null;
-  const decoded = Buffer.from(new Uint8Array(blob)).toString("utf8");
-  const sep = decoded.indexOf(":");
-  if (sep < 0) return null;
-  const username = decoded.slice(0, sep);
-  const appPassword = decoded.slice(sep + 1);
+  const decoded = blobToSecretString(blob);
+  const wasLegacyPlaintext = !isEncryptedSecret(decoded);
+  const payload = wasLegacyPlaintext ? decoded : decryptSecret(decoded);
+  const parsed = parseCredentialPayload(payload);
+  if (!parsed) return null;
+
+  if (wasLegacyPlaintext) {
+    await db.execute({
+      sql: `UPDATE outlets SET app_password_encrypted = ? WHERE id = ?`,
+      args: [secretStringToBlob(encryptSecret(payload)), outletId],
+    });
+  }
+
   return {
     baseUrl: String(r.rows[0]!.base_url),
-    username,
-    appPassword,
+    username: parsed.username,
+    appPassword: parsed.appPassword,
   };
+}
+
+function parseCredentialPayload(payload: string): { username: string; appPassword: string } | null {
+  const sep = payload.indexOf(":");
+  if (sep < 0) return null;
+  return {
+    username: payload.slice(0, sep),
+    appPassword: payload.slice(sep + 1),
+  };
+}
+
+function secretStringToBlob(value: string): Uint8Array {
+  return new Uint8Array(Buffer.from(value, "utf8"));
+}
+
+function blobToSecretString(blob: ArrayBuffer | Uint8Array): string {
+  if (blob instanceof Uint8Array) return Buffer.from(blob).toString("utf8");
+  return Buffer.from(new Uint8Array(blob)).toString("utf8");
 }
 
 function hostFromUrl(s: string): string {
