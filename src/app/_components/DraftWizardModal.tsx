@@ -3,20 +3,14 @@
 /**
  * Guided draft wizard.
  *
- * Modal with three rows of progressive disclosure: format → length → angles.
- * Picking a length triggers an angle-suggestion call against the cluster.
+ * Modal with three rows of progressive disclosure: format -> length -> angles.
+ * Picking both format and length triggers an angle-suggestion call against the cluster.
  * The user can pick one of the three suggestions or type a custom angle.
- * "Just go" submits with last-used format + length and lets the draft prompt
- * pick its own archive-habit angle (no pre-flight).
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { generateDraftAction, generateDraftAnglesAction } from "@/lib/v1/actions";
-import {
-  WIZARD_LENGTHS,
-  type DraftWizardPrefs,
-  type WizardLength,
-} from "@/lib/v1/wizard-prefs-shared";
+import { type DraftWizardPrefs, type WizardLength } from "@/lib/v1/wizard-prefs-shared";
 import { DRAFT_FORMATS, type DraftFormat } from "@/lib/v1/draft-format";
 
 // Angle suggestion type — kept local to avoid pulling angle-generator (and
@@ -34,6 +28,14 @@ const FORMAT_LABELS: Record<DraftFormat, string> = {
   "news-brief": "News brief",
   opinion: "Opinion",
   qa: "Q&A",
+};
+
+const FORMAT_LENGTHS: Record<DraftFormat, readonly WizardLength[]> = {
+  narrative: [500, 1000, 1500],
+  listicle: [1000, 1500, 2000],
+  "news-brief": [500, 1000],
+  opinion: [500, 1000, 1500],
+  qa: [1000, 1500, 2000],
 };
 
 interface Props {
@@ -59,8 +61,8 @@ export function DraftWizardModal({
   prefs,
   onClose,
 }: Props) {
-  const [format, setFormat] = useState<DraftFormat>(prefs.format);
-  const [length, setLength] = useState<WizardLength>(prefs.length);
+  const [format, setFormat] = useState<DraftFormat | null>(null);
+  const [length, setLength] = useState<WizardLength | null>(null);
   const [angles, setAngles] = useState<AnglesState>({ kind: "idle" });
   const [pickedKind, setPickedKind] = useState<AngleSuggestion["kind"] | "custom" | null>(null);
   const [customAngle, setCustomAngle] = useState("");
@@ -70,11 +72,16 @@ export function DraftWizardModal({
   // Bumped each time the user changes format or length; cancels in-flight
   // angle calls so a fast click-through doesn't render stale suggestions.
   const angleRunRef = useRef(0);
+  const lengthOptions = format ? FORMAT_LENGTHS[format] : [];
 
-  // Trigger angle generation as soon as the modal mounts with a format +
-  // length already chosen (which is true on every open thanks to last-used
-  // prefs). The user can still re-pick chips and we'll re-fetch.
+  // Trigger angle generation only after the writer has actively picked both
+  // format and length. Last-used prefs remain a memory, not an auto-run.
   useEffect(() => {
+    if (!format || !length) {
+      angleRunRef.current += 1;
+      return;
+    }
+
     let cancelled = false;
     const runId = ++angleRunRef.current;
     setAngles({ kind: "loading" });
@@ -113,10 +120,18 @@ export function DraftWizardModal({
 
   const customTrimmed = customAngle.trim();
   const canDraft =
-    !drafting && (pickedKind === "custom" ? customTrimmed.length > 0 : pickedKind !== null);
+    !drafting &&
+    format !== null &&
+    length !== null &&
+    (pickedKind === "custom" ? customTrimmed.length > 0 : pickedKind !== null);
 
-  function submit({ justGo }: { justGo: boolean }) {
+  function submit() {
     setError(null);
+    if (!format || !length) {
+      setError("Pick a format and length first.");
+      return;
+    }
+
     const fd = new FormData();
     fd.set("clusterId", clusterId);
     fd.set("outletId", outletId);
@@ -124,10 +139,7 @@ export function DraftWizardModal({
     fd.set("format", format);
     fd.set("wordCount", String(length));
 
-    if (justGo) {
-      // Skip the angle pre-flight. Let the draft prompt fall back to its
-      // archive-habit default. This is the fast path.
-    } else if (pickedKind === "custom") {
+    if (pickedKind === "custom") {
       if (customTrimmed.length === 0) {
         setError("Type a custom angle or pick one of the cards.");
         return;
@@ -145,7 +157,7 @@ export function DraftWizardModal({
       // and rationale the user just chose.
       fd.set("customAngle", `${picked.title}. ${picked.rationale}`.slice(0, 200));
     } else {
-      setError("Pick an angle or click Just go.");
+      setError("Pick an angle first.");
       return;
     }
 
@@ -165,6 +177,21 @@ export function DraftWizardModal({
     setShowCustom(false);
   }
 
+  function pickFormat(next: DraftFormat) {
+    setFormat(next);
+    setLength(null);
+    setAngles({ kind: "idle" });
+    setPickedKind(null);
+    setShowCustom(false);
+  }
+
+  function pickLength(next: WizardLength) {
+    setLength(next);
+    setAngles({ kind: "idle" });
+    setPickedKind(null);
+    setShowCustom(false);
+  }
+
   function pickCustom() {
     setPickedKind("custom");
     setShowCustom(true);
@@ -175,81 +202,104 @@ export function DraftWizardModal({
       role="dialog"
       aria-modal="true"
       aria-label={`Draft from ${clusterTitle}`}
-      className="fixed inset-0 z-50 flex items-start justify-center p-6 sm:p-10"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
       style={{ background: "rgba(26, 24, 20, 0.32)", backdropFilter: "blur(2px)" }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !drafting) onClose();
       }}
     >
       <div
-        className="w-full max-w-[560px] overflow-hidden rounded-[28px]"
+        className="flex max-h-[calc(100vh-2rem)] w-full max-w-[640px] flex-col overflow-hidden rounded-lg"
         style={{ background: "var(--surface)", boxShadow: "var(--shadow-lg)" }}
       >
-        <header
-          className="flex items-start justify-between gap-4 px-6 py-5"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
-          <div className="min-w-0">
-            <div
-              className="font-mono text-[10.5px] uppercase tracking-[0.1em]"
-              style={{ color: "var(--fg-subtle)" }}
-            >
-              Drafting for · {outletDisplayName}
+        <header className="shrink-0 px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div
+                className="font-mono text-[10.5px] uppercase tracking-[0.1em]"
+                style={{ color: "var(--fg-subtle)" }}
+              >
+                Drafting for · {outletDisplayName}
+              </div>
+              <h2
+                className="serif mt-1 truncate text-[22px] leading-tight"
+                style={{ fontWeight: 500, letterSpacing: 0 }}
+                title={clusterTitle}
+              >
+                {clusterTitle}
+              </h2>
             </div>
-            <h2
-              className="serif mt-1 truncate text-[22px] leading-tight"
-              style={{ fontWeight: 500, letterSpacing: "-0.005em" }}
-              title={clusterTitle}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={drafting}
+              aria-label="Close"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-base"
+              style={{
+                border: "1px solid var(--border)",
+                color: "var(--fg-muted)",
+                background: "transparent",
+              }}
             >
-              {clusterTitle}
-            </h2>
+              ×
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={drafting}
-            aria-label="Close"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-base"
-            style={{
-              border: "1px solid var(--border)",
-              color: "var(--fg-muted)",
-              background: "transparent",
-            }}
-          >
-            ×
-          </button>
         </header>
 
-        <div className="px-6">
-          <Row label="Format" picked={FORMAT_LABELS[format]}>
+        <div className="flex-1 overflow-y-auto px-5">
+          <Row label="Format" picked={format ? FORMAT_LABELS[format] : "Pick one"}>
             <ChipGroup>
               {DRAFT_FORMATS.map((f) => (
                 <Chip
                   key={f}
                   selected={format === f}
-                  onClick={() => setFormat(f)}
+                  onClick={() => pickFormat(f)}
                   label={FORMAT_LABELS[f]}
                 />
               ))}
             </ChipGroup>
+            <p className="mt-2 text-[12px]" style={{ color: "var(--fg-subtle)" }}>
+              Last used: {FORMAT_LABELS[prefs.format]}
+            </p>
           </Row>
 
-          <Row label="Length" picked={`${length} words`}>
-            <ChipGroup>
-              {WIZARD_LENGTHS.map((n) => (
-                <Chip
-                  key={n}
-                  selected={length === n}
-                  onClick={() => setLength(n)}
-                  label={`${n}`}
-                  meta="w"
-                />
-              ))}
-            </ChipGroup>
+          <Row
+            label="Length"
+            picked={!format ? "Pick format first" : length ? `${length} words` : "Pick length"}
+          >
+            {format ? (
+              <>
+                <ChipGroup>
+                  {lengthOptions.map((n) => (
+                    <Chip
+                      key={n}
+                      selected={length === n}
+                      onClick={() => pickLength(n)}
+                      label={lengthLabel(format, n)}
+                      meta={`${n}w`}
+                    />
+                  ))}
+                </ChipGroup>
+                <p className="mt-2 text-[12px]" style={{ color: "var(--fg-subtle)" }}>
+                  Last used: {prefs.length} words
+                </p>
+              </>
+            ) : (
+              <p className="text-[13px]" style={{ color: "var(--fg-subtle)" }}>
+                Length options change with the format you choose.
+              </p>
+            )}
           </Row>
 
           <Row label="Angle" picked={anglePickedLabel(angles, pickedKind, customTrimmed)} last>
-            {angles.kind === "loading" ? (
+            {!format || !length ? (
+              <div
+                className="rounded-lg px-3 py-3 text-[13px]"
+                style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+              >
+                Pick a format and length to generate grounded angle options.
+              </div>
+            ) : angles.kind === "loading" ? (
               <div className="space-y-2">
                 <Skeleton />
                 <Skeleton />
@@ -257,10 +307,10 @@ export function DraftWizardModal({
               </div>
             ) : angles.kind === "error" ? (
               <div
-                className="rounded-xl px-3 py-2 text-[12px]"
+                className="rounded-lg px-3 py-2 text-[12px]"
                 style={{ background: "var(--amber-tint)", color: "var(--amber)" }}
               >
-                {angles.message} Use Just go below to draft anyway.
+                {angles.message} Write a custom angle to draft anyway.
               </div>
             ) : angles.kind === "ready" ? (
               <div className="space-y-2">
@@ -275,15 +325,17 @@ export function DraftWizardModal({
               </div>
             ) : null}
 
-            <button
-              type="button"
-              onClick={() => (showCustom ? setShowCustom(false) : pickCustom())}
-              className="mt-2 inline-flex items-center gap-1.5 px-0 py-1 text-[12.5px]"
-              style={{ color: "var(--fg-muted)", background: "transparent", border: "none" }}
-            >
-              <span className="font-mono text-[11px]">{showCustom ? "−" : "+"}</span>{" "}
-              {showCustom ? "Hide custom angle" : "Write your own angle"}
-            </button>
+            {format && length ? (
+              <button
+                type="button"
+                onClick={() => (showCustom ? setShowCustom(false) : pickCustom())}
+                className="mt-2 inline-flex items-center gap-1.5 px-0 py-1 text-[12.5px]"
+                style={{ color: "var(--fg-muted)", background: "transparent", border: "none" }}
+              >
+                <span className="font-mono text-[11px]">{showCustom ? "−" : "+"}</span>{" "}
+                {showCustom ? "Hide custom angle" : "Write your own angle"}
+              </button>
+            ) : null}
 
             {showCustom ? (
               <textarea
@@ -294,7 +346,7 @@ export function DraftWizardModal({
                   setPickedKind("custom");
                 }}
                 placeholder="One line on the angle you actually want…"
-                className="serif mt-2 w-full rounded-xl px-3 py-3 text-[14px] leading-snug"
+                className="serif mt-2 w-full rounded-lg px-3 py-3 text-[14px] leading-snug"
                 style={{
                   fontStyle: "italic",
                   background: "var(--bg-subtle)",
@@ -311,18 +363,9 @@ export function DraftWizardModal({
         </div>
 
         <footer
-          className="flex flex-wrap items-center justify-between gap-3 px-6 py-4"
+          className="flex shrink-0 flex-wrap items-center justify-end gap-3 px-5 py-4"
           style={{ borderTop: "1px solid var(--border)" }}
         >
-          <button
-            type="button"
-            onClick={() => submit({ justGo: true })}
-            disabled={drafting}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium"
-            style={{ background: "transparent", border: "none", color: "var(--fg-muted)" }}
-          >
-            <span className="font-mono text-[12px]">↳</span> Just go with last-used
-          </button>
           <div className="flex items-center gap-3">
             {error ? (
               <span className="text-[12px]" style={{ color: "var(--amber)" }}>
@@ -331,7 +374,7 @@ export function DraftWizardModal({
             ) : null}
             <button
               type="button"
-              onClick={() => submit({ justGo: false })}
+              onClick={submit}
               disabled={!canDraft}
               className="fp-btn fp-btn-primary fp-press"
             >
@@ -351,6 +394,7 @@ function anglePickedLabel(
 ): string {
   if (state.kind === "loading") return "Generating…";
   if (state.kind === "error") return "—";
+  if (state.kind === "idle") return "Waiting";
   if (pickedKind === null) return "Pick one";
   if (pickedKind === "custom") {
     if (!customTrimmed) return "Custom angle";
@@ -450,7 +494,7 @@ function AngleCard({
           onClick();
         }
       }}
-      className="relative cursor-pointer rounded-xl px-4 py-3 transition"
+      className="relative cursor-pointer rounded-lg px-4 py-3 transition"
       style={{
         background: selected ? "var(--indigo-tint)" : "var(--surface)",
         border: `1px solid ${selected ? "var(--fg)" : "var(--border)"}`,
@@ -489,10 +533,21 @@ function Skeleton() {
   return (
     <div
       className="fp-skeleton h-[78px] rounded-xl"
-      style={{ borderRadius: "var(--radius-md)" }}
+      style={{ height: 62, borderRadius: "8px" }}
       aria-hidden
     />
   );
+}
+
+function lengthLabel(format: DraftFormat, words: WizardLength): string {
+  if (format === "news-brief") return words === 500 ? "Brief" : "Full brief";
+  if (format === "listicle")
+    return words === 1000 ? "3-5 items" : words === 1500 ? "5-7 items" : "Deep list";
+  if (format === "qa")
+    return words === 1000 ? "3 questions" : words === 1500 ? "5 questions" : "Deep Q&A";
+  if (format === "opinion")
+    return words === 500 ? "Sharp take" : words === 1000 ? "Column" : "Essay";
+  return words === 500 ? "Short" : words === 1000 ? "Standard" : "Long";
 }
 
 function isNextRedirect(err: unknown): boolean {
