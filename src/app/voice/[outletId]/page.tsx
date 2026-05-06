@@ -10,6 +10,7 @@ import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
 import { getOutlet, getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
 import { getOutletPostCount, MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import { canUseAuthorizeFlow } from "@/lib/v1/origin";
+import { Notice } from "@/components/wpds";
 import { VoiceShell } from "../_components/VoiceShell";
 import { OutletDetail } from "../_components/OutletDetail";
 
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ outletId: string }>;
-  searchParams: Promise<{ thin?: string }>;
+  searchParams: Promise<{ thin?: string; wp_connected?: string }>;
 }
 
 export default async function VoiceDetailPage({ params, searchParams }: PageProps) {
@@ -81,12 +82,17 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
 
   return (
     <VoiceShell outlets={outlets} selectedId={outletId} authorizeAvailable={authorizeAvailable}>
-      <OutletDetail
-        outlet={outlet}
-        profile={profileData}
-        isThinArchive={isThinArchive}
-        archivePostCount={archivePostCount}
-      />
+      <div className="space-y-4">
+        {sp.wp_connected ? (
+          <Notice tone="success">WordPress connected. Build the voice profile next.</Notice>
+        ) : null}
+        <OutletDetail
+          outlet={outlet}
+          profile={profileData}
+          isThinArchive={isThinArchive}
+          archivePostCount={archivePostCount}
+        />
+      </div>
     </VoiceShell>
   );
 }

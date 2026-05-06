@@ -13,6 +13,16 @@ interface Props {
   authorizeAvailable: boolean;
 }
 
+function isNextRedirect(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    typeof err.digest === "string" &&
+    err.digest.startsWith("NEXT_REDIRECT;")
+  );
+}
+
 export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props) {
   const [baseUrl, setBaseUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -28,6 +38,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props)
       try {
         await startWPAuthorizeAction(fd);
       } catch (err) {
+        if (isNextRedirect(err)) throw err;
         setError(err instanceof Error ? err.message : "Authorization failed");
       }
     });
