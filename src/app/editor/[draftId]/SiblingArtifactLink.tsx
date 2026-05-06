@@ -26,9 +26,19 @@ interface Props {
   currentMode: Mode;
   /** If a sibling artifact already exists, its id; otherwise null. */
   siblingDraftId: string | null;
+  /** Current draft id. Used as a seed when commissioning the OTHER mode
+   *  from this view, so the drafter inherits the writer's curated quotes
+   *  and angles instead of re-scanning the cluster fresh. */
+  currentDraftId: string;
 }
 
-export function SiblingArtifactLink({ clusterId, outletId, currentMode, siblingDraftId }: Props) {
+export function SiblingArtifactLink({
+  clusterId,
+  outletId,
+  currentMode,
+  siblingDraftId,
+  currentDraftId,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const otherMode: Mode = currentMode === "drafter" ? "researcher" : "drafter";
   const otherLabel = otherMode === "drafter" ? "drafted version" : "research notes";
@@ -50,7 +60,12 @@ export function SiblingArtifactLink({ clusterId, outletId, currentMode, siblingD
     fd.set("clusterId", clusterId);
     fd.set("outletId", outletId);
     fd.set("mode", otherMode);
-    if (otherMode === "drafter") fd.set("wordCount", "600");
+    if (otherMode === "drafter") {
+      fd.set("wordCount", "600");
+      // Coming from a research view: seed the drafter with the writer's
+      // curated angles + verbatim quotes so they survive the handoff.
+      if (currentMode === "researcher") fd.set("seedFromDraftId", currentDraftId);
+    }
     startTransition(async () => {
       // generateDraftAction redirects to /editor/[id] on success.
       await generateDraftAction(fd);
