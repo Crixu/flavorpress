@@ -10,21 +10,10 @@ import { after } from "next/server";
 import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
-import {
-  isDraftFormat,
-  DEFAULT_DRAFT_FORMAT,
-  type DraftFormat,
-} from "./draft-format";
+import { isDraftFormat, DEFAULT_DRAFT_FORMAT, type DraftFormat } from "./draft-format";
 import { generateAngleSuggestions, type AngleSuggestion } from "./angle-generator";
-import {
-  getDraftWizardPrefs,
-  setDraftWizardPrefs,
-} from "./wizard-prefs";
-import {
-  WIZARD_LENGTHS,
-  type WizardLength,
-  type DraftWizardPrefs,
-} from "./wizard-prefs-shared";
+import { getDraftWizardPrefs, setDraftWizardPrefs } from "./wizard-prefs";
+import { WIZARD_LENGTHS, type WizardLength, type DraftWizardPrefs } from "./wizard-prefs-shared";
 import { rerollHeadlines } from "./headline-reroll";
 import { rewriteParagraph } from "./paragraph-rewrite";
 import {
@@ -1823,7 +1812,9 @@ export async function generateDraftAction(formData: FormData) {
   const customAngle =
     mode === "researcher"
       ? undefined
-      : (String(formData.get("customAngle") ?? "").trim().slice(0, 200) || undefined);
+      : String(formData.get("customAngle") ?? "")
+          .trim()
+          .slice(0, 200) || undefined;
   const submittedAngleHint = String(formData.get("angleHint") ?? "");
   const angleHint =
     submittedAngleHint === "archive" || submittedAngleHint === "gap"
@@ -1861,9 +1852,7 @@ export async function generateDraftAction(formData: FormData) {
     }
   }
   const format =
-    mode === "researcher"
-      ? undefined
-      : (submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT);
+    mode === "researcher" ? undefined : (submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT);
 
   if (mode === "researcher") {
     const research = await generateResearch({

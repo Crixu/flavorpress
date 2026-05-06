@@ -5,13 +5,7 @@
  * import without pulling in libSQL or node:fs.
  */
 
-export const DRAFT_FORMATS = [
-  "narrative",
-  "listicle",
-  "news-brief",
-  "opinion",
-  "qa",
-] as const;
+export const DRAFT_FORMATS = ["narrative", "listicle", "news-brief", "opinion", "qa"] as const;
 export type DraftFormat = (typeof DRAFT_FORMATS)[number];
 
 export const DEFAULT_DRAFT_FORMAT: DraftFormat = "narrative";

@@ -113,8 +113,7 @@ export function DraftWizardModal({
 
   const customTrimmed = customAngle.trim();
   const canDraft =
-    !drafting &&
-    (pickedKind === "custom" ? customTrimmed.length > 0 : pickedKind !== null);
+    !drafting && (pickedKind === "custom" ? customTrimmed.length > 0 : pickedKind !== null);
 
   function submit({ justGo }: { justGo: boolean }) {
     setError(null);
@@ -376,10 +375,7 @@ function Row({
   last?: boolean;
 }) {
   return (
-    <div
-      className="py-4"
-      style={{ borderBottom: last ? "none" : "1px dashed var(--border)" }}
-    >
+    <div className="py-4" style={{ borderBottom: last ? "none" : "1px dashed var(--border)" }}>
       <div className="mb-3 flex items-baseline justify-between">
         <span
           className="text-[11px] font-semibold uppercase tracking-[0.08em]"
@@ -426,10 +422,7 @@ function Chip({
     >
       <span className={meta ? "tabular" : undefined}>{label}</span>
       {meta ? (
-        <span
-          className="ml-1.5 font-mono text-[10px]"
-          style={{ opacity: 0.6 }}
-        >
+        <span className="ml-1.5 font-mono text-[10px]" style={{ opacity: 0.6 }}>
           {meta}
         </span>
       ) : null}

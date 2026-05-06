@@ -37,7 +37,7 @@ export interface AngleSuggestionsInput {
 
 const FORMAT_TITLE_HINT: Record<DraftFormat, string> = {
   narrative: "Narrative essay headline; lead with image or claim.",
-  listicle: "List-shaped title that names the count and the thing (e.g., \"5 ways the EU AI Act…\").",
+  listicle: 'List-shaped title that names the count and the thing (e.g., "5 ways the EU AI Act…").',
   "news-brief": "Tight news headline; subject + verb + object.",
   opinion: "Stance-forward title; first-person allowed if voice profile permits.",
   qa: "Question-shaped title.",
@@ -158,7 +158,9 @@ function normalizeAngles(raw: unknown, format: DraftFormat): AngleSuggestion[] {
       .replace(/^["“”']+|["“”']+$/g, "")
       .trim()
       .slice(0, 120);
-    const rationale = String(obj.rationale ?? "").trim().slice(0, 240);
+    const rationale = String(obj.rationale ?? "")
+      .trim()
+      .slice(0, 240);
     if (!title || !rationale) continue;
     const archetype = ARCHETYPES.find((a) => a.kind === kind)!;
     if (!byKind.has(kind)) {
