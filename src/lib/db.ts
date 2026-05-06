@@ -447,8 +447,8 @@ export async function ensureSchema(): Promise<void> {
       )`,
 
       // LLM-extracted topic tags per inbound item. Each row is one tag
-      // attached to an item, with an optional confidence score from the
-      // extractor. The composite primary key prevents duplicate tags per
+      // attached to an item, with a confidence score (defaults to 1.0 when the
+      // extractor does not provide one). The composite primary key prevents duplicate tags per
       // item; ON DELETE CASCADE keeps the table tidy when items are pruned.
       `CREATE TABLE IF NOT EXISTS item_tags (
         item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,

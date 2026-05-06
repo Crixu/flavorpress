@@ -14,13 +14,15 @@ describe("item_tags schema", () => {
     );
   });
 
-  it("creates index on item_id", async () => {
+  it("creates indexes on item_id and tag", async () => {
     await ensureSchema();
     const r = await db.execute({
       sql: `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='item_tags'`,
       args: [],
     });
-    const names = r.rows.map((row) => String(row.name));
-    expect(names.some((n) => n.includes("item"))).toBe(true);
+    const names = r.rows.map((row) => row.name);
+    expect(names).toEqual(
+      expect.arrayContaining(["idx_item_tags_item", "idx_item_tags_tag"]),
+    );
   });
 });
