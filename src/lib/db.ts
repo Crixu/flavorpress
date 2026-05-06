@@ -446,6 +446,20 @@ export async function ensureSchema(): Promise<void> {
         ran_at INTEGER NOT NULL
       )`,
 
+      // LLM-extracted topic tags per inbound item. Each row is one tag
+      // attached to an item, with an optional confidence score from the
+      // extractor. The composite primary key prevents duplicate tags per
+      // item; ON DELETE CASCADE keeps the table tidy when items are pruned.
+      `CREATE TABLE IF NOT EXISTS item_tags (
+        item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        tag TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 1.0,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (item_id, tag)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_item_tags_item ON item_tags(item_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag)`,
+
       // App-level settings the user can edit from /settings instead of .env.
       // Single-user prototype so we keep this keyed only by `key`; values are
       // stored as TEXT. Sensitive values use the shared secret envelope.
