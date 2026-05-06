@@ -167,13 +167,18 @@ export default async function EditorPage({ params }: PageProps) {
   const headlineAlternates = d.headline_alternates
     ? (JSON.parse(String(d.headline_alternates)) as string[])
     : [];
-  const quotes = d.quotes
+  const quotesRaw = d.quotes
     ? (JSON.parse(String(d.quotes)) as Array<{
         sourceId: string;
         text: string;
         citation: string;
       }>)
     : [];
+  const quotes = quotesRaw.map((q) => ({
+    sourceId: String(q.sourceId ?? ""),
+    text: String(q.text ?? ""),
+    citation: String(q.citation ?? ""),
+  }));
   const draftWordCount = String(d.body ?? "")
     .replace(/<[^>]+>/g, " ")
     .trim()
@@ -264,6 +269,7 @@ export default async function EditorPage({ params }: PageProps) {
                 bodyHtml={String(d.body ?? "")}
                 initialAnnotationsByExt={initialAnnotationsByExt}
                 enabledExtensionIds={enabledExtensionIds}
+                quotes={quotes.map((q) => ({ text: q.text, citation: q.citation }))}
               />
               <ParagraphRewriter draftId={String(d.id)} bodyHtml={String(d.body ?? "")} />
 
@@ -274,12 +280,37 @@ export default async function EditorPage({ params }: PageProps) {
                     {itemsR.rows.length === 1 ? "" : "s"}
                   </div>
                   <ol
-                    className="mt-3 list-decimal space-y-1.5 pl-5 text-[12px]"
+                    className="mt-3 list-decimal space-y-2.5 pl-5 text-[12px]"
                     style={{ color: "var(--fg-muted)" }}
                   >
-                    {quotes.map((q, i) => (
-                      <li key={i}>{q.citation}</li>
-                    ))}
+                    {quotes.map((q, i) => {
+                      const citationHref = safeCitationHref(q.citation);
+                      return (
+                        <li key={i}>
+                          {q.text ? (
+                            <span
+                              style={{ color: "var(--fg)", fontStyle: "italic" }}
+                            >{`“${q.text}”`}</span>
+                          ) : null}
+                          {q.text && q.citation ? " " : null}
+                          {citationHref ? (
+                            <a
+                              href={citationHref}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                              style={{ color: "var(--fg-subtle)", wordBreak: "break-all" }}
+                            >
+                              {q.citation}
+                            </a>
+                          ) : q.citation ? (
+                            <span style={{ color: "var(--fg-subtle)", wordBreak: "break-all" }}>
+                              {q.citation}
+                            </span>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ol>
                 </div>
               ) : null}
@@ -363,5 +394,16 @@ function hostFromUrl(s: string): string {
     return new URL(s).host;
   } catch {
     return s;
+  }
+}
+
+function safeCitationHref(raw: string): string | null {
+  const value = raw.trim();
+  if (!value || /[\u0000-\u001f\u007f\s]/.test(value)) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? value : null;
+  } catch {
+    return null;
   }
 }

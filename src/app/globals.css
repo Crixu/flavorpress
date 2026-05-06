@@ -678,6 +678,17 @@ mark[data-fp-ext][data-fp-active="1"] {
   box-shadow: 0 0 0 2px var(--fg);
 }
 
+/* Verbatim quotes lifted from sources. Distinct from extension annotations
+ * so the writer can see at a glance which sentence in the manuscript came
+ * straight from a source and is paired with the citation in the footer. */
+mark[data-fp-quote] {
+  background: var(--amber-tint);
+  border-bottom: 2px solid var(--amber);
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
 /* Per-paragraph rewrite affordance. ParagraphRewriter wraps each top-level
  * <p> in a .fp-para-row at mount; the row is the :hover target so the
  * button stays visible while the cursor moves from text into the gutter. */
