@@ -27,7 +27,7 @@ export function LengthPicker({ draftId, currentWordCount }: Props) {
   const [customValue, setCustomValue] = useState<string>(String(currentWordCount));
 
   function submit(words: number) {
-    if (!Number.isFinite(words) || words < 100 || words > 1500) return;
+    if (!Number.isFinite(words) || words < 100 || words > 2000) return;
     const fd = new FormData();
     fd.set("draftId", draftId);
     fd.set("wordCount", String(Math.round(words)));
@@ -89,7 +89,7 @@ export function LengthPicker({ draftId, currentWordCount }: Props) {
             <input
               type="number"
               min={100}
-              max={1500}
+              max={2000}
               step={50}
               value={customValue}
               onChange={(e) => setCustomValue(e.target.value)}
@@ -101,7 +101,7 @@ export function LengthPicker({ draftId, currentWordCount }: Props) {
               }}
             />
             <span className="text-[11px]" style={{ color: "var(--fg-subtle)" }}>
-              words (100–1500)
+              words (100–2000)
             </span>
           </div>
         ) : null}

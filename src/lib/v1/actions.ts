@@ -10,6 +10,21 @@ import { after } from "next/server";
 import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
+import {
+  isDraftFormat,
+  DEFAULT_DRAFT_FORMAT,
+  type DraftFormat,
+} from "./draft-format";
+import { generateAngleSuggestions, type AngleSuggestion } from "./angle-generator";
+import {
+  getDraftWizardPrefs,
+  setDraftWizardPrefs,
+} from "./wizard-prefs";
+import {
+  WIZARD_LENGTHS,
+  type WizardLength,
+  type DraftWizardPrefs,
+} from "./wizard-prefs-shared";
 import { rerollHeadlines } from "./headline-reroll";
 import { rewriteParagraph } from "./paragraph-rewrite";
 import { generateResearch, type ResearchNotes } from "./researcher-generator";
@@ -1485,11 +1500,22 @@ export async function generateDraftAction(formData: FormData) {
 
   const mode = parseMode(formData.get("mode"));
   const wordCount = mode === "researcher" ? undefined : parseWordCount(formData.get("wordCount"));
+  const submittedFormat = mode === "researcher" ? undefined : parseFormat(formData.get("format"));
+  const customAngle =
+    mode === "researcher"
+      ? undefined
+      : (String(formData.get("customAngle") ?? "").trim().slice(0, 200) || undefined);
+  const submittedAngleHint = String(formData.get("angleHint") ?? "");
+  const angleHint =
+    submittedAngleHint === "archive" || submittedAngleHint === "gap"
+      ? (submittedAngleHint as "archive" | "gap")
+      : undefined;
 
   // Reuse: if a draft of the same mode already exists for this cluster +
   // outlet, jump to it. Drafter and researcher runs are independent because
   // they produce different artifacts; one shouldn't shadow the other.
   const force = String(formData.get("force") ?? "") === "1";
+  let previousFormat: DraftFormat | undefined;
   if (!force) {
     const existing = await db.execute({
       sql: `SELECT id FROM drafts
@@ -1500,7 +1526,25 @@ export async function generateDraftAction(formData: FormData) {
     if (existing.rows.length > 0) {
       redirect(`/editor/${String(existing.rows[0]!.id)}`);
     }
+  } else if (mode === "drafter") {
+    // Force-regenerate from the home cluster card: preserve the previous
+    // draft's format if the caller didn't explicitly send one. Otherwise a
+    // listicle quietly becomes a narrative on every regen click.
+    const existing = await db.execute({
+      sql: `SELECT format FROM drafts
+            WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = 'drafter'
+            ORDER BY created_at DESC LIMIT 1`,
+      args: [clusterId, outletId, SINGLE_USER_ID],
+    });
+    if (existing.rows.length > 0) {
+      const value = existing.rows[0]!.format;
+      if (isDraftFormat(value)) previousFormat = value as DraftFormat;
+    }
   }
+  const format =
+    mode === "researcher"
+      ? undefined
+      : (submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT);
 
   if (mode === "researcher") {
     const research = await generateResearch({
@@ -1511,13 +1555,64 @@ export async function generateDraftAction(formData: FormData) {
     redirect(`/editor/${research.draftId}`);
   }
 
+  // Drafter mode: persist the wizard's chosen format + length so the next
+  // open of the wizard preselects them and "Just go" can fire without
+  // landing on the original 1000-word default.
+  if (format && wordCount && (WIZARD_LENGTHS as readonly number[]).includes(wordCount)) {
+    await setDraftWizardPrefs({ format, length: wordCount as WizardLength });
+  }
+
   const draft = await generateDraft({
     clusterId,
     userId: SINGLE_USER_ID,
     outletId,
     wordCount,
+    format,
+    angleHint,
+    customAngle,
   });
   redirect(`/editor/${draft.draftId}`);
+}
+
+/**
+ * Wizard pre-flight: pull three angle proposals for a cluster + format +
+ * length combination. Called when the user picks a length in the modal.
+ * Returns the array directly (server-action style) so the client can render
+ * them as soon as the call resolves.
+ */
+export async function generateDraftAnglesAction(
+  formData: FormData,
+): Promise<{ angles: AngleSuggestion[] }> {
+  await ensureSchema();
+  const clusterId = String(formData.get("clusterId") ?? "");
+  if (!clusterId) throw new Error("clusterId required.");
+
+  const explicitOutlet = String(formData.get("outletId") ?? "");
+  const outletId = explicitOutlet || (await getDefaultOutlet(SINGLE_USER_ID))?.id || "";
+  if (!outletId) {
+    throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
+  }
+
+  const format = parseFormat(formData.get("format")) ?? DEFAULT_DRAFT_FORMAT;
+  const wordCount = parseWordCount(formData.get("wordCount")) ?? 1000;
+
+  const angles = await generateAngleSuggestions({
+    clusterId,
+    userId: SINGLE_USER_ID,
+    outletId,
+    format,
+    wordCount,
+  });
+  return { angles };
+}
+
+/**
+ * Wizard initial state: the last-used format + length so chips preselect on
+ * open. Called from the cluster card when the modal mounts.
+ */
+export async function getDraftWizardPrefsAction(): Promise<DraftWizardPrefs> {
+  await ensureSchema();
+  return getDraftWizardPrefs();
 }
 
 /**
@@ -1539,7 +1634,7 @@ export async function regenerateDraftAction(formData: FormData) {
   if (!draftId) throw new Error("draftId required.");
 
   const r = await db.execute({
-    sql: `SELECT cluster_id, outlet_id, mode, wp_post_id, angle_hint, custom_angle FROM drafts
+    sql: `SELECT cluster_id, outlet_id, mode, wp_post_id, angle_hint, custom_angle, format FROM drafts
           WHERE id = ? AND user_id = ?`,
     args: [draftId, SINGLE_USER_ID],
   });
@@ -1565,6 +1660,9 @@ export async function regenerateDraftAction(formData: FormData) {
     throw new Error("Custom angle text required when picking the custom angle.");
   }
   const wordCount = parseWordCount(formData.get("wordCount"));
+  const submittedFormat = parseFormat(formData.get("format"));
+  const previousFormat = isDraftFormat(row.format) ? (row.format as DraftFormat) : undefined;
+  const format = submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT;
 
   const draft = await generateDraft({
     clusterId: String(row.cluster_id),
@@ -1573,6 +1671,7 @@ export async function regenerateDraftAction(formData: FormData) {
     angleHint: rawAngle === "custom" ? undefined : angleHint,
     customAngle: customAngle || undefined,
     wordCount,
+    format,
   });
 
   // Drop the previous draft so the editor doesn't accumulate stale rows for
@@ -1595,10 +1694,16 @@ function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error("Word count must be a positive number.");
   }
-  if (n < 100 || n > 1500) {
-    throw new Error("Word count must be between 100 and 1500.");
+  if (n < 100 || n > 2000) {
+    throw new Error("Word count must be between 100 and 2000.");
   }
   return Math.round(n);
+}
+
+function parseFormat(raw: FormDataEntryValue | null): DraftFormat | undefined {
+  if (raw === null || raw === "") return undefined;
+  const value = String(raw);
+  return isDraftFormat(value) ? (value as DraftFormat) : undefined;
 }
 
 function draftBodyHash(bodyHtml: string): string {

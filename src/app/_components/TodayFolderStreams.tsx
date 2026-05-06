@@ -575,6 +575,7 @@ function ClusterCard({
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
         <ClusterActions
           clusterId={c.id}
+          clusterTitle={headline}
           outlets={outlets}
           defaultOutletId={preview.preferredOutletId ?? defaultOutletId}
           draftsByOutlet={preview.draftsByOutlet}
