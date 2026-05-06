@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { generateDraftAction, getDraftWizardPrefsAction } from "@/lib/v1/actions";
 import { DEFAULT_WIZARD_PREFS, type DraftWizardPrefs } from "@/lib/v1/wizard-prefs-shared";
-import { DraftWizardModal } from "./DraftWizardModal";
+import { DraftWizardSheet } from "./DraftWizardSheet";
 
 interface DraftRef {
   id: string;
@@ -219,7 +219,7 @@ export function ClusterActions({
         </span>
       </div>
       {wizardOpen && selectedOutletId && selectedOutlet ? (
-        <DraftWizardModal
+        <DraftWizardSheet
           clusterId={clusterId}
           outletId={selectedOutletId}
           outletDisplayName={selectedOutlet.displayName}
