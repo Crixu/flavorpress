@@ -820,3 +820,61 @@ p[data-fp-para-pending="1"] {
   margin: 0 auto;
   padding: 32px 32px 64px;
 }
+
+/* Drafts bucket tabs */
+.fp-bucket-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 18px;
+}
+.fp-bucket-tab {
+  padding: 10px 0;
+  color: var(--ink-tertiary);
+  text-decoration: none;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fp-bucket-tab.on {
+  color: var(--ink-primary);
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 var(--ink-primary);
+}
+.fp-bucket-tab-count {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.fp-bucket-tab.on .fp-bucket-tab-count {
+  color: var(--ink-primary);
+}
+
+/* Stale draft card */
+.wpds-card-stale {
+  border-color: var(--warn-fg);
+  background: color-mix(in srgb, var(--warn-bg) 50%, var(--surface-canvas));
+}
+
+/* Sent rows (no card frame) */
+.fp-sent-row {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.fp-sent-row:last-child {
+  border-bottom: 0;
+}
+.fp-sent-row .ttl {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 16px;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+.fp-sent-row .meta {
+  font-size: 11px;
+  color: var(--ink-muted);
+}

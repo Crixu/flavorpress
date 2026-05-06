@@ -1,19 +1,27 @@
 /**
- * Drafts list. Two buckets: still-drafting (no WP post yet) and sent to
- * WordPress (push has happened, FlavorPress now holds a receipt). The
- * sent bucket exists so the act of finding what you shipped today is part
- * of the same loop as finding what you started this morning.
+ * Drafts list. Three bucket tabs: In progress, Notes, Sent.
+ *
+ * In progress: active drafts (no wp_post_id, mode != researcher). Stale rows
+ * (>24h since edit/creation) pinned to top with amber border via wpds-card-stale.
+ *
+ * Notes: researcher-mode drafts. Shown as emphasis Cards with an idea/quote/fact
+ * stat summary in the eyebrow.
+ *
+ * Sent: compact two-line rows, no card frame. Title in serif, meta below.
+ *
+ * Tag chips are pulled from item_tags via a cluster -> items join and rendered
+ * inline on each row (top 3 by confidence).
  */
 
 import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
 import { deleteDraftAction } from "@/lib/v1/actions";
+import { Card } from "@/components/wpds";
+import { BucketTabs, type Bucket } from "./_components/BucketTabs";
 
 export const dynamic = "force-dynamic";
 
-// A draft is "stale" once it stops being a same-day artifact. The product
-// thesis is reading-to-writing within the day; flag drafts that missed it
-// so the user notices abandoned work instead of letting it pile up silently.
+// A draft is "stale" once it stops being a same-day artifact.
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 interface DraftRow {
@@ -23,9 +31,11 @@ interface DraftRow {
   outlet_id: string;
   voice_match_score: number;
   created_at: number;
+  edited_at: number | null;
   source_count: number | null;
   outlet_display_name: string | null;
   outlet_base_url: string | null;
+  tags: string[];
 }
 
 interface SentRow {
@@ -36,6 +46,7 @@ interface SentRow {
   source_count: number | null;
   wp_edit_link: string | null;
   sent_at: number;
+  tags: string[];
 }
 
 interface NoteRow {
@@ -47,11 +58,21 @@ interface NoteRow {
   ideas: number;
   quotes: number;
   facts: number;
+  tags: string[];
 }
 
-export default async function DraftsPage() {
+interface PageProps {
+  searchParams: Promise<{ bucket?: string }>;
+}
+
+export default async function DraftsPage({ searchParams }: PageProps) {
   await ensureSchema();
   await ensureSingleUser();
+
+  const sp = await searchParams;
+  const rawBucket = sp.bucket;
+  const bucket: Bucket =
+    rawBucket === "notes" || rawBucket === "sent" ? rawBucket : "in-progress";
 
   const r = await db.execute({
     sql: `SELECT d.id, d.mode, d.headline, d.cluster_id, d.outlet_id,
@@ -59,7 +80,17 @@ export default async function DraftsPage() {
                  d.wp_post_id, d.wp_edit_link, d.wp_synced_at,
                  c.source_count AS source_count,
                  o.display_name AS outlet_display_name,
-                 o.base_url AS outlet_base_url
+                 o.base_url AS outlet_base_url,
+                 (SELECT GROUP_CONCAT(it.tag, ',')
+                  FROM (
+                    SELECT DISTINCT it2.tag
+                    FROM items i2
+                    JOIN item_tags it2 ON it2.item_id = i2.id
+                    WHERE i2.cluster_id = d.cluster_id
+                    ORDER BY it2.confidence DESC
+                    LIMIT 3
+                  ) AS it
+                 ) AS top_tags
           FROM drafts d
           LEFT JOIN clusters c ON c.id = d.cluster_id
           LEFT JOIN outlets o ON o.id = d.outlet_id
@@ -71,9 +102,11 @@ export default async function DraftsPage() {
   const drafts: DraftRow[] = [];
   const sent: SentRow[] = [];
   const notes: NoteRow[] = [];
+
   for (const row of r.rows) {
     const mode = String(row.mode ?? "drafter");
     const isSent = Boolean(row.wp_post_id);
+    const tags = parseTags(row.top_tags ? String(row.top_tags) : null);
 
     if (isSent && mode !== "researcher") {
       sent.push({
@@ -87,6 +120,7 @@ export default async function DraftsPage() {
         sent_at: row.wp_synced_at
           ? Number(row.wp_synced_at)
           : Number(row.edited_at ?? row.created_at),
+        tags,
       });
       continue;
     }
@@ -99,6 +133,7 @@ export default async function DraftsPage() {
         cluster_id: String(row.cluster_id),
         created_at: Number(row.created_at),
         source_count: row.source_count === null ? null : Number(row.source_count),
+        tags,
         ...counts,
       });
       continue;
@@ -111,17 +146,27 @@ export default async function DraftsPage() {
       outlet_id: String(row.outlet_id),
       voice_match_score: Number(row.voice_match_score ?? 0),
       created_at: Number(row.created_at),
+      edited_at: row.edited_at !== null ? Number(row.edited_at) : null,
       source_count: row.source_count === null ? null : Number(row.source_count),
       outlet_display_name:
         row.outlet_display_name === null ? null : String(row.outlet_display_name),
       outlet_base_url: row.outlet_base_url === null ? null : String(row.outlet_base_url),
+      tags,
     });
   }
 
   sent.sort((a, b) => b.sent_at - a.sent_at);
 
+  const counts = {
+    "in-progress": drafts.length,
+    notes: notes.length,
+    sent: sent.length,
+  };
+
+  const isEmpty = drafts.length === 0 && sent.length === 0 && notes.length === 0;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header>
         <div className="text-[11px] uppercase tracking-wider text-stone-500">Drafts</div>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -132,11 +177,7 @@ export default async function DraftsPage() {
         </p>
       </header>
 
-      <DraftingSection drafts={drafts} />
-      {sent.length > 0 ? <SentSection sent={sent} /> : null}
-      {notes.length > 0 ? <NotesSection notes={notes} /> : null}
-
-      {drafts.length === 0 && sent.length === 0 && notes.length === 0 ? (
+      {isEmpty ? (
         <div
           className="rounded-xl border border-dashed p-8 text-center text-sm"
           style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
@@ -147,181 +188,145 @@ export default async function DraftsPage() {
           </Link>{" "}
           to draft from a cluster.
         </div>
-      ) : null}
+      ) : (
+        <>
+          <BucketTabs active={bucket} counts={counts} />
+
+          {bucket === "in-progress" && <InProgressSection drafts={drafts} />}
+          {bucket === "notes" && <NotesSection notes={notes} />}
+          {bucket === "sent" && <SentSection sent={sent} />}
+        </>
+      )}
     </div>
   );
 }
 
-function DraftingSection({ drafts }: { drafts: DraftRow[] }) {
-  return (
-    <section className="space-y-3">
-      <header className="flex items-baseline gap-3">
-        <div className="text-[11px] uppercase tracking-wider text-stone-500">
-          Drafting · {drafts.length}
-        </div>
-      </header>
-      {drafts.length === 0 ? (
-        <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
-          Nothing in flight.
-        </p>
-      ) : (
-        <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
-          {drafts.map((d) => {
-            const isStale = Date.now() - d.created_at > STALE_AFTER_MS;
-            return (
-              <li
-                key={d.id}
-                className="flex items-start gap-3 px-5 py-4 transition hover:bg-stone-50"
-              >
-                <Link href={`/editor/${d.id}`} className="flex flex-1 items-start gap-4 min-w-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="line-clamp-2 text-sm font-medium text-stone-900">
-                      {d.headline}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
-                      <span>{relativeTime(d.created_at)}</span>
-                      <span className="text-stone-300">·</span>
-                      <span>
-                        {d.outlet_display_name ??
-                          (d.outlet_base_url ? hostFromUrl(d.outlet_base_url) : "no outlet")}
-                      </span>
-                      {d.source_count !== null ? (
-                        <>
-                          <span className="text-stone-300">·</span>
-                          <span>
-                            {d.source_count} {d.source_count === 1 ? "source" : "sources"}
-                          </span>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  {isStale ? <StaleChip /> : null}
-                  <VoiceChip score={d.voice_match_score} />
-                </Link>
-                <form action={deleteDraftAction}>
-                  <input type="hidden" name="draftId" value={d.id} />
-                  <button
-                    type="submit"
-                    className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-                    title="Delete this draft"
-                    aria-label={`Delete draft: ${d.headline}`}
-                  >
-                    Delete
-                  </button>
-                </form>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
+function InProgressSection({ drafts }: { drafts: DraftRow[] }) {
+  if (drafts.length === 0) {
+    return (
+      <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
+        Nothing in flight.
+      </p>
+    );
+  }
 
-function SentSection({ sent }: { sent: SentRow[] }) {
+  const now = Date.now();
+  const stale = drafts.filter((d) => now - (d.edited_at ?? d.created_at) > STALE_AFTER_MS);
+  const fresh = drafts.filter((d) => now - (d.edited_at ?? d.created_at) <= STALE_AFTER_MS);
+  const ordered = [...stale, ...fresh];
+
   return (
     <section className="space-y-3">
-      <header className="flex items-baseline gap-3">
-        <div className="text-[11px] uppercase tracking-wider text-stone-500">
-          Sent to WordPress · {sent.length}
-        </div>
-      </header>
-      <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
-        {sent.map((s) => (
-          <li key={s.id} className="flex items-start gap-3 px-5 py-4 transition hover:bg-stone-50">
-            <div className="flex flex-1 items-start gap-4 min-w-0">
-              <div className="flex-1 min-w-0">
-                <div
-                  className="line-clamp-2 text-sm font-medium"
-                  style={{ color: "var(--fg-muted)" }}
-                >
-                  {s.headline}
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
-                  <span>sent {relativeTime(s.sent_at)}</span>
+      {ordered.map((d) => {
+        const isStale = now - (d.edited_at ?? d.created_at) > STALE_AFTER_MS;
+        return (
+          <div key={d.id} className="flex items-start gap-3">
+            <Card className={`flex-1 min-w-0${isStale ? " wpds-card-stale" : ""}`}>
+              <Link href={`/editor/${d.id}`} className="block">
+                <div className="line-clamp-2 text-sm font-medium text-stone-900">{d.headline}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
+                  <span>{relativeTime(d.edited_at ?? d.created_at)}</span>
                   <span className="text-stone-300">·</span>
                   <span>
-                    {s.outlet_display_name ??
-                      (s.outlet_base_url ? hostFromUrl(s.outlet_base_url) : "no outlet")}
+                    {d.outlet_display_name ??
+                      (d.outlet_base_url ? hostFromUrl(d.outlet_base_url) : "no outlet")}
                   </span>
-                  {s.source_count !== null ? (
+                  {d.source_count !== null ? (
                     <>
                       <span className="text-stone-300">·</span>
                       <span>
-                        {s.source_count} {s.source_count === 1 ? "source" : "sources"}
+                        {d.source_count} {d.source_count === 1 ? "source" : "sources"}
                       </span>
                     </>
                   ) : null}
+                  {d.tags.length > 0 ? (
+                    <>
+                      <span className="text-stone-300">·</span>
+                      {d.tags.map((tag) => (
+                        <TagChip key={tag} tag={tag} />
+                      ))}
+                    </>
+                  ) : null}
                 </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 text-[11px]">
-              {s.wp_edit_link ? (
-                <a
-                  href={s.wp_edit_link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium hover:underline"
-                  style={{ color: "var(--indigo)" }}
-                >
-                  Open in WP ↗
-                </a>
-              ) : null}
-              <Link
-                href={`/editor/${s.id}`}
-                className="hover:underline"
-                style={{ color: "var(--fg-subtle)" }}
-              >
-                View receipt
               </Link>
+            </Card>
+            <div className="flex flex-col items-end gap-2 shrink-0 pt-1">
+              <VoiceChip score={d.voice_match_score} />
+              {isStale ? <StaleChip /> : null}
+              <form action={deleteDraftAction}>
+                <input type="hidden" name="draftId" value={d.id} />
+                <button
+                  type="submit"
+                  className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  title="Delete this draft"
+                  aria-label={`Delete draft: ${d.headline}`}
+                >
+                  Delete
+                </button>
+              </form>
             </div>
-          </li>
-        ))}
-      </ul>
+          </div>
+        );
+      })}
     </section>
   );
 }
 
 function NotesSection({ notes }: { notes: NoteRow[] }) {
+  if (notes.length === 0) {
+    return (
+      <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
+        No research notes yet.
+      </p>
+    );
+  }
+
+  const now = Date.now();
+
   return (
     <section className="space-y-3">
-      <header>
-        <div className="text-[11px] uppercase tracking-wider text-stone-500">
-          Research notes · {notes.length}
-        </div>
-        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-          Ideas, verbatim quotes, and leads to verify. Notes don't push to WordPress; the post is
-          yours to write.
-        </p>
-      </header>
-      <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
-        {notes.map((n) => {
-          const isStale = Date.now() - n.created_at > STALE_AFTER_MS;
-          return (
-            <li
-              key={n.id}
-              className="flex items-start gap-3 px-5 py-4 transition hover:bg-stone-50"
-            >
-              <Link href={`/editor/${n.id}`} className="flex flex-1 items-start gap-4 min-w-0">
-                <div className="flex-1 min-w-0">
-                  <div className="line-clamp-2 text-sm font-medium text-stone-900">{n.topic}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
-                    <span>{relativeTime(n.created_at)}</span>
-                    <span className="text-stone-300">·</span>
-                    <span>
-                      {n.ideas} ideas · {n.quotes} quotes · {n.facts} leads
-                    </span>
-                    {n.source_count !== null ? (
-                      <>
-                        <span className="text-stone-300">·</span>
-                        <span>
-                          {n.source_count} {n.source_count === 1 ? "source" : "sources"}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
+      <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
+        Ideas, verbatim quotes, and leads to verify. Notes don't push to WordPress; the post is
+        yours to write.
+      </p>
+      {notes.map((n) => {
+        const isStale = now - n.created_at > STALE_AFTER_MS;
+        return (
+          <div key={n.id} className="flex items-start gap-3">
+            <Card emphasis className="flex-1 min-w-0">
+              <Link href={`/editor/${n.id}`} className="block">
+                <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] uppercase tracking-widest text-stone-400">
+                  <span>
+                    {n.ideas} ideas · {n.quotes} quotes · {n.facts} leads
+                  </span>
+                  {n.source_count !== null ? (
+                    <>
+                      <span>·</span>
+                      <span>
+                        {n.source_count} {n.source_count === 1 ? "source" : "sources"}
+                      </span>
+                    </>
+                  ) : null}
+                  {n.tags.length > 0 ? (
+                    <>
+                      <span>·</span>
+                      {n.tags.map((tag) => (
+                        <TagChip key={tag} tag={tag} />
+                      ))}
+                    </>
+                  ) : null}
                 </div>
-                {isStale ? <StaleChip /> : null}
+                <div className="line-clamp-2 text-sm font-medium text-stone-900">{n.topic}</div>
+                <div className="mt-1 text-[11px] text-stone-500">{relativeTime(n.created_at)}</div>
+              </Link>
+            </Card>
+            <div className="flex flex-col items-end gap-2 shrink-0 pt-1">
+              {isStale ? <StaleChip /> : null}
+              <Link
+                href={`/editor/${n.id}`}
+                className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-600 transition hover:bg-stone-50"
+              >
+                Open notebook
               </Link>
               <form action={deleteDraftAction}>
                 <input type="hidden" name="draftId" value={n.id} />
@@ -334,34 +339,85 @@ function NotesSection({ notes }: { notes: NoteRow[] }) {
                   Delete
                 </button>
               </form>
-            </li>
-          );
-        })}
-      </ul>
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }
 
-function parseNoteCounts(raw: string | null): {
-  ideas: number;
-  quotes: number;
-  facts: number;
-} {
-  if (!raw) return { ideas: 0, quotes: 0, facts: 0 };
-  try {
-    const parsed = JSON.parse(raw) as {
-      ideas?: unknown[];
-      quotes?: unknown[];
-      facts?: unknown[];
-    };
-    return {
-      ideas: Array.isArray(parsed.ideas) ? parsed.ideas.length : 0,
-      quotes: Array.isArray(parsed.quotes) ? parsed.quotes.length : 0,
-      facts: Array.isArray(parsed.facts) ? parsed.facts.length : 0,
-    };
-  } catch {
-    return { ideas: 0, quotes: 0, facts: 0 };
+function SentSection({ sent }: { sent: SentRow[] }) {
+  if (sent.length === 0) {
+    return (
+      <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
+        Nothing sent yet.
+      </p>
+    );
   }
+
+  return (
+    <section>
+      {sent.map((s) => (
+        <div key={s.id} className="fp-sent-row">
+          <div className="ttl line-clamp-1">
+            <Link href={`/editor/${s.id}`} className="hover:underline" style={{ color: "inherit" }}>
+              {s.headline}
+            </Link>
+          </div>
+          <div className="meta shrink-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>sent {relativeTime(s.sent_at)}</span>
+              <span>·</span>
+              <span>
+                {s.outlet_display_name ??
+                  (s.outlet_base_url ? hostFromUrl(s.outlet_base_url) : "no outlet")}
+              </span>
+              {s.source_count !== null ? (
+                <>
+                  <span>·</span>
+                  <span>
+                    {s.source_count} {s.source_count === 1 ? "source" : "sources"}
+                  </span>
+                </>
+              ) : null}
+              {s.tags.length > 0 ? (
+                <>
+                  <span>·</span>
+                  {s.tags.map((tag) => (
+                    <TagChip key={tag} tag={tag} />
+                  ))}
+                </>
+              ) : null}
+            </div>
+          </div>
+          <div className="shrink-0 flex items-center gap-3 text-[11px]">
+            {s.wp_edit_link ? (
+              <a
+                href={s.wp_edit_link}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium hover:underline"
+                style={{ color: "var(--indigo)" }}
+              >
+                Open in WP
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function TagChip({ tag }: { tag: string }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-sm border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-[10px] text-stone-500"
+    >
+      {tag}
+    </span>
+  );
 }
 
 function StaleChip() {
@@ -389,6 +445,37 @@ function VoiceChip({ score }: { score: number }) {
       voice {score}
     </span>
   );
+}
+
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function parseNoteCounts(raw: string | null): {
+  ideas: number;
+  quotes: number;
+  facts: number;
+} {
+  if (!raw) return { ideas: 0, quotes: 0, facts: 0 };
+  try {
+    const parsed = JSON.parse(raw) as {
+      ideas?: unknown[];
+      quotes?: unknown[];
+      facts?: unknown[];
+    };
+    return {
+      ideas: Array.isArray(parsed.ideas) ? parsed.ideas.length : 0,
+      quotes: Array.isArray(parsed.quotes) ? parsed.quotes.length : 0,
+      facts: Array.isArray(parsed.facts) ? parsed.facts.length : 0,
+    };
+  } catch {
+    return { ideas: 0, quotes: 0, facts: 0 };
+  }
 }
 
 function hostFromUrl(s: string): string {
