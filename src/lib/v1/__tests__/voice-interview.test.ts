@@ -15,15 +15,7 @@ describe("voice-interview", () => {
   });
 
   it("sanitizeAnswers pads or truncates to seven and trims each entry", () => {
-    expect(sanitizeAnswers(["  one  ", "two"])).toEqual([
-      "one",
-      "two",
-      "",
-      "",
-      "",
-      "",
-      "",
-    ]);
+    expect(sanitizeAnswers(["  one  ", "two"])).toEqual(["one", "two", "", "", "", "", ""]);
     const ten = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
     expect(sanitizeAnswers(ten)).toHaveLength(7);
     expect(sanitizeAnswers(ten)).toEqual(["a", "b", "c", "d", "e", "f", "g"]);

@@ -62,6 +62,9 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
   const hedge = profile ? Number(profile.hedge_frequency ?? 0) : 0;
   const quoteDensity = profile ? Number(profile.quote_density ?? 0) : 0;
   const lastBuilt = profile ? Number(profile.last_rebuilt_at ?? 0) : 0;
+  const seedLabel = profile
+    ? formatSeedMethod((profile as Record<string, unknown>).seed_method)
+    : null;
 
   // Top function words (best effort: stored as packed Float64Array; show top
   // 10 indices ranked by frequency). For now we render archive size + flag
@@ -190,6 +193,7 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
             </div>
             <div className="mt-2 text-[11px]" style={{ color: "var(--fg-muted)" }}>
               Last built {lastBuilt ? new Date(lastBuilt).toLocaleString() : "—"}
+              {seedLabel ? ` · seed: ${seedLabel}` : ""}
               {hasFingerprint ? " · function-word distribution captured" : ""}
             </div>
           </section>
@@ -238,7 +242,6 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
               variant="rose"
             />
           </section>
-
         </>
       )}
 
@@ -278,6 +281,21 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       </div>
     </div>
   );
+}
+
+function formatSeedMethod(value: unknown): string {
+  switch (String(value ?? "")) {
+    case "archive":
+      return "archive";
+    case "paste":
+      return "pasted samples";
+    case "freewrite":
+      return "free-write";
+    case "interview":
+      return "interview";
+    default:
+      return "not recorded";
+  }
 }
 
 function BlogDescriptionEditor({

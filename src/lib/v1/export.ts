@@ -59,6 +59,8 @@ export interface ExportVoiceProfile {
   signatureTerms: string[];
   anchoredPostIds: string[];
   description: string | null;
+  seedMethod: string | null;
+  seedTranscript: string | null;
   lastRebuiltAt: number;
 }
 
@@ -152,7 +154,7 @@ export async function buildExportEnvelope(userId = SINGLE_USER_ID): Promise<Expo
                    sentence_length_mean, sentence_length_variance,
                    hedge_frequency, em_dash_density, quote_density,
                    banned_terms, signature_terms, anchored_post_ids,
-                   description, last_rebuilt_at
+                   description, seed_method, seed_transcript, last_rebuilt_at
             FROM voice_profiles WHERE user_id = ?
             ORDER BY last_rebuilt_at DESC`,
         args: [userId],
@@ -228,6 +230,8 @@ export async function buildExportEnvelope(userId = SINGLE_USER_ID): Promise<Expo
     signatureTerms: parseStringArray(row.signature_terms),
     anchoredPostIds: parseStringArray(row.anchored_post_ids),
     description: row.description ? String(row.description) : null,
+    seedMethod: row.seed_method ? String(row.seed_method) : null,
+    seedTranscript: row.seed_transcript ? String(row.seed_transcript) : null,
     lastRebuiltAt: Number(row.last_rebuilt_at),
   }));
 

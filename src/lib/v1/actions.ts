@@ -1187,11 +1187,10 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
   }
 
   const now = Date.now();
-  await persistVoiceProfile(
-    outletId,
-    [{ title: "", body: essay, publishedAt: now }],
-    { method: "interview", transcript: JSON.stringify(answers) },
-  );
+  await persistVoiceProfile(outletId, [{ title: "", body: essay, publishedAt: now }], {
+    method: "interview",
+    transcript: JSON.stringify(answers),
+  });
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
