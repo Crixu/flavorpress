@@ -253,7 +253,9 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                 ]}
               />
               <details className="text-xs text-stone-500">
-                <summary className="cursor-pointer hover:text-stone-900">More starter packs</summary>
+                <summary className="cursor-pointer hover:text-stone-900">
+                  More starter packs
+                </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <StarterPack
                     name="Apple-blogger pack"
@@ -451,7 +453,6 @@ function groupByFolder(rows: PlainSourceRow[], folders: FolderRow[]): FolderGrou
   if (ungrouped.rows.length > 0) ordered.push(ungrouped);
   return ordered;
 }
-
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (

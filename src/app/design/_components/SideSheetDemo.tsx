@@ -24,12 +24,12 @@ export function SideSheetDemo() {
         }
       >
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", lineHeight: 1.6 }}>
-          Right-side overlay, 480px wide. Closes on Escape and scrim click. Title
-          renders in Newsreader. Footer pinned to bottom with subtle background.
+          Right-side overlay, 480px wide. Closes on Escape and scrim click. Title renders in
+          Newsreader. Footer pinned to bottom with subtle background.
         </p>
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", lineHeight: 1.6, marginTop: 12 }}>
-          Use for: Draft Wizard, Add Feed, Connect WP Site, any flow the user must
-          complete or cancel without losing the page underneath.
+          Use for: Draft Wizard, Add Feed, Connect WP Site, any flow the user must complete or
+          cancel without losing the page underneath.
         </p>
       </SideSheet>
     </>

@@ -9,9 +9,7 @@ describe("item_tags schema", () => {
       args: [],
     });
     const cols = r.rows.map((row) => row.name);
-    expect(cols).toEqual(
-      expect.arrayContaining(["item_id", "tag", "confidence", "created_at"]),
-    );
+    expect(cols).toEqual(expect.arrayContaining(["item_id", "tag", "confidence", "created_at"]));
   });
 
   it("creates indexes on item_id and tag", async () => {
@@ -21,8 +19,6 @@ describe("item_tags schema", () => {
       args: [],
     });
     const names = r.rows.map((row) => row.name);
-    expect(names).toEqual(
-      expect.arrayContaining(["idx_item_tags_item", "idx_item_tags_tag"]),
-    );
+    expect(names).toEqual(expect.arrayContaining(["idx_item_tags_item", "idx_item_tags_tag"]));
   });
 });

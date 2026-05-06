@@ -68,10 +68,9 @@ export function OutletDetail({ outlet, profile, isThinArchive, archivePostCount 
         <section className="fp-card-feature p-4">
           <div className="text-sm font-semibold">Archive still too thin to re-train.</div>
           <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-            This outlet has {archivePostCount}{" "}
-            {archivePostCount === 1 ? "post" : "posts"}. Archive re-training needs at least{" "}
-            {MIN_VOICE_TRAIN_POSTS} published posts, so the current sample-seeded fingerprint is
-            still active.
+            This outlet has {archivePostCount} {archivePostCount === 1 ? "post" : "posts"}. Archive
+            re-training needs at least {MIN_VOICE_TRAIN_POSTS} published posts, so the current
+            sample-seeded fingerprint is still active.
           </p>
         </section>
       ) : null}
@@ -125,7 +124,11 @@ export function OutletDetail({ outlet, profile, isThinArchive, archivePostCount 
               </form>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <Stat label="Posts in archive" value={String(profile.archiveSize)} hint="archive-overlap" />
+              <Stat
+                label="Posts in archive"
+                value={String(profile.archiveSize)}
+                hint="archive-overlap"
+              />
               <Stat label="Avg sentence" value={`${profile.sentenceMean.toFixed(1)}w`} />
               <Stat label="Sentence variance" value={profile.sentenceVar.toFixed(1)} />
               <Stat label="Em-dash / 1k" value={profile.emDash.toFixed(2)} />

@@ -85,25 +85,19 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <Banner kind="error">{extensionErrorMessages[sp.error]}</Banner>
         ) : null}
         {sp.error === "invalid_key" ? <Banner kind="error">Unknown setting key.</Banner> : null}
-        {sp.error === "invalid_extension" ? (
-          <Banner kind="error">Unknown extension.</Banner>
-        ) : null}
+        {sp.error === "invalid_extension" ? <Banner kind="error">Unknown extension.</Banner> : null}
 
         {section === "authentication" && (
           <AuthSectionPane mode={auth.mode} hasApiKey={auth.apiKey !== null} snapshot={snapshot} />
         )}
-        {section === "models" && (
-          <ModelsSectionPane snapshot={snapshot} />
-        )}
+        {section === "models" && <ModelsSectionPane snapshot={snapshot} />}
         {section === "extensions" && (
           <ExtensionsSectionPane
             snapshot={snapshot}
             disabledExtensionIds={snapshot.disabledExtensionIds}
           />
         )}
-        {section === "library" && (
-          <LibrarySectionPane draftCount={draftCount} />
-        )}
+        {section === "library" && <LibrarySectionPane draftCount={draftCount} />}
       </div>
     </div>
   );

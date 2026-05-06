@@ -391,4 +391,3 @@ function hostFromUrl(s: string): string {
     return s;
   }
 }
-

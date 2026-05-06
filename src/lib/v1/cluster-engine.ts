@@ -270,7 +270,8 @@ async function maybeFireCluster(
   const distinctDomains = Number(row.distinct_domains);
   const trustSum = Number(row.trust_sum);
   const singleSource = sourceCount === 1;
-  const multiSourceReady = !singleSource && trustSum >= CLUSTER_TRUST_FIRE_SUM && distinctDomains >= 2;
+  const multiSourceReady =
+    !singleSource && trustSum >= CLUSTER_TRUST_FIRE_SUM && distinctDomains >= 2;
   if (row.state === "forming" && (singleSource || multiSourceReady)) {
     await db.execute({
       sql: `UPDATE clusters SET state = 'fired', fired_at = ? WHERE id = ?`,

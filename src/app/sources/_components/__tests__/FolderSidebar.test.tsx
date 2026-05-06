@@ -33,13 +33,9 @@ vi.mock("@/lib/v1/actions", () => ({
 }));
 
 vi.mock("../../_components/SubmitButton", () => ({
-  SubmitButton: ({
-    children,
-    className,
-  }: {
-    children: React.ReactNode;
-    className?: string;
-  }) => <button className={className}>{children}</button>,
+  SubmitButton: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <button className={className}>{children}</button>
+  ),
 }));
 
 vi.mock("../../_components/useBackgroundPolling", () => ({

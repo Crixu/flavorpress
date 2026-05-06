@@ -19,12 +19,7 @@ export function Button({
   children,
   ...rest
 }: Props) {
-  const classes = [
-    "wpds-btn",
-    `wpds-btn-${variant}`,
-    size === "sm" ? "wpds-btn-sm" : "",
-    className,
-  ]
+  const classes = ["wpds-btn", `wpds-btn-${variant}`, size === "sm" ? "wpds-btn-sm" : "", className]
     .filter(Boolean)
     .join(" ");
   return (

@@ -250,7 +250,9 @@ export function SwipeDeck({ initialItems, initialMarkedCount, totalQueueCount }:
       {/* Counter strip */}
       <div className="flex items-center justify-between gap-3 text-xs">
         <span style={{ color: "var(--fg-muted)" }}>
-          {top ? `${currentIndex} of ${totalQueueCount}` : `${totalQueueCount} of ${totalQueueCount}`}
+          {top
+            ? `${currentIndex} of ${totalQueueCount}`
+            : `${totalQueueCount} of ${totalQueueCount}`}
           {savedThisSession > 0 ? ` · ${savedThisSession} saved this session` : ""}
         </span>
         <button
@@ -424,7 +426,10 @@ function Card({
       }}
     >
       {/* Source eyebrow row */}
-      <div className="flex items-start justify-between gap-2 text-xs" style={{ color: "var(--fg-subtle)" }}>
+      <div
+        className="flex items-start justify-between gap-2 text-xs"
+        style={{ color: "var(--fg-subtle)" }}
+      >
         <span className="fp-eyebrow">
           {item.sourceKind ? `${item.sourceKind.toUpperCase()} · ` : ""}
           {item.sourceName || "Source"}
@@ -444,10 +449,7 @@ function Card({
       </div>
 
       {/* Title - Newsreader serif, 28px */}
-      <h2
-        className="fp-h1-serif mt-3"
-        style={{ fontSize: 28, lineHeight: 1.2 }}
-      >
+      <h2 className="fp-h1-serif mt-3" style={{ fontSize: 28, lineHeight: 1.2 }}>
         {item.title}
       </h2>
 

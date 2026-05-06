@@ -100,10 +100,7 @@ export function FolderSidebar({
       {currentFolder === "ungrouped" ? (
         <UngroupedManagePanel count={ungroupedCount} />
       ) : activeFolder ? (
-        <FolderManagePanel
-          folder={activeFolder}
-          count={folderCounts[activeFolder.id] ?? 0}
-        />
+        <FolderManagePanel folder={activeFolder} count={folderCounts[activeFolder.id] ?? 0} />
       ) : null}
     </div>
   );
@@ -126,11 +123,7 @@ function NewFolderInline() {
   }
 
   return (
-    <form
-      action={createFolderAction}
-      onSubmit={() => setOpen(false)}
-      className="px-2"
-    >
+    <form action={createFolderAction} onSubmit={() => setOpen(false)} className="px-2">
       <input
         name="name"
         autoFocus

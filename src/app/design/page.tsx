@@ -11,15 +11,7 @@
  */
 
 import type { Metadata } from "next";
-import {
-  Button,
-  Card,
-  Chip,
-  Notice,
-  StatusBadge,
-  Field,
-  MasterDetail,
-} from "@/components/wpds";
+import { Button, Card, Chip, Notice, StatusBadge, Field, MasterDetail } from "@/components/wpds";
 import { SideSheetDemo } from "./_components/SideSheetDemo";
 
 export const metadata: Metadata = {
@@ -169,8 +161,8 @@ export default function DesignPage() {
             <span style={{ color: "var(--ink-muted)" }}>--duration:</span> 150ms
           </div>
           <div>
-            <span style={{ color: "var(--ink-muted)" }}>--ease:</span>{" "}
-            cubic-bezier(0.22, 1, 0.36, 1)
+            <span style={{ color: "var(--ink-muted)" }}>--ease:</span> cubic-bezier(0.22, 1, 0.36,
+            1)
           </div>
         </div>
         <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 6, fontStyle: "italic" }}>
@@ -181,11 +173,7 @@ export default function DesignPage() {
       {/* Type */}
       <Section eyebrow="02" title="Type scale">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <TypeRow
-            label="Display"
-            spec="36px / Newsreader / weight 500"
-            token="--type-display"
-          >
+          <TypeRow label="Display" spec="36px / Newsreader / weight 500" token="--type-display">
             <span
               style={{
                 fontFamily: "var(--font-serif), Georgia, serif",
@@ -211,11 +199,7 @@ export default function DesignPage() {
               Sources
             </span>
           </TypeRow>
-          <TypeRow
-            label="H2 editorial"
-            spec="18px / Newsreader / weight 500"
-            token="--type-h2"
-          >
+          <TypeRow label="H2 editorial" spec="18px / Newsreader / weight 500" token="--type-h2">
             <span
               style={{
                 fontFamily: "var(--font-serif), Georgia, serif",
@@ -228,9 +212,7 @@ export default function DesignPage() {
             </span>
           </TypeRow>
           <TypeRow label="H2 dense" spec="18px / Inter / weight 600" token="--type-h2">
-            <span
-              style={{ fontSize: 18, fontWeight: 600, color: "var(--ink-primary)" }}
-            >
+            <span style={{ fontSize: 18, fontWeight: 600, color: "var(--ink-primary)" }}>
               Section header
             </span>
           </TypeRow>
@@ -263,9 +245,9 @@ export default function DesignPage() {
       {/* Buttons */}
       <Section eyebrow="03" title="Button">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
-          Four variants. Primary is the most important action on a surface; use it once.
-          Secondary for everything else. Danger for destructive actions. Link for
-          "skip / dismiss / not a story" affordances.
+          Four variants. Primary is the most important action on a surface; use it once. Secondary
+          for everything else. Danger for destructive actions. Link for "skip / dismiss / not a
+          story" affordances.
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           <Button>Primary</Button>
@@ -296,9 +278,8 @@ export default function DesignPage() {
       {/* Cards */}
       <Section eyebrow="04" title="Card">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
-          White surface, hairline border, 4px radius, 18x20px padding. Hover lifts
-          border to ink-muted. Emphasis variant adds a black left spine for single-source
-          and "saved" cards.
+          White surface, hairline border, 4px radius, 18x20px padding. Hover lifts border to
+          ink-muted. Emphasis variant adds a black left spine for single-source and "saved" cards.
         </p>
         <Card style={{ marginBottom: 10 }}>
           <strong>Default card</strong>
@@ -317,8 +298,8 @@ export default function DesignPage() {
       {/* Chips and badges */}
       <Section eyebrow="05" title="Chip and StatusBadge">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
-          Chips are pill-shaped filter selectors. Active state inverts (black bg, white
-          text). StatusBadge shows connection state, trust level, or default-outlet flag.
+          Chips are pill-shaped filter selectors. Active state inverts (black bg, white text).
+          StatusBadge shows connection state, trust level, or default-outlet flag.
         </p>
         <SubHead>Chip</SubHead>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
@@ -339,8 +320,8 @@ export default function DesignPage() {
       {/* Notices */}
       <Section eyebrow="06" title="Notice">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
-          Left-bordered banner with semantic background tint. For inline page-level
-          messages. Avoid inside cards; cards already carry the message.
+          Left-bordered banner with semantic background tint. For inline page-level messages. Avoid
+          inside cards; cards already carry the message.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Notice tone="info">Info: lead with the fact, not the setup.</Notice>
@@ -353,8 +334,8 @@ export default function DesignPage() {
       {/* Field */}
       <Section eyebrow="07" title="Field">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
-          Label + child input + optional hint. Label is uppercase eyebrow style. Inputs
-          inside .wpds-field get the standard 1px input border and focus ring.
+          Label + child input + optional hint. Label is uppercase eyebrow style. Inputs inside
+          .wpds-field get the standard 1px input border and focus ring.
         </p>
         <Card>
           <Field label="Site URL" hint="The base URL of your WordPress site.">
@@ -372,9 +353,9 @@ export default function DesignPage() {
       {/* SideSheet */}
       <Section eyebrow="08" title="SideSheet">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
-          Right-side overlay, default 480px wide. Closes on Escape and scrim click.
-          Title renders in Newsreader. Footer pinned to bottom with subtle background.
-          Use for: Draft Wizard, Add Feed, Connect WP Site.
+          Right-side overlay, default 480px wide. Closes on Escape and scrim click. Title renders in
+          Newsreader. Footer pinned to bottom with subtle background. Use for: Draft Wizard, Add
+          Feed, Connect WP Site.
         </p>
         <SideSheetDemo />
       </Section>
@@ -382,8 +363,8 @@ export default function DesignPage() {
       {/* MasterDetail */}
       <Section eyebrow="09" title="MasterDetail">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
-          Two-pane layout: 220px sidebar (configurable) + flexible right pane. Sidebar
-          uses surface-subtle. Used by /voice and /settings.
+          Two-pane layout: 220px sidebar (configurable) + flexible right pane. Sidebar uses
+          surface-subtle. Used by /voice and /settings.
         </p>
         <div
           style={{
@@ -428,8 +409,8 @@ export default function DesignPage() {
                 General
               </div>
               <p style={{ fontSize: 13, color: "var(--ink-secondary)", margin: 0 }}>
-                Detail pane content. Selected sidebar item gets an inset left shadow
-                (3px, ink-primary).
+                Detail pane content. Selected sidebar item gets an inset left shadow (3px,
+                ink-primary).
               </p>
             </div>
           </MasterDetail>
@@ -440,8 +421,8 @@ export default function DesignPage() {
       <Section eyebrow="10" title="Patterns">
         <SubHead>Page header</SubHead>
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
-          Used at the top of every full-page surface. page-title is Newsreader 30px weight
-          500. page-sub is italic 13px tertiary ink. Canonical: src/app/page.tsx.
+          Used at the top of every full-page surface. page-title is Newsreader 30px weight 500.
+          page-sub is italic 13px tertiary ink. Canonical: src/app/page.tsx.
         </p>
         <div
           style={{
@@ -461,9 +442,9 @@ export default function DesignPage() {
 
         <SubHead style={{ marginTop: 24 }}>Cluster card</SubHead>
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
-          Default: white Card + meta eyebrow + title + summary + source list + tag row +
-          action row. Single-source variant uses Card emphasis with a different eyebrow.
-          Canonical: src/app/_components/TodayFolderStreams.tsx.
+          Default: white Card + meta eyebrow + title + summary + source list + tag row + action row.
+          Single-source variant uses Card emphasis with a different eyebrow. Canonical:
+          src/app/_components/TodayFolderStreams.tsx.
         </p>
         <Card>
           <div
@@ -490,8 +471,8 @@ export default function DesignPage() {
             Coffee shops are opening earlier to capture the morning commute
           </div>
           <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 8 }}>
-            Three independent operators in Seattle extended opening to 5:30 AM this week,
-            citing foot traffic data from the downtown transit hub.
+            Three independent operators in Seattle extended opening to 5:30 AM this week, citing
+            foot traffic data from the downtown transit hub.
           </p>
           <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 8 }}>
             The Stranger · Seattle Times · Eater Seattle
@@ -523,17 +504,17 @@ export default function DesignPage() {
 
         <SubHead style={{ marginTop: 24 }}>Compact row (Sources)</SubHead>
         <p style={{ fontSize: 13, color: "var(--ink-secondary)" }}>
-          Grid layout: checkbox + name+URL+tags + stats + last-poll + trust + routing
-          button + sync button. Hairline border-default divider between rows, no card
-          frame. Canonical: src/app/sources/_components/SourcesExplorer.tsx.
+          Grid layout: checkbox + name+URL+tags + stats + last-poll + trust + routing button + sync
+          button. Hairline border-default divider between rows, no card frame. Canonical:
+          src/app/sources/_components/SourcesExplorer.tsx.
         </p>
       </Section>
 
       {/* Anti-patterns */}
       <Section eyebrow="11" title="Anti-patterns">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
-          Flag these in code review. They break voice, introduce scope creep, or make the
-          product look like an AI slop factory.
+          Flag these in code review. They break voice, introduce scope creep, or make the product
+          look like an AI slop factory.
         </p>
         <ul
           style={{
@@ -544,17 +525,40 @@ export default function DesignPage() {
             margin: 0,
           }}
         >
-          <li>No new hex codes in JSX. Use tokens. If the token does not exist, propose adding it to globals.css first.</li>
-          <li>No pictographic emojis in chips, headers, buttons, or copy. Typographic glyphs (→ ↗ ✓ ✕) are fine.</li>
+          <li>
+            No new hex codes in JSX. Use tokens. If the token does not exist, propose adding it to
+            globals.css first.
+          </li>
+          <li>
+            No pictographic emojis in chips, headers, buttons, or copy. Typographic glyphs (→ ↗ ✓ ✕)
+            are fine.
+          </li>
           <li>No em-dashes in code, comments, or copy. Use semicolons or rephrase.</li>
           <li>No setup-then-reveal sentences in copy. Lead with the fact.</li>
           <li>No closures, sign-offs, or "want me to" appendixes in any user-facing text.</li>
-          <li>No multi-tenant chrome: no org switchers, role pickers, network admin links, or audit log links.</li>
-          <li>No push notifications, digest emails, or scheduled auto-publish. This is a pull-based product.</li>
-          <li>No "preview" buttons on cluster cards; the primary action ships the user toward writing.</li>
-          <li>No voice-match score on cluster cards. Voice match is a post-draft check, not a pre-draft filter.</li>
-          <li>No mobile-first breakpoints below 720px. Graceful degradation is fine; pixel-perfect mobile is out of scope.</li>
-          <li>No tag editing UI. Tags are LLM-extracted at ingest; they are a matching primitive, not a user-curated taxonomy.</li>
+          <li>
+            No multi-tenant chrome: no org switchers, role pickers, network admin links, or audit
+            log links.
+          </li>
+          <li>
+            No push notifications, digest emails, or scheduled auto-publish. This is a pull-based
+            product.
+          </li>
+          <li>
+            No "preview" buttons on cluster cards; the primary action ships the user toward writing.
+          </li>
+          <li>
+            No voice-match score on cluster cards. Voice match is a post-draft check, not a
+            pre-draft filter.
+          </li>
+          <li>
+            No mobile-first breakpoints below 720px. Graceful degradation is fine; pixel-perfect
+            mobile is out of scope.
+          </li>
+          <li>
+            No tag editing UI. Tags are LLM-extracted at ingest; they are a matching primitive, not
+            a user-curated taxonomy.
+          </li>
         </ul>
       </Section>
     </div>
@@ -603,13 +607,7 @@ function Section({
   );
 }
 
-function SubHead({
-  children,
-  style,
-}: {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-}) {
+function SubHead({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div
       style={{
@@ -706,7 +704,9 @@ function TypeRow({
       }}
     >
       <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-secondary)", marginBottom: 2 }}>
+        <div
+          style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-secondary)", marginBottom: 2 }}
+        >
           {label}
         </div>
         <div style={{ fontSize: 10, color: "var(--ink-muted)", fontFamily: "monospace" }}>

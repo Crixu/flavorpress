@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  startWPAuthorizeAction,
-  connectOutletManualAction,
-} from "@/lib/v1/actions";
+import { startWPAuthorizeAction, connectOutletManualAction } from "@/lib/v1/actions";
 import { SideSheet, Button, Field } from "@/components/wpds";
 
 interface Props {
@@ -100,10 +97,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props)
             Sends you to your WordPress site to approve FlavorPress. WordPress generates the
             Application Password and sends you back here.
           </div>
-          <Button
-            onClick={handleAuthorize}
-            disabled={!baseUrl || pending}
-          >
+          <Button onClick={handleAuthorize} disabled={!baseUrl || pending}>
             Authorize on WordPress
           </Button>
         </div>
@@ -145,10 +139,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props)
             placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
           />
         </Field>
-        <Button
-          onClick={handleManual}
-          disabled={!baseUrl || !username || !appPassword || pending}
-        >
+        <Button onClick={handleManual} disabled={!baseUrl || !username || !appPassword || pending}>
           Connect manually
         </Button>
       </div>

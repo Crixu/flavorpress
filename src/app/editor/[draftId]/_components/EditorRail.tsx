@@ -36,9 +36,7 @@ export function EditorRail({ sources, extensions, remix, extensionAnnotationCoun
           onClick={() => setTab("extensions")}
         >
           Extensions{" "}
-          {extensionAnnotationCount > 0 && (
-            <span className="ct">{extensionAnnotationCount}</span>
-          )}
+          {extensionAnnotationCount > 0 && <span className="ct">{extensionAnnotationCount}</span>}
         </button>
         <button
           type="button"
@@ -51,9 +49,7 @@ export function EditorRail({ sources, extensions, remix, extensionAnnotationCoun
       <div className="fp-editor-rail-body">
         {tab === "sources" && (
           <div className="fp-editor-rail-sources">
-            {sources.length === 0 && (
-              <div className="fp-editor-rail-empty">No sources</div>
-            )}
+            {sources.length === 0 && <div className="fp-editor-rail-empty">No sources</div>}
             {sources.map((s) => (
               <a
                 key={s.id}
@@ -68,12 +64,8 @@ export function EditorRail({ sources, extensions, remix, extensionAnnotationCoun
             ))}
           </div>
         )}
-        {tab === "extensions" && (
-          <div className="fp-editor-rail-extensions">{extensions}</div>
-        )}
-        {tab === "remix" && (
-          <div className="fp-editor-rail-remix">{remix}</div>
-        )}
+        {tab === "extensions" && <div className="fp-editor-rail-extensions">{extensions}</div>}
+        {tab === "remix" && <div className="fp-editor-rail-remix">{remix}</div>}
       </div>
     </aside>
   );

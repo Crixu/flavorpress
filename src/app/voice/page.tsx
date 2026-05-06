@@ -158,7 +158,9 @@ function VoiceStatusMessages({ status }: { status: Awaited<PageProps["searchPara
   return (
     <>
       {status.wp_error ? (
-        <Notice tone="error">WordPress authorization failed: {decodeURIComponent(status.wp_error)}</Notice>
+        <Notice tone="error">
+          WordPress authorization failed: {decodeURIComponent(status.wp_error)}
+        </Notice>
       ) : null}
       {status.wp_rejected ? (
         <Notice tone="warn">

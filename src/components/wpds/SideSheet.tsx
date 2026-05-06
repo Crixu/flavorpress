@@ -33,20 +33,11 @@ export function SideSheet({ open, onClose, title, width = 480, children, footer 
   if (!open) return null;
   return (
     <>
-      <div
-        className="wpds-sidesheet-scrim"
-        data-testid="wpds-sidesheet-scrim"
-        onClick={onClose}
-      />
+      <div className="wpds-sidesheet-scrim" data-testid="wpds-sidesheet-scrim" onClick={onClose} />
       <aside className="wpds-sidesheet" style={{ width }}>
         <header className="wpds-sidesheet-h">
           <h3 className="wpds-sidesheet-title">{title}</h3>
-          <button
-            type="button"
-            className="wpds-sidesheet-x"
-            onClick={onClose}
-            aria-label="Close"
-          >
+          <button type="button" className="wpds-sidesheet-x" onClick={onClose} aria-label="Close">
             ×
           </button>
         </header>

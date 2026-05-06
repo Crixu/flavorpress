@@ -18,11 +18,7 @@ export function ShellNav() {
       {ITEMS.map((it) => {
         const active = it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
         return (
-          <Link
-            key={it.href}
-            href={it.href}
-            className={`fp-tab ${active ? "on" : ""}`}
-          >
+          <Link key={it.href} href={it.href} className={`fp-tab ${active ? "on" : ""}`}>
             {it.label}
           </Link>
         );

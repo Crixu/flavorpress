@@ -85,11 +85,7 @@ export function ReaderClient({
 
   return (
     <div className="space-y-5">
-      <FolderFilterButton
-        folders={folders}
-        totalCount={totalCount}
-        activeFolder={activeFolder}
-      />
+      <FolderFilterButton folders={folders} totalCount={totalCount} activeFolder={activeFolder} />
       <SwipeDeck
         initialItems={initialItems}
         initialMarkedCount={initialMarkedCount}

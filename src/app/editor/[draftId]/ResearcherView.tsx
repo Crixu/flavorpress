@@ -81,12 +81,7 @@ export function ResearcherView({
         <div className="fp-researcher-header-actions">
           {sibling ? <div>{sibling}</div> : null}
           {wpEditLink ? (
-            <a
-              href={wpEditLink}
-              target="_blank"
-              rel="noreferrer"
-              className="fp-btn fp-btn-primary"
-            >
+            <a href={wpEditLink} target="_blank" rel="noreferrer" className="fp-btn fp-btn-primary">
               Open in WordPress →
             </a>
           ) : (
@@ -108,9 +103,7 @@ export function ResearcherView({
           Angles
           <span className="fp-researcher-section-count">{notes.ideas.length}</span>
         </h2>
-        <p className="fp-researcher-section-desc">
-          Angles you might take. Pick one to write from.
-        </p>
+        <p className="fp-researcher-section-desc">Angles you might take. Pick one to write from.</p>
         {notes.ideas.length > 0 ? (
           <ul className="fp-researcher-angles">
             {notes.ideas.map((idea, i) => (
@@ -150,7 +143,10 @@ export function ResearcherView({
 
       <section className="fp-researcher-section">
         <h2 className="fp-researcher-section-h">
-          <span className="fp-researcher-section-dot" style={{ background: "var(--border-strong)" }} />
+          <span
+            className="fp-researcher-section-dot"
+            style={{ background: "var(--border-strong)" }}
+          />
           Leads
           <span className="fp-researcher-section-count">{notes.facts.length}</span>
         </h2>
@@ -170,10 +166,7 @@ export function ResearcherView({
 
       <section className="fp-researcher-section">
         <h2 className="fp-researcher-section-h">
-          <span
-            className="fp-researcher-section-dot"
-            style={{ background: "var(--fg-subtle)" }}
-          />
+          <span className="fp-researcher-section-dot" style={{ background: "var(--fg-subtle)" }} />
           Sources
           <span className="fp-researcher-section-count">{sources.length}</span>
         </h2>
@@ -190,8 +183,8 @@ export function ResearcherView({
         <div className="fp-researcher-section-actions">
           <div className="fp-researcher-add-source">
             <p className="fp-researcher-add-source-hint">
-              Paste an article URL to widen the input. Then hit Remix or More quotes to pull it
-              into the notes.
+              Paste an article URL to widen the input. Then hit Remix or More quotes to pull it into
+              the notes.
             </p>
             <AddSourceForm draftId={draftId} clusterId={clusterId} />
           </div>
@@ -199,7 +192,9 @@ export function ResearcherView({
       </section>
 
       <div className="fp-researcher-footer">
-        <p className="fp-researcher-footer-label">Done with these notes? Delete to keep your drafts list tidy.</p>
+        <p className="fp-researcher-footer-label">
+          Done with these notes? Delete to keep your drafts list tidy.
+        </p>
         <div className="fp-researcher-footer-actions">
           <FlagMismatchButton draftId={draftId} clusterId={clusterId} />
           <form action={deleteDraftAction}>

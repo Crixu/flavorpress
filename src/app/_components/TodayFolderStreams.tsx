@@ -167,11 +167,7 @@ function FolderSection({
         boxShadow: "var(--shadow-sm)",
       }}
     >
-      <FolderSectionHeader
-        stream={stream}
-        expanded={expanded}
-        onToggle={onToggle}
-      />
+      <FolderSectionHeader stream={stream} expanded={expanded} onToggle={onToggle} />
       {expanded && (
         <div
           style={{
@@ -431,7 +427,8 @@ function ClusterCard({
     });
   }
 
-  const sourceName = preview.items[0]?.displayName || hostFromUrl(preview.items[0]?.sourceUrl ?? "");
+  const sourceName =
+    preview.items[0]?.displayName || hostFromUrl(preview.items[0]?.sourceUrl ?? "");
 
   return (
     <Card
@@ -556,7 +553,8 @@ function PeekRow({
   const headline = preview.items[0]?.title ?? "Untitled cluster";
   const fit = c.signals?.composite ?? 0;
   const isSingleSource = c.sourceCount === 1;
-  const sourceName = preview.items[0]?.displayName || hostFromUrl(preview.items[0]?.sourceUrl ?? "");
+  const sourceName =
+    preview.items[0]?.displayName || hostFromUrl(preview.items[0]?.sourceUrl ?? "");
 
   function dismiss() {
     onDismiss(c.id);

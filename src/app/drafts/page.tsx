@@ -71,8 +71,7 @@ export default async function DraftsPage({ searchParams }: PageProps) {
 
   const sp = await searchParams;
   const rawBucket = sp.bucket;
-  const bucket: Bucket =
-    rawBucket === "notes" || rawBucket === "sent" ? rawBucket : "in-progress";
+  const bucket: Bucket = rawBucket === "notes" || rawBucket === "sent" ? rawBucket : "in-progress";
 
   const r = await db.execute({
     sql: `SELECT d.id, d.mode, d.headline, d.cluster_id, d.outlet_id,
@@ -412,9 +411,7 @@ function SentSection({ sent }: { sent: SentRow[] }) {
 
 function TagChip({ tag }: { tag: string }) {
   return (
-    <span
-      className="inline-flex items-center rounded-sm border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-[10px] text-stone-500"
-    >
+    <span className="inline-flex items-center rounded-sm border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-[10px] text-stone-500">
       {tag}
     </span>
   );

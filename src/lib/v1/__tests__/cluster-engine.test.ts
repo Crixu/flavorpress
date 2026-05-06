@@ -130,7 +130,9 @@ describe("handleItemIngested - single-source firing", () => {
       const sql = query.sql ?? "";
 
       if (sql.includes("SELECT * FROM items WHERE id =")) {
-        return Promise.resolve({ rows: [makeItemRow({ id: "item-2", canonical_url: "https://example.com/story" })] });
+        return Promise.resolve({
+          rows: [makeItemRow({ id: "item-2", canonical_url: "https://example.com/story" })],
+        });
       }
 
       if (sql.includes("SELECT * FROM items") && sql.includes("AND id !=")) {
@@ -162,7 +164,12 @@ describe("handleItemIngested - single-source firing", () => {
     });
 
     const result = await handleItemIngested(
-      { itemId: "item-2", sourceId: "source-1", canonicalUrl: "https://example.com/story", contentHash: "hash-abc" },
+      {
+        itemId: "item-2",
+        sourceId: "source-1",
+        canonicalUrl: "https://example.com/story",
+        contentHash: "hash-abc",
+      },
       { traceId: "trace-test", userId: "user-1" },
     );
 
@@ -224,7 +231,12 @@ describe("handleItemIngested - single-source firing", () => {
     });
 
     const result = await handleItemIngested(
-      { itemId: "item-3", sourceId: "source-1", canonicalUrl: "https://other.com/story", contentHash: "hash-def" },
+      {
+        itemId: "item-3",
+        sourceId: "source-1",
+        canonicalUrl: "https://other.com/story",
+        contentHash: "hash-def",
+      },
       { traceId: "trace-multi", userId: "user-1" },
     );
 
@@ -280,7 +292,12 @@ describe("handleItemIngested - single-source firing", () => {
     });
 
     await handleItemIngested(
-      { itemId: "item-4", sourceId: "source-1", canonicalUrl: "https://lowsignal.com/story", contentHash: "hash-ghi" },
+      {
+        itemId: "item-4",
+        sourceId: "source-1",
+        canonicalUrl: "https://lowsignal.com/story",
+        contentHash: "hash-ghi",
+      },
       { traceId: "trace-low", userId: "user-1" },
     );
 

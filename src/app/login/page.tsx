@@ -62,8 +62,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
           {!configured ? (
             <div style={{ marginBottom: 14 }}>
               <Notice tone="warn">
-                Set <code>FLAVORPRESS_AUTH_USER</code>,{" "}
-                <code>FLAVORPRESS_AUTH_PASSWORD</code>, and{" "}
+                Set <code>FLAVORPRESS_AUTH_USER</code>, <code>FLAVORPRESS_AUTH_PASSWORD</code>, and{" "}
                 <code>FLAVORPRESS_SESSION_SECRET</code> before signing in.
               </Notice>
             </div>
@@ -77,26 +76,12 @@ export default async function LoginPage({ searchParams }: PageProps) {
           <form action={loginAction}>
             <input type="hidden" name="next" value={next} />
             <Field label="Username">
-              <input
-                name="username"
-                type="text"
-                autoComplete="username"
-                required
-                autoFocus
-              />
+              <input name="username" type="text" autoComplete="username" required autoFocus />
             </Field>
             <Field label="Password">
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
+              <input name="password" type="password" autoComplete="current-password" required />
             </Field>
-            <Button
-              type="submit"
-              style={{ width: "100%", justifyContent: "center" }}
-            >
+            <Button type="submit" style={{ width: "100%", justifyContent: "center" }}>
               Sign in
             </Button>
           </form>

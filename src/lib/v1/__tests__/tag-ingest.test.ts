@@ -32,7 +32,15 @@ describe("tagItem", () => {
     await db.execute({
       sql: `INSERT INTO items (id, user_id, source_id, canonical_url, content_hash, title, lede, body, published_at, fetched_at)
             VALUES (?, ?, ?, ?, ?, 'Slow espresso', 'Lede about coffee', 'Body about coffee', ?, ?)`,
-      args: [itemId, SINGLE_USER_ID, sourceId, `https://example.com/${itemId}`, `hash-${itemId}`, Date.now(), Date.now()],
+      args: [
+        itemId,
+        SINGLE_USER_ID,
+        sourceId,
+        `https://example.com/${itemId}`,
+        `hash-${itemId}`,
+        Date.now(),
+        Date.now(),
+      ],
     });
     vi.mocked(extractItemTags).mockResolvedValue(["espresso", "coffee"]);
     const count = await tagItem(itemId);
@@ -57,7 +65,15 @@ describe("tagItem", () => {
     await db.execute({
       sql: `INSERT INTO items (id, user_id, source_id, canonical_url, content_hash, title, lede, body, published_at, fetched_at)
             VALUES (?, ?, ?, ?, ?, 'x', 'lede-x', 'y', ?, ?)`,
-      args: [itemId, SINGLE_USER_ID, sourceId, `https://example.com/${itemId}`, `hash-${itemId}`, Date.now(), Date.now()],
+      args: [
+        itemId,
+        SINGLE_USER_ID,
+        sourceId,
+        `https://example.com/${itemId}`,
+        `hash-${itemId}`,
+        Date.now(),
+        Date.now(),
+      ],
     });
     vi.mocked(extractItemTags).mockResolvedValue([]);
     const count = await tagItem(itemId);

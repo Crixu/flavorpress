@@ -20,71 +20,71 @@ All tokens live as CSS custom properties in `src/app/globals.css` and are reacha
 
 ### Surfaces
 
-| Token | Value | Use |
-|---|---|---|
-| `--surface-canvas` | `#ffffff` | Cards, manuscript, primary panels |
-| `--surface-subtle` | `#fafafa` | Page background under cards, side-sheet footer |
-| `--surface-muted` | `#f6f7f7` | Sidebar background |
-| `--surface-tag` | `#f0f0f1` | Tag chips, page background, inactive surface accents |
+| Token              | Value     | Use                                                  |
+| ------------------ | --------- | ---------------------------------------------------- |
+| `--surface-canvas` | `#ffffff` | Cards, manuscript, primary panels                    |
+| `--surface-subtle` | `#fafafa` | Page background under cards, side-sheet footer       |
+| `--surface-muted`  | `#f6f7f7` | Sidebar background                                   |
+| `--surface-tag`    | `#f0f0f1` | Tag chips, page background, inactive surface accents |
 
 ### Ink
 
-| Token | Value | Use |
-|---|---|---|
-| `--ink-primary` | `#1e1e1e` | Body text, primary buttons, active accents |
-| `--ink-secondary` | `#3c434a` | Excerpt copy, dense body |
-| `--ink-tertiary` | `#646970` | Subheads, secondary copy |
-| `--ink-muted` | `#787c82` | Eyebrows, meta lines, hint text |
+| Token             | Value     | Use                                        |
+| ----------------- | --------- | ------------------------------------------ |
+| `--ink-primary`   | `#1e1e1e` | Body text, primary buttons, active accents |
+| `--ink-secondary` | `#3c434a` | Excerpt copy, dense body                   |
+| `--ink-tertiary`  | `#646970` | Subheads, secondary copy                   |
+| `--ink-muted`     | `#787c82` | Eyebrows, meta lines, hint text            |
 
 ### Border
 
-| Token | Value | Use |
-|---|---|---|
-| `--border-default` | `#dcdcde` | All hairline borders |
-| `--border-strong` | `#1e1e1e` | Section dividers, emphasis card spine |
-| `--border-input` | `#8c8f94` | Form inputs (slightly darker than surface borders to read as interactive) |
+| Token              | Value     | Use                                                                       |
+| ------------------ | --------- | ------------------------------------------------------------------------- |
+| `--border-default` | `#dcdcde` | All hairline borders                                                      |
+| `--border-strong`  | `#1e1e1e` | Section dividers, emphasis card spine                                     |
+| `--border-input`   | `#8c8f94` | Form inputs (slightly darker than surface borders to read as interactive) |
 
 ### Accent
 
-| Token | Value | Use |
-|---|---|---|
-| `--accent` | `#1e1e1e` | Active tab underline, primary CTA, chips on state |
+| Token           | Value     | Use                                                                       |
+| --------------- | --------- | ------------------------------------------------------------------------- |
+| `--accent`      | `#1e1e1e` | Active tab underline, primary CTA, chips on state                         |
 | `--accent-blue` | `#3858e9` | Inline links and inline-edit affordances **only** — never primary buttons |
 
 ### Semantic
 
-| Token | Value | Use |
-|---|---|---|
-| `--success-bg` / `--success-fg` | `#e6f7ec` / `#0a5a2e` | "Connected", supported facts, positive trust |
-| `--warn-bg` / `--warn-fg` | `#fdf6e3` / `#896200` | Stale drafts, medium trust, "Action needed" |
-| `--error-bg` / `--error-fg` | `#fcebec` / `#8a1f24` | Disconnected, disputed facts, low trust, danger zone |
+| Token                           | Value                 | Use                                                  |
+| ------------------------------- | --------------------- | ---------------------------------------------------- |
+| `--success-bg` / `--success-fg` | `#e6f7ec` / `#0a5a2e` | "Connected", supported facts, positive trust         |
+| `--warn-bg` / `--warn-fg`       | `#fdf6e3` / `#896200` | Stale drafts, medium trust, "Action needed"          |
+| `--error-bg` / `--error-fg`     | `#fcebec` / `#8a1f24` | Disconnected, disputed facts, low trust, danger zone |
 
 ### Type
 
-| Token | Value | Use |
-|---|---|---|
-| `--type-display` | `36px` | Page titles (Newsreader, weight 500) |
-| `--type-h1` | `24px` | Page titles for dense surfaces (Sources, Drafts) |
-| `--type-h2` | `18px` | Section headers, card titles (Newsreader on editorial; Inter on dense) |
-| `--type-body` | `13px` | Default body |
-| `--type-meta` | `11px` | Eyebrows, footnotes, stats |
-| `--type-eyebrow` | `10px` | Uppercase eyebrow with letter-spacing 0.06em |
+| Token            | Value  | Use                                                                    |
+| ---------------- | ------ | ---------------------------------------------------------------------- |
+| `--type-display` | `36px` | Page titles (Newsreader, weight 500)                                   |
+| `--type-h1`      | `24px` | Page titles for dense surfaces (Sources, Drafts)                       |
+| `--type-h2`      | `18px` | Section headers, card titles (Newsreader on editorial; Inter on dense) |
+| `--type-body`    | `13px` | Default body                                                           |
+| `--type-meta`    | `11px` | Eyebrows, footnotes, stats                                             |
+| `--type-eyebrow` | `10px` | Uppercase eyebrow with letter-spacing 0.06em                           |
 
 ### Radius
 
-| Token | Value | Use |
-|---|---|---|
-| `--radius-sm` | `2px` | Buttons, inputs (admin-tight) |
-| `--radius-md` | `4px` | Cards, side-sheets, panels |
-| `--radius-lg` | `6px` | Frame, app shell |
+| Token           | Value   | Use                                |
+| --------------- | ------- | ---------------------------------- |
+| `--radius-sm`   | `2px`   | Buttons, inputs (admin-tight)      |
+| `--radius-md`   | `4px`   | Cards, side-sheets, panels         |
+| `--radius-lg`   | `6px`   | Frame, app shell                   |
 | `--radius-pill` | `999px` | Chips, status badges, deck buttons |
 
 ### Motion
 
-| Token | Value | Use |
-|---|---|---|
-| `--duration` | `150ms` | All transitions |
-| `--ease` | `cubic-bezier(0.22, 1, 0.36, 1)` | All transitions |
+| Token        | Value                            | Use             |
+| ------------ | -------------------------------- | --------------- |
+| `--duration` | `150ms`                          | All transitions |
+| `--ease`     | `cubic-bezier(0.22, 1, 0.36, 1)` | All transitions |
 
 Reduced-motion media query in `globals.css` zeros transitions and animations. Always works through that media query, not around it.
 
@@ -217,7 +217,9 @@ Canonical: `src/app/page.tsx` (Today).
 Compact horizontal stats row. Three or four `<span><b>N</b> label</span>` items. Used on Today.
 
 ```css
-.fp-today-stats { /* see globals.css */ }
+.fp-today-stats {
+  /* see globals.css */
+}
 ```
 
 Canonical: `src/app/_components/TodayStats.tsx`.
@@ -235,12 +237,18 @@ Canonical: `src/app/_components/TodayFolderStreams.tsx`.
   <div className="cc-meta">Cluster · 4 sources · 2h ago</div>
   <h3 className="cc-title">{title}</h3>
   <p className="cc-summary">{summary}</p>
-  <div className="cc-sources">{sources.join(' · ')}</div>
-  <div className="cc-tags">{tags.map((t) => <span className="tag">{t}</span>)}</div>
+  <div className="cc-sources">{sources.join(" · ")}</div>
+  <div className="cc-tags">
+    {tags.map((t) => (
+      <span className="tag">{t}</span>
+    ))}
+  </div>
   <div className="cc-actions">
     <Button>Draft for {outlet}</Button>
     <Button variant="secondary">Open cluster</Button>
-    <Button variant="link" style={{marginLeft: 'auto'}}>Not a story</Button>
+    <Button variant="link" style={{ marginLeft: "auto" }}>
+      Not a story
+    </Button>
   </div>
 </Card>
 ```

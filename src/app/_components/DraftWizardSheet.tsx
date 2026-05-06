@@ -134,17 +134,12 @@ export function DraftWizardSheet({
     });
   }
 
-  const stepLabel =
-    step === 1 ? "1 / 3 · Format" : step === 2 ? "2 / 3 · Length" : "3 / 3 · Angle";
+  const stepLabel = step === 1 ? "1 / 3 · Format" : step === 2 ? "2 / 3 · Length" : "3 / 3 · Angle";
 
   const footer = (
     <>
       {step > 1 && (
-        <Button
-          variant="secondary"
-          onClick={() => setStep((step - 1) as Step)}
-          disabled={drafting}
-        >
+        <Button variant="secondary" onClick={() => setStep((step - 1) as Step)} disabled={drafting}>
           ← Back
         </Button>
       )}
@@ -223,9 +218,7 @@ export function DraftWizardSheet({
       {step === 3 && (
         <div>
           <div className="wpds-wiz-label">Pick the angle</div>
-          {!angles && !angleError && (
-            <div className="wpds-wiz-loading">Loading angles…</div>
-          )}
+          {!angles && !angleError && <div className="wpds-wiz-loading">Loading angles…</div>}
           {angleError && <div className="wpds-wiz-error">{angleError}</div>}
           {angles?.map((a) => (
             <div
