@@ -54,6 +54,7 @@ import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { findClaimingSourceExtension } from "@/extensions/source-extensions";
 import { getDisabledExtensionIds } from "./settings";
+import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -1369,22 +1370,26 @@ export async function buildVoiceProfileAction(formData: FormData) {
     publishedAt: Date.parse(p.date),
   }));
 
-  await persistVoiceProfile(outletId, posts);
+  await persistVoiceProfile(outletId, posts, { method: "archive", transcript: null });
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
 
 /**
- * Seed a voice profile from prose the user pastes manually. Used when the
- * outlet has no published archive yet (brand-new WordPress site) so the
- * archive analyzer has nothing to fingerprint. Multiple samples can be
- * separated by a line containing only `---`.
+ * Seed a voice profile from prose the user pastes manually or types in
+ * the in-app free-write panel. Multiple samples can be separated by a
+ * line containing only `---`. The hidden `method` form field tells us
+ * which onboarding path produced the prose ("paste" or "freewrite") so
+ * the audit row reflects the actual source; defaults to "paste" for
+ * back-compat.
  */
 export async function seedVoiceFromSamplesAction(formData: FormData) {
   await ensureSchema();
   await ensureSingleUser();
   const outletId = String(formData.get("outletId") ?? "");
   const samples = String(formData.get("samples") ?? "").trim();
+  const methodInput = String(formData.get("method") ?? "paste");
+  const method: "paste" | "freewrite" = methodInput === "freewrite" ? "freewrite" : "paste";
   if (!outletId) throw new Error("outletId required.");
   if (!samples) throw new Error("Paste at least one sample of your writing.");
 
@@ -1407,7 +1412,56 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
     publishedAt: now,
   }));
 
-  await persistVoiceProfile(outletId, posts);
+  await persistVoiceProfile(outletId, posts, { method, transcript: samples });
+  revalidatePath("/voice");
+  revalidatePath(`/voice/${outletId}`);
+}
+
+/**
+ * Seed a voice profile from a 7-question Kemp-style interview. Reads the
+ * answers from the form (fields `q1`..`q7`), runs them through Claude to
+ * synthesize a 600-800 word essay in the user's voice, then fingerprints
+ * the essay through the same pipeline as paste/free-write. The transcript
+ * is stored on the profile row as JSON for audit; the synthesized essay
+ * is not persisted separately.
+ */
+export async function seedVoiceFromInterviewAction(formData: FormData) {
+  await ensureSchema();
+  await ensureSingleUser();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+
+  const outlet = await getOutlet(outletId);
+  if (!outlet) throw new Error("Outlet not found.");
+
+  const rawAnswers: string[] = [];
+  for (let i = 1; i <= 7; i++) {
+    rawAnswers.push(String(formData.get(`q${i}`) ?? ""));
+  }
+  const answers = sanitizeAnswers(rawAnswers);
+  const filled = answers.filter((a) => a.length > 0).length;
+  if (filled < 3) {
+    throw new Error(`Answer at least three questions to seed a voice; got ${filled}.`);
+  }
+
+  const essay = await synthesizeVoiceEssay(answers);
+  if (!essay) {
+    throw new Error(
+      "Could not synthesize a voice essay from the interview. Try again, or seed from samples.",
+    );
+  }
+  const wordCount = essay.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 200) {
+    throw new Error(
+      `Synthesized essay was too short (${wordCount} words); try richer answers or seed from samples.`,
+    );
+  }
+
+  const now = Date.now();
+  await persistVoiceProfile(outletId, [{ title: "", body: essay, publishedAt: now }], {
+    method: "interview",
+    transcript: JSON.stringify(answers),
+  });
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1520,6 +1574,7 @@ Write the 2-3 sentence description now.`,
 async function persistVoiceProfile(
   outletId: string,
   posts: { title: string; body: string; publishedAt: number }[],
+  seed: { method: "archive" | "paste" | "freewrite" | "interview"; transcript: string | null },
 ): Promise<void> {
   const styleSheet = extractStyleSheet(posts);
   const yaml = renderStyleYaml(styleSheet);
@@ -1536,8 +1591,9 @@ async function persistVoiceProfile(
           (outlet_id, user_id, style_sheet_yaml, archive_index_size,
            function_word_distribution, sentence_length_mean, sentence_length_variance,
            hedge_frequency, em_dash_density, quote_density,
-           banned_terms, signature_terms, anchored_post_ids, description, last_rebuilt_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           banned_terms, signature_terms, anchored_post_ids, description,
+           seed_method, seed_transcript, last_rebuilt_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       outletId,
       SINGLE_USER_ID,
@@ -1553,6 +1609,8 @@ async function persistVoiceProfile(
       JSON.stringify(styleSheet.signatureTerms),
       JSON.stringify([]),
       preservedDescription,
+      seed.method,
+      seed.transcript,
       Date.now(),
     ],
   });
