@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { generateDraftAction, generateDraftAnglesAction } from "@/lib/v1/actions";
 import { type DraftWizardPrefs, type WizardLength } from "@/lib/v1/wizard-prefs-shared";
 import { DRAFT_FORMATS, type DraftFormat } from "@/lib/v1/draft-format";
@@ -69,6 +70,12 @@ export function DraftWizardModal({
   const [showCustom, setShowCustom] = useState(false);
   const [drafting, startDrafting] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Portal target: only render the modal once mounted on the client so SSR
+  // matches and document.body is available.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   // Bumped each time the user changes format or length; cancels in-flight
   // angle calls so a fast click-through doesn't render stale suggestions.
   const angleRunRef = useRef(0);
@@ -197,7 +204,9 @@ export function DraftWizardModal({
     setShowCustom(true);
   }
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -383,7 +392,8 @@ export function DraftWizardModal({
           </div>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
