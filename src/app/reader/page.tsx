@@ -2,20 +2,13 @@
  * Reader mode.
  *
  * Triage surface: swipe through unclustered items one at a time.
- * Right = great, follow up. Left = dismiss. When the marked pile
- * crosses READER_CLUSTER_THRESHOLD, the items are grouped into
- * clusters by an LLM pass and surface on Today.
+ * Right = save, left = skip. Marked items are draftable immediately.
  */
 
 import Link from "next/link";
 import { ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "@/lib/db";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
-import {
-  listReaderFolderOptions,
-  loadReaderQueue,
-  READER_CLUSTER_THRESHOLD,
-  type ReaderFolderOption,
-} from "@/lib/v1/reader";
+import { listReaderFolderOptions, loadReaderQueue } from "@/lib/v1/reader";
 import { ReaderClient } from "./_components/ReaderClient";
 
 export const dynamic = "force-dynamic";
@@ -46,14 +39,9 @@ export default async function ReaderPage({ searchParams }: PageProps) {
         <div className="fp-eyebrow">Reader</div>
         <h1 className="fp-h1 fp-h1-serif">Triage what's worth following up.</h1>
         <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-          Swipe right to mark a story as great, left to skip. Once {READER_CLUSTER_THRESHOLD}{" "}
-          stories are marked, they're grouped into clusters you can draft from.
+          Swipe right to save a story for drafting, left to skip it.
         </p>
       </header>
-
-      {folders.length > 0 ? (
-        <FolderChips folders={folders} totalCount={totalCount} activeFolder={activeFolder} />
-      ) : null}
 
       {queue.items.length === 0 ? (
         <EmptyDeck markedCount={queue.markedCount} activeFolder={activeFolder} />
@@ -62,44 +50,11 @@ export default async function ReaderPage({ searchParams }: PageProps) {
           key={activeFolder ?? "all"}
           initialItems={queue.items}
           initialMarkedCount={queue.markedCount}
+          folders={folders}
+          totalCount={totalCount}
+          activeFolder={activeFolder}
         />
       )}
-    </div>
-  );
-}
-
-function FolderChips({
-  folders,
-  totalCount,
-  activeFolder,
-}: {
-  folders: ReaderFolderOption[];
-  totalCount: number;
-  activeFolder: string | null;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--fg-muted)" }}>
-        Folder
-      </span>
-      <Link
-        href="/reader"
-        className={`fp-chip ${!activeFolder ? "fp-chip-indigo" : ""} transition`}
-      >
-        All · {totalCount}
-      </Link>
-      {folders.map((f) => {
-        const active = activeFolder === f.id;
-        return (
-          <Link
-            key={f.id}
-            href={`/reader?folder=${encodeURIComponent(f.id)}`}
-            className={`fp-chip ${active ? "fp-chip-indigo" : ""} transition`}
-          >
-            {f.name} · {f.queueCount}
-          </Link>
-        );
-      })}
     </div>
   );
 }
