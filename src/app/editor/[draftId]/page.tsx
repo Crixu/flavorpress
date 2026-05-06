@@ -200,20 +200,8 @@ export default async function EditorPage({ params }: PageProps) {
           <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "22ch" }}>
             {String(d.headline)}
           </h1>
-          <div className="pt-1">{sibling}</div>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className="hidden rounded-full px-3 py-1.5 font-mono text-[10px] sm:inline"
-            style={{
-              background: "var(--surface)",
-              color: "var(--fg-subtle)",
-              border: "1px solid var(--border)",
-            }}
-            title="Trace ID"
-          >
-            {traceId.slice(0, 8) || "—"}
-          </span>
           <PublishToWpForm
             draftId={String(d.id)}
             headline={String(d.headline)}
@@ -242,21 +230,6 @@ export default async function EditorPage({ params }: PageProps) {
           style={{ borderBottom: "1px solid var(--border)" }}
         >
           <span className="fp-eyebrow">Pre-publish</span>
-          <span
-            className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px]"
-            style={{
-              background: "var(--bg-subtle)",
-              color: "var(--fg-muted)",
-            }}
-          >
-            <span style={{ color: "var(--fg-subtle)" }}>⊙</span>
-            <span style={{ fontWeight: 600 }}>extensions</span>
-            <span style={{ color: "var(--fg-subtle)" }}>
-              {totalAnnotations > 0
-                ? `${totalAnnotations} annotation${totalAnnotations === 1 ? "" : "s"}`
-                : "right rail"}
-            </span>
-          </span>
           <span className="ml-auto flex items-center gap-2 text-[12px]">
             <span
               className="hidden font-mono tabular text-[11px] md:inline"
@@ -284,6 +257,7 @@ export default async function EditorPage({ params }: PageProps) {
                 headline={String(d.headline)}
                 alternates={headlineAlternates}
               />
+              <div className="mt-3">{sibling}</div>
 
               <ExtensionsArticle
                 draftId={String(d.id)}
