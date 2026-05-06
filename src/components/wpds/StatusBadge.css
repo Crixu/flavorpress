@@ -1,0 +1,23 @@
+.wpds-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  display: inline-block;
+  font-weight: 500;
+}
+.wpds-badge-ok {
+  background: var(--success-bg);
+  color: var(--success-fg);
+}
+.wpds-badge-warn {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+.wpds-badge-error {
+  background: var(--error-bg);
+  color: var(--error-fg);
+}
+.wpds-badge-default-outlet {
+  background: var(--ink-primary);
+  color: #fff;
+}
