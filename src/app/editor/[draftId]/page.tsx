@@ -272,10 +272,7 @@ export default async function EditorPage({ params }: PageProps) {
 
               {quotes.length > 0 ? (
                 <div className="mt-10 pt-6" style={{ borderTop: "1px solid var(--border)" }}>
-                  <div className="fp-eyebrow">
-                    Quotes lifted · {quotes.length} of {itemsR.rows.length} source
-                    {itemsR.rows.length === 1 ? "" : "s"}
-                  </div>
+                  <div className="fp-eyebrow">Quotes lifted</div>
                   <ol
                     className="mt-3 list-decimal space-y-2.5 pl-5 text-[12px]"
                     style={{ color: "var(--fg-muted)" }}
