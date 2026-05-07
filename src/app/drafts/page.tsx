@@ -219,9 +219,9 @@ function InProgressSection({ drafts }: { drafts: DraftRow[] }) {
       {ordered.map((d) => {
         const isStale = now - (d.edited_at ?? d.created_at) > STALE_AFTER_MS;
         return (
-          <div key={d.id} className="flex items-start gap-3">
-            <Card className={`flex-1 min-w-0${isStale ? " wpds-card-stale" : ""}`}>
-              <Link href={`/editor/${d.id}`} className="block">
+          <Card key={d.id} className={isStale ? "wpds-card-stale" : ""}>
+            <div className="flex items-start gap-4">
+              <Link href={`/editor/${d.id}`} className="block flex-1 min-w-0">
                 <div className="line-clamp-2 text-sm font-medium text-stone-900">{d.headline}</div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-500">
                   <span>{relativeTime(d.edited_at ?? d.created_at)}</span>
@@ -248,23 +248,23 @@ function InProgressSection({ drafts }: { drafts: DraftRow[] }) {
                   ) : null}
                 </div>
               </Link>
-            </Card>
-            <div className="flex flex-col items-end gap-2 shrink-0 pt-1">
-              <VoiceChip score={d.voice_match_score} />
-              {isStale ? <StaleChip /> : null}
-              <form action={deleteDraftAction}>
-                <input type="hidden" name="draftId" value={d.id} />
-                <button
-                  type="submit"
-                  className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-                  title="Delete this draft"
-                  aria-label={`Delete draft: ${d.headline}`}
-                >
-                  Delete
-                </button>
-              </form>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <VoiceChip score={d.voice_match_score} />
+                {isStale ? <StaleChip /> : null}
+                <form action={deleteDraftAction}>
+                  <input type="hidden" name="draftId" value={d.id} />
+                  <button
+                    type="submit"
+                    className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                    title="Delete this draft"
+                    aria-label={`Delete draft: ${d.headline}`}
+                  >
+                    Delete
+                  </button>
+                </form>
+              </div>
             </div>
-          </div>
+          </Card>
         );
       })}
     </section>
@@ -291,9 +291,9 @@ function NotesSection({ notes }: { notes: NoteRow[] }) {
       {notes.map((n) => {
         const isStale = now - n.created_at > STALE_AFTER_MS;
         return (
-          <div key={n.id} className="flex items-start gap-3">
-            <Card emphasis className="flex-1 min-w-0">
-              <Link href={`/editor/${n.id}`} className="block">
+          <Card key={n.id} emphasis>
+            <div className="flex items-start gap-4">
+              <Link href={`/editor/${n.id}`} className="block flex-1 min-w-0">
                 <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] uppercase tracking-widest text-stone-400">
                   <span>
                     {n.ideas} ideas · {n.quotes} quotes · {n.facts} leads
@@ -318,28 +318,28 @@ function NotesSection({ notes }: { notes: NoteRow[] }) {
                 <div className="line-clamp-2 text-sm font-medium text-stone-900">{n.topic}</div>
                 <div className="mt-1 text-[11px] text-stone-500">{relativeTime(n.created_at)}</div>
               </Link>
-            </Card>
-            <div className="flex flex-col items-end gap-2 shrink-0 pt-1">
-              {isStale ? <StaleChip /> : null}
-              <Link
-                href={`/editor/${n.id}`}
-                className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-600 transition hover:bg-stone-50"
-              >
-                Open notebook
-              </Link>
-              <form action={deleteDraftAction}>
-                <input type="hidden" name="draftId" value={n.id} />
-                <button
-                  type="submit"
-                  className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-                  title="Delete these notes"
-                  aria-label={`Delete notes: ${n.topic}`}
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                {isStale ? <StaleChip /> : null}
+                <Link
+                  href={`/editor/${n.id}`}
+                  className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-600 transition hover:bg-stone-50"
                 >
-                  Delete
-                </button>
-              </form>
+                  Open notebook
+                </Link>
+                <form action={deleteDraftAction}>
+                  <input type="hidden" name="draftId" value={n.id} />
+                  <button
+                    type="submit"
+                    className="rounded border border-stone-200 px-2 py-1 text-[11px] text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                    title="Delete these notes"
+                    aria-label={`Delete notes: ${n.topic}`}
+                  >
+                    Delete
+                  </button>
+                </form>
+              </div>
             </div>
-          </div>
+          </Card>
         );
       })}
     </section>
