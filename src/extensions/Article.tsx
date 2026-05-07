@@ -190,14 +190,15 @@ function findTextPosition(
 }
 
 function wrapQuote(root: HTMLElement, index: number, text: string, citation: string): boolean {
-  const trimmed = text.trim().replace(/^["“”']+|["“”']+$/g, "");
-  const needle = trimmed.toLowerCase();
+  const trimmed = text.trim().replace(/^["“”'‘’]+|["“”'‘’]+$/g, "");
+  const needle = normalizeQuoteText(trimmed);
   if (!needle) return false;
   const stream = collectQuoteTextStream(root);
-  const i = stream.text.toLowerCase().indexOf(needle);
+  const haystack = normalizeQuoteText(stream.text);
+  const i = haystack.indexOf(needle);
   if (i === -1) return false;
   const start = findTextPosition(stream.nodes, i);
-  const end = findTextPosition(stream.nodes, i + trimmed.length);
+  const end = findTextPosition(stream.nodes, i + needle.length);
   if (!start || !end) return false;
   const range = document.createRange();
   range.setStart(start.node, start.offset);
@@ -209,6 +210,18 @@ function wrapQuote(root: HTMLElement, index: number, text: string, citation: str
   mark.appendChild(range.extractContents());
   range.insertNode(mark);
   return true;
+}
+
+// Length-preserving normalization so the offset returned by indexOf in the
+// normalized string still maps to the same offset in the original text node
+// stream. Smart quotes and apostrophes drift between the JSON envelope and
+// the body prose; without this, real verbatim quotes silently fail to match.
+function normalizeQuoteText(s: string): string {
+  return s
+    .replace(/[‘’‚′]/g, "'")
+    .replace(/[“”„″]/g, '"')
+    .replace(/ /g, " ")
+    .toLowerCase();
 }
 
 function collectQuoteTextStream(root: HTMLElement): {
