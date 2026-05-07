@@ -85,7 +85,7 @@ export function SourcesExplorer({
     <>
       <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
         <div className="overflow-x-auto">
-          <div className="min-w-[720px]">
+          <div className="min-w-[960px]">
             <div
               className="border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500"
               style={{
@@ -146,7 +146,7 @@ export function SourcesExplorer({
 }
 
 /** Shared column template for header and rows. */
-const GRID_COLS = "28px 1fr 56px 80px 90px 56px 80px";
+const GRID_COLS = "28px minmax(220px, 1fr) 128px 100px 88px 128px 220px";
 
 function ExplorerRow({
   row,
@@ -241,7 +241,7 @@ function ExplorerRow({
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap justify-end gap-1">
+      <div className="flex flex-nowrap items-center justify-end gap-1">
         {paused ? (
           <form action={resumeSourceAction}>
             <input type="hidden" name="sourceId" value={row.id} />
