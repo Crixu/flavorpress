@@ -1148,6 +1148,15 @@ export async function pollSourceAction(formData: FormData): Promise<{ sourceCoun
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
 
+  // Tenancy: verify the source belongs to this user before enqueueing.
+  // The background runner loads sources by id without filtering, so a
+  // cross-user poll would otherwise mutate another user's source row.
+  const owner = await db.execute({
+    sql: `SELECT 1 FROM sources WHERE id = ? AND user_id = ?`,
+    args: [sourceId, session.userId],
+  });
+  if (owner.rows.length === 0) throw new Error("Source not found.");
+
   after(() => runBackgroundPolls([sourceId], "pollSource", session.userId));
   return { sourceCount: 1 };
 }
@@ -1697,13 +1706,14 @@ async function persistVoiceProfile(
  */
 export async function assignSourceOutletsAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
   const outletIds = formData
     .getAll("outletIds")
     .map((v) => String(v))
     .filter((v) => v.length > 0);
-  await setSourceOutlets(sourceId, outletIds);
+  await setSourceOutlets(sourceId, outletIds, session.userId);
   revalidatePath("/sources");
   revalidatePath(`/sources/${sourceId}`);
 }

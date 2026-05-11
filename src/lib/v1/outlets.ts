@@ -337,12 +337,40 @@ export async function getOutletIdsForSource(sourceId: string): Promise<string[]>
 /**
  * Replace a source's outlet assignment with the given list. If `outletIds`
  * is empty, the source falls back to "All outlets (default)".
+ *
+ * Tenancy: caller must pass the session userId. The source AND every
+ * outlet in the list must belong to that user; otherwise the call throws
+ * without mutating anything. Prevents cross-user assignment writes via a
+ * known source/outlet id pair.
  */
-export async function setSourceOutlets(sourceId: string, outletIds: string[]): Promise<void> {
+export async function setSourceOutlets(
+  sourceId: string,
+  outletIds: string[],
+  userId: string,
+): Promise<void> {
   await ensureSchema();
+  const owner = await db.execute({
+    sql: `SELECT 1 FROM sources WHERE id = ? AND user_id = ?`,
+    args: [sourceId, userId],
+  });
+  if (owner.rows.length === 0) throw new Error("Source not found.");
+
+  if (outletIds.length > 0) {
+    const placeholders = outletIds.map(() => "?").join(",");
+    const ownedOutlets = await db.execute({
+      sql: `SELECT id FROM outlets WHERE user_id = ? AND id IN (${placeholders})`,
+      args: [userId, ...outletIds],
+    });
+    if (ownedOutlets.rows.length !== outletIds.length) {
+      throw new Error("Outlet not found.");
+    }
+  }
+
   await db.execute({
-    sql: `DELETE FROM outlet_sources WHERE source_id = ?`,
-    args: [sourceId],
+    sql: `DELETE FROM outlet_sources
+          WHERE source_id = ?
+            AND source_id IN (SELECT id FROM sources WHERE user_id = ?)`,
+    args: [sourceId, userId],
   });
   if (outletIds.length === 0) return;
   const now = Date.now();

@@ -42,7 +42,8 @@ function getValidator(key: string): Validator | null {
  * stored value and reverts to the .env fallback.
  */
 export async function saveSettingAction(formData: FormData): Promise<void> {
-  await requireSession();
+  const session = await requireSession();
+  if (!session.isAdmin) redirect("/settings?error=forbidden");
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
     redirect("/settings?error=invalid_key");
@@ -68,7 +69,8 @@ export async function saveSettingAction(formData: FormData): Promise<void> {
 }
 
 export async function clearSettingAction(formData: FormData): Promise<void> {
-  await requireSession();
+  const session = await requireSession();
+  if (!session.isAdmin) redirect("/settings?error=forbidden");
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
     redirect("/settings?error=invalid_key");
@@ -86,7 +88,8 @@ export async function clearSettingAction(formData: FormData): Promise<void> {
  * server-renders.
  */
 export async function toggleExtensionAction(formData: FormData): Promise<void> {
-  await requireSession();
+  const session = await requireSession();
+  if (!session.isAdmin) redirect("/settings?error=forbidden");
   const extensionId = String(formData.get("extensionId") ?? "");
   if (!findExtensionMetadata(extensionId)) {
     redirect("/settings?error=invalid_extension");

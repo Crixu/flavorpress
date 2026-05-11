@@ -241,3 +241,104 @@ describe("renameFolderAction - cross-user isolation", () => {
     expect(String(r.rows[0]!.name)).toBe("original-name");
   });
 });
+
+// ---------------------------------------------------------------------------
+// assignSourceOutletsAction
+// ---------------------------------------------------------------------------
+
+describe("assignSourceOutletsAction - cross-user isolation", () => {
+  it("user B cannot rewrite the outlet assignment of user A's source", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const sourceA = await seedSourceForUser(userA.id);
+    const outletA = await seedOutletForUser(userA.id);
+    await db.execute({
+      sql: `INSERT INTO outlet_sources (outlet_id, source_id, created_at) VALUES (?, ?, ?)`,
+      args: [outletA, sourceA, Date.now()],
+    });
+    const outletB = await seedOutletForUser(userB.id);
+
+    await loginAs(userB.id);
+    const fd = new FormData();
+    fd.set("sourceId", sourceA);
+    fd.append("outletIds", outletB);
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+    await expect(mod.assignSourceOutletsAction!(fd)).rejects.toThrow(/not found/i);
+
+    // Original assignment preserved.
+    const r = await db.execute({
+      sql: `SELECT outlet_id FROM outlet_sources WHERE source_id = ?`,
+      args: [sourceA],
+    });
+    expect(r.rows.length).toBe(1);
+    expect(String(r.rows[0]!.outlet_id)).toBe(outletA);
+  });
+
+  it("user B cannot attach their own outlet to user A's source", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const sourceA = await seedSourceForUser(userA.id);
+    const outletB = await seedOutletForUser(userB.id);
+
+    await loginAs(userB.id);
+    const fd = new FormData();
+    fd.set("sourceId", sourceA);
+    fd.append("outletIds", outletB);
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+    await expect(mod.assignSourceOutletsAction!(fd)).rejects.toThrow(/not found/i);
+
+    const r = await db.execute({
+      sql: `SELECT 1 FROM outlet_sources WHERE source_id = ? AND outlet_id = ?`,
+      args: [sourceA, outletB],
+    });
+    expect(r.rows.length).toBe(0);
+  });
+
+  it("user A cannot attach a foreign outlet (belonging to user B) to their own source", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const sourceA = await seedSourceForUser(userA.id);
+    const outletA = await seedOutletForUser(userA.id);
+    const outletB = await seedOutletForUser(userB.id);
+
+    await loginAs(userA.id);
+    const fd = new FormData();
+    fd.set("sourceId", sourceA);
+    fd.append("outletIds", outletA);
+    fd.append("outletIds", outletB);
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+    await expect(mod.assignSourceOutletsAction!(fd)).rejects.toThrow(/not found/i);
+
+    const r = await db.execute({
+      sql: `SELECT outlet_id FROM outlet_sources WHERE source_id = ?`,
+      args: [sourceA],
+    });
+    expect(r.rows.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pollSourceAction
+// ---------------------------------------------------------------------------
+
+describe("pollSourceAction - cross-user isolation", () => {
+  it("user B cannot trigger a poll of user A's source", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const sourceA = await seedSourceForUser(userA.id);
+
+    await loginAs(userB.id);
+    const fd = new FormData();
+    fd.set("sourceId", sourceA);
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+    await expect(mod.pollSourceAction!(fd)).rejects.toThrow(/not found/i);
+  });
+});
