@@ -38,9 +38,17 @@ export async function ensureSchema(): Promise<void> {
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
         niche_label TEXT,
+        password_hash TEXT,
+        wpcom_id TEXT,
+        wpcom_username TEXT,
+        email_verified_at INTEGER,
+        status TEXT NOT NULL DEFAULT 'active',
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        session_version INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         last_active_at INTEGER
       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_wpcom_id_unique ON users(wpcom_id) WHERE wpcom_id IS NOT NULL`,
 
       // Outlets - a writer can publish to many WordPress sites; each has its
       // own voice profile, derived from that outlet's archive. The 1:N
@@ -468,6 +476,34 @@ export async function ensureSchema(): Promise<void> {
         value TEXT,
         updated_at INTEGER NOT NULL
       )`,
+
+      `CREATE TABLE IF NOT EXISTS invites (
+        token TEXT PRIMARY KEY,
+        created_by_user_id TEXT,
+        used_by_user_id TEXT,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        used_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_invites_unused ON invites(used_at) WHERE used_at IS NULL`,
+
+      `CREATE TABLE IF NOT EXISTS email_verification_tokens (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_email_verif_user ON email_verification_tokens(user_id)`,
+
+      `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id)`,
     ],
     "write",
   );
@@ -678,6 +714,46 @@ async function migrateLegacyTables(): Promise<void> {
     }
   } catch {
     // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // users: auth-foundation columns. Additive ALTERs; safe on fresh DBs
+  // because CREATE TABLE IF NOT EXISTS runs after this and seeds users
+  // without the new columns the first time the migration runs.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(users)");
+    if (pragma.rows.length > 0) {
+      const cols = new Set(pragma.rows.map((r) => String(r.name)));
+      if (!cols.has("password_hash")) {
+        console.info("[migrate] users: adding password_hash column");
+        await db.execute("ALTER TABLE users ADD COLUMN password_hash TEXT");
+      }
+      if (!cols.has("wpcom_id")) {
+        console.info("[migrate] users: adding wpcom_id column");
+        await db.execute("ALTER TABLE users ADD COLUMN wpcom_id TEXT");
+      }
+      if (!cols.has("wpcom_username")) {
+        console.info("[migrate] users: adding wpcom_username column");
+        await db.execute("ALTER TABLE users ADD COLUMN wpcom_username TEXT");
+      }
+      if (!cols.has("email_verified_at")) {
+        console.info("[migrate] users: adding email_verified_at column");
+        await db.execute("ALTER TABLE users ADD COLUMN email_verified_at INTEGER");
+      }
+      if (!cols.has("status")) {
+        console.info("[migrate] users: adding status column");
+        await db.execute("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+      }
+      if (!cols.has("is_admin")) {
+        console.info("[migrate] users: adding is_admin column");
+        await db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!cols.has("session_version")) {
+        console.info("[migrate] users: adding session_version column");
+        await db.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
+      }
+    }
+  } catch {
+    // Table doesn't exist; CREATE IF NOT EXISTS in ensureSchema handles it.
   }
 }
 
