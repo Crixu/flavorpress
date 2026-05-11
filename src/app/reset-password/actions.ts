@@ -2,10 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  isAllowedMutationOrigin,
-  requestOriginFromHeaders,
-} from "@/lib/auth";
+import { isAllowedMutationOrigin, requestOriginFromHeaders } from "@/lib/auth";
 import { getUserByEmail } from "@/lib/users";
 import { issuePasswordResetToken } from "@/lib/email-tokens";
 import { sendEmail } from "@/lib/email";
@@ -25,7 +22,11 @@ export async function requestPasswordResetAction(formData: FormData) {
   const user = await getUserByEmail(email);
   if (user && user.passwordHash) {
     const token = await issuePasswordResetToken(user.id);
-    const origin = (process.env.FLAVORPRESS_ORIGIN ?? requestOrigin ?? "http://localhost:3000").replace(/\/$/, "");
+    const origin = (
+      process.env.FLAVORPRESS_ORIGIN ??
+      requestOrigin ??
+      "http://localhost:3000"
+    ).replace(/\/$/, "");
     const url = `${origin}/reset-password/${token}`;
     const tmpl = passwordResetEmail(url);
     try {

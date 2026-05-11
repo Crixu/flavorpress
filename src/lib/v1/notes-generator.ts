@@ -401,10 +401,7 @@ Return the notes JSON now.`;
   return { systemPrompt, userMessage };
 }
 
-async function runOnce(
-  prompt: Prompt,
-  log: ReturnType<typeof traceLogger>,
-): Promise<Notes> {
+async function runOnce(prompt: Prompt, log: ReturnType<typeof traceLogger>): Promise<Notes> {
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
     await log.warn("notes.generate.run", "no API key; using stub");

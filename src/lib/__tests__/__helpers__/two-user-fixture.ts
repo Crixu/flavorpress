@@ -41,7 +41,13 @@ export async function seedSourceForUser(
   await db.execute({
     sql: `INSERT INTO sources (id, user_id, kind, url, created_at)
           VALUES (?, ?, ?, ?, ?)`,
-    args: [id, userId, opts?.kind ?? "rss", opts?.url ?? `https://${id}.example.com/feed`, Date.now()],
+    args: [
+      id,
+      userId,
+      opts?.kind ?? "rss",
+      opts?.url ?? `https://${id}.example.com/feed`,
+      Date.now(),
+    ],
   });
   return id;
 }
@@ -69,7 +75,17 @@ export async function seedDraftForUser(
             id, cluster_id, user_id, outlet_id, capability_version_pin, mode,
             headline, body, voice_match_score, trace_id, created_at, state
           ) VALUES (?, ?, ?, ?, ?, 'drafter', ?, ?, 0.8, ?, ?, 'pre-rendered')`,
-    args: [id, opts.clusterId, userId, opts.outletId, "v1", "Test headline", "Test body", `trace-${id}`, Date.now()],
+    args: [
+      id,
+      opts.clusterId,
+      userId,
+      opts.outletId,
+      "v1",
+      "Test headline",
+      "Test body",
+      `trace-${id}`,
+      Date.now(),
+    ],
   });
   return id;
 }

@@ -121,7 +121,11 @@ describe("signupAction", () => {
 
   it("rejects duplicate email", async () => {
     const t1 = (await issueInvite({})).token;
-    await callSignup({ invite: t1, email: "a@example.com", password: "correct horse battery staple" });
+    await callSignup({
+      invite: t1,
+      email: "a@example.com",
+      password: "correct horse battery staple",
+    });
     const t2 = (await issueInvite({})).token;
     const to = await callSignup({
       invite: t2,

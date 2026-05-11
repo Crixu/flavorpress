@@ -11,7 +11,8 @@ interface Params {
 
 export async function GET(_req: Request, { params }: Params) {
   const { token } = await params;
-  const origin = (process.env.FLAVORPRESS_ORIGIN ?? "").replace(/\/$/, "") || "http://localhost:3000";
+  const origin =
+    (process.env.FLAVORPRESS_ORIGIN ?? "").replace(/\/$/, "") || "http://localhost:3000";
   const userId = await consumeVerificationToken(token);
   if (!userId) {
     return NextResponse.redirect(new URL("/verify-email?status=invalid", origin));

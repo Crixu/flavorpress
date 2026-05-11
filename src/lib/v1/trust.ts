@@ -30,7 +30,11 @@ export const TRUST_DELTA = {
  * given cluster. No-ops on zero/non-finite delta or empty cluster. Single
  * UPDATE clamps to [0, 1] inline.
  */
-export async function adjustClusterSourceTrust(clusterId: string, delta: number, userId: string): Promise<void> {
+export async function adjustClusterSourceTrust(
+  clusterId: string,
+  delta: number,
+  userId: string,
+): Promise<void> {
   if (!Number.isFinite(delta) || delta === 0) return;
   await ensureSchema();
 

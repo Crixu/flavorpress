@@ -381,7 +381,11 @@ export default async function EditorPage({ params }: PageProps) {
   );
 }
 
-async function recoverWordPressEditLink(outletId: string, wpPostId: number, userId: string): Promise<string> {
+async function recoverWordPressEditLink(
+  outletId: string,
+  wpPostId: number,
+  userId: string,
+): Promise<string> {
   const outletR = await db.execute({
     sql: `SELECT base_url FROM outlets WHERE id = ? AND user_id = ?`,
     args: [outletId, userId],

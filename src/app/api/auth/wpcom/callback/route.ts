@@ -1,18 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import {
-  SESSION_COOKIE_NAME,
-  createSessionCookie,
-  getSessionTtlSeconds,
-} from "@/lib/auth";
+import { SESSION_COOKIE_NAME, createSessionCookie, getSessionTtlSeconds } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { consumeInvite, InviteError } from "@/lib/invites";
-import {
-  consumeWpcomState,
-  exchangeCodeForUser,
-  isWpcomOAuthConfigured,
-} from "@/lib/wpcom-oauth";
+import { consumeWpcomState, exchangeCodeForUser, isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { createUser, getUserByEmail, hasAdmin } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -69,9 +61,7 @@ export async function GET(req: Request) {
       redirectUri: `${origin()}/api/auth/wpcom/callback`,
     });
   } catch {
-    return state.mode === "signup"
-      ? signupErr(state.invite, "oauth")
-      : loginErr("oauth");
+    return state.mode === "signup" ? signupErr(state.invite, "oauth") : loginErr("oauth");
   }
 
   if (state.mode === "login") {
@@ -99,9 +89,7 @@ export async function GET(req: Request) {
 
   const adminEmail = (process.env.FLAVORPRESS_ADMIN_EMAIL ?? "").trim().toLowerCase();
   const isFirstAdmin =
-    adminEmail.length > 0 &&
-    wp.email.toLowerCase() === adminEmail &&
-    !(await hasAdmin());
+    adminEmail.length > 0 && wp.email.toLowerCase() === adminEmail && !(await hasAdmin());
 
   const userId = newUserId();
   try {

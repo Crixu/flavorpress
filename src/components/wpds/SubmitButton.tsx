@@ -25,14 +25,7 @@ interface Props {
  * disabled and shows a spinning indicator next to its label so the user
  * sees feedback (Vercel cold-start round-trips can be several seconds).
  */
-export function SubmitButton({
-  children,
-  pendingLabel,
-  variant,
-  size,
-  style,
-  className,
-}: Props) {
+export function SubmitButton({ children, pendingLabel, variant, size, style, className }: Props) {
   const { pending } = useFormStatus();
   return (
     <Button

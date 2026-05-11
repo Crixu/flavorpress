@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import {
-  buildAuthorizeUrl,
-  isWpcomOAuthConfigured,
-  issueWpcomState,
-} from "@/lib/wpcom-oauth";
+import { buildAuthorizeUrl, isWpcomOAuthConfigured, issueWpcomState } from "@/lib/wpcom-oauth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,10 +21,7 @@ function fallbackPath(mode: string, invite: string | null, reason: string): stri
 
 export async function GET(req: Request) {
   if (!isWpcomOAuthConfigured()) {
-    return NextResponse.json(
-      { error: "WP.com OAuth is not configured." },
-      { status: 501 },
-    );
+    return NextResponse.json({ error: "WP.com OAuth is not configured." }, { status: 501 });
   }
   const url = new URL(req.url);
   const modeParam = url.searchParams.get("mode");

@@ -102,7 +102,9 @@ describe("local auth mode", () => {
     const before = await db.execute("SELECT 1 FROM users WHERE id = 'default-user'");
     expect(before.rows.length).toBe(0);
     await loadSession(null);
-    const after = await db.execute("SELECT id, email, is_admin FROM users WHERE id = 'default-user'");
+    const after = await db.execute(
+      "SELECT id, email, is_admin FROM users WHERE id = 'default-user'",
+    );
     expect(after.rows.length).toBe(1);
     expect(String(after.rows[0]!.email)).toBe("local@flavorpress.app");
     expect(Number(after.rows[0]!.is_admin)).toBe(1);

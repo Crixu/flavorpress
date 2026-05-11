@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { createUser } from "@/lib/users";
-import {
-  issueVerificationToken,
-  consumeVerificationToken,
-} from "@/lib/email-tokens";
+import { issueVerificationToken, consumeVerificationToken } from "@/lib/email-tokens";
 
 beforeEach(async () => {
   await ensureSchema();

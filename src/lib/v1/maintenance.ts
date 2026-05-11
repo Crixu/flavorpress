@@ -29,10 +29,7 @@ export interface JobProgress {
   error: string | null;
 }
 
-export async function getJobProgress(
-  jobId: string,
-  userId: string,
-): Promise<JobProgress | null> {
+export async function getJobProgress(jobId: string, userId: string): Promise<JobProgress | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT id, kind, total, completed, started_at, completed_at, error
@@ -52,10 +49,7 @@ export async function getJobProgress(
   };
 }
 
-export async function getRunningJob(
-  kind: JobKind,
-  userId: string,
-): Promise<JobProgress | null> {
+export async function getRunningJob(kind: JobKind, userId: string): Promise<JobProgress | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT id FROM job_progress

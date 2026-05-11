@@ -32,9 +32,7 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
     return sendViaResend(msg, apiKey);
   }
   if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "Email send failed: RESEND_API_KEY is required in production.",
-    );
+    throw new Error("Email send failed: RESEND_API_KEY is required in production.");
   }
   logToConsole(msg);
 }

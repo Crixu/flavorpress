@@ -1,10 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
-import {
-  SESSION_COOKIE_NAME,
-  isAllowedMutationOrigin,
-  requestOriginFromHeaders,
-} from "@/lib/auth";
+import { SESSION_COOKIE_NAME, isAllowedMutationOrigin, requestOriginFromHeaders } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

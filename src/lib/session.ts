@@ -59,7 +59,9 @@ async function ensureLocalBootstrapSession(): Promise<Session> {
   };
 }
 
-async function loadSessionUncached(cookieValue: string | null | undefined): Promise<Session | null> {
+async function loadSessionUncached(
+  cookieValue: string | null | undefined,
+): Promise<Session | null> {
   if (isLocalAuthMode()) return ensureLocalBootstrapSession();
   if (!cookieValue) return null;
   const verified = await verifySessionCookie(cookieValue);

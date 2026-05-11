@@ -42,9 +42,7 @@ async function resolveUserId(argv: string[]): Promise<string> {
   }
   const r = await db.execute("SELECT 1 FROM users WHERE id = 'default-user'");
   if (r.rows.length === 0) {
-    throw new Error(
-      "No default-user row exists. Pass --email <addr> to target a real account.",
-    );
+    throw new Error("No default-user row exists. Pass --email <addr> to target a real account.");
   }
   return "default-user";
 }

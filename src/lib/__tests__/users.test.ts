@@ -29,9 +29,7 @@ describe("users", () => {
   it("rejects duplicate email", async () => {
     const hash = await hashPassword("correct horse battery staple");
     await createUser({ email: "a@example.com", passwordHash: hash });
-    await expect(
-      createUser({ email: "a@example.com", passwordHash: hash }),
-    ).rejects.toThrow();
+    await expect(createUser({ email: "a@example.com", passwordHash: hash })).rejects.toThrow();
   });
 
   it("getUserByEmail returns the user with the password hash", async () => {

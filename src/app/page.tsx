@@ -154,7 +154,12 @@ export default async function TodayPage() {
   const previewsById = new Map<string, TodayClusterPreview>();
   await Promise.all(
     Array.from(distinctClusters.values()).map(async (c) => {
-      const preview = await buildClusterPreview(c, draftableOutletIds, signatureTermsByOutlet, session.userId);
+      const preview = await buildClusterPreview(
+        c,
+        draftableOutletIds,
+        signatureTermsByOutlet,
+        session.userId,
+      );
       previewsById.set(c.id, preview);
     }),
   );

@@ -13,12 +13,7 @@ import {
 import { db } from "@/lib/db";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { consumeInvite, readInvite, InviteError } from "@/lib/invites";
-import {
-  createUser,
-  getUserByEmail,
-  hasAdmin,
-  migrateDefaultUser,
-} from "@/lib/users";
+import { createUser, getUserByEmail, hasAdmin, migrateDefaultUser } from "@/lib/users";
 import { issueVerificationToken } from "@/lib/email-tokens";
 import { sendEmail } from "@/lib/email";
 import { verificationEmail } from "@/lib/email-templates";
@@ -62,9 +57,7 @@ export async function signupAction(formData: FormData) {
   const hash = await hashPassword(password);
   const adminEmail = (process.env.FLAVORPRESS_ADMIN_EMAIL ?? "").trim().toLowerCase();
   const isFirstAdmin =
-    adminEmail.length > 0 &&
-    email.toLowerCase() === adminEmail &&
-    !(await hasAdmin());
+    adminEmail.length > 0 && email.toLowerCase() === adminEmail && !(await hasAdmin());
 
   const defaultRow = isFirstAdmin
     ? await db.execute({ sql: "SELECT 1 FROM users WHERE id = 'default-user'" })
@@ -121,7 +114,11 @@ export async function signupAction(formData: FormData) {
   // failure does not block signup.
   try {
     const verifyToken = await issueVerificationToken(userId);
-    const origin = (process.env.FLAVORPRESS_ORIGIN ?? requestOrigin ?? "http://localhost:3000").replace(/\/$/, "");
+    const origin = (
+      process.env.FLAVORPRESS_ORIGIN ??
+      requestOrigin ??
+      "http://localhost:3000"
+    ).replace(/\/$/, "");
     const url = `${origin}/verify-email/${verifyToken}`;
     const tmpl = verificationEmail(url);
     await sendEmail({ to: email, subject: tmpl.subject, html: tmpl.html, text: tmpl.text });

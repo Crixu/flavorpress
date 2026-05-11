@@ -511,10 +511,7 @@ export async function renameSourceAction(formData: FormData) {
  * folder id, the sentinel "__new__" plus a `folderName` field for inline
  * folder creation, or empty for ungrouped.
  */
-async function resolveFolderIdField(
-  formData: FormData,
-  userId: string,
-): Promise<string | null> {
+async function resolveFolderIdField(formData: FormData, userId: string): Promise<string | null> {
   const raw = String(formData.get("folderId") ?? "").trim();
   if (!raw) return null;
   if (raw === "__new__") {
@@ -1450,7 +1447,12 @@ export async function buildVoiceProfileAction(formData: FormData) {
     publishedAt: Date.parse(p.date),
   }));
 
-  await persistVoiceProfile(outletId, posts, { method: "archive", transcript: null }, session.userId);
+  await persistVoiceProfile(
+    outletId,
+    posts,
+    { method: "archive", transcript: null },
+    session.userId,
+  );
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1538,10 +1540,15 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
   }
 
   const now = Date.now();
-  await persistVoiceProfile(outletId, [{ title: "", body: essay, publishedAt: now }], {
-    method: "interview",
-    transcript: JSON.stringify(answers),
-  }, session.userId);
+  await persistVoiceProfile(
+    outletId,
+    [{ title: "", body: essay, publishedAt: now }],
+    {
+      method: "interview",
+      transcript: JSON.stringify(answers),
+    },
+    session.userId,
+  );
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
@@ -2229,9 +2236,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     // Notes are raw material, not a post. The editor view hides the
     // publish UI; this server-side check enforces the same invariant
     // against any caller that hand-crafts a request.
-    throw new Error(
-      "Notes are not publishable. Open the cluster in Drafter mode to write a post.",
-    );
+    throw new Error("Notes are not publishable. Open the cluster in Drafter mode to write a post.");
   }
 
   const existingPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
@@ -2246,7 +2251,8 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
         "This draft has already been sent to WordPress, but its edit link is missing.",
       );
     }
-    if (!row.wp_edit_link) await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
+    if (!row.wp_edit_link)
+      await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
     return { editLink };
   }
 
@@ -2340,13 +2346,18 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
   if (existingPostId || row.wp_edit_link) {
     const editLink = row.wp_edit_link
       ? String(row.wp_edit_link)
-      : await recoverWordPressEditLink(String(row.outlet_id ?? ""), Number(existingPostId), session.userId);
+      : await recoverWordPressEditLink(
+          String(row.outlet_id ?? ""),
+          Number(existingPostId),
+          session.userId,
+        );
     if (!editLink) {
       throw new Error(
         "These notes have already been sent to WordPress, but the edit link is missing.",
       );
     }
-    if (!row.wp_edit_link) await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
+    if (!row.wp_edit_link)
+      await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
     return { editLink };
   }
 

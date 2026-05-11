@@ -1,11 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
-import {
-  issueInvite,
-  consumeInvite,
-  readInvite,
-  InviteError,
-} from "@/lib/invites";
+import { issueInvite, consumeInvite, readInvite, InviteError } from "@/lib/invites";
 
 beforeEach(async () => {
   await ensureSchema();

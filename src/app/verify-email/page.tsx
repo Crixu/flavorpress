@@ -8,7 +8,14 @@ export default async function VerifyEmailStatusPage({ searchParams }: PageProps)
   const sp = await searchParams;
   const isInvalid = sp.status === "invalid";
   return (
-    <div style={{ maxWidth: 420, margin: "64px auto", padding: 16, fontFamily: "ui-serif, Georgia, serif" }}>
+    <div
+      style={{
+        maxWidth: 420,
+        margin: "64px auto",
+        padding: 16,
+        fontFamily: "ui-serif, Georgia, serif",
+      }}
+    >
       <h1 style={{ fontSize: 22, fontWeight: 500 }}>
         {isInvalid ? "Link is invalid or expired" : "Verifying email"}
       </h1>

@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
-import {
-  issueWpcomState,
-  resetWpcomStateCacheForTests,
-} from "@/lib/wpcom-oauth";
+import { issueWpcomState, resetWpcomStateCacheForTests } from "@/lib/wpcom-oauth";
 import { issueInvite } from "@/lib/invites";
 import { hashPassword } from "@/lib/password";
 import { createUser, getUserByEmail } from "@/lib/users";
