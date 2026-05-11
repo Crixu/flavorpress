@@ -21,6 +21,7 @@ import { fingerprintText, voiceMatchScore } from "./style-sheet";
 import { redditConnector } from "@/extensions/reddit-source/server";
 import { rssConnectorExpanded } from "./connectors/rss";
 import { runConnector } from "./source-connector";
+import { startPollScheduler } from "./scheduler";
 import { db, ensureSchema } from "../db";
 import type { Source } from "./types";
 
@@ -366,4 +367,9 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
       };
     },
   });
+
+  // Kick off the in-process scheduler so the user doesn't have to click
+  // "Poll all" every Monday morning. No-op on Vercel, during build, and
+  // under NODE_ENV=test.
+  startPollScheduler();
 }

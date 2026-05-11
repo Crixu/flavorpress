@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { LocalClaudeClient, resolveClaudeBinary } from "./anthropic-local";
+import { withAnthropicLimit } from "./v1/ai-limiter";
 import { getAnthropicApiKey } from "./v1/settings";
 
 export { LocalClaudeError, type LocalClaudeErrorKind } from "./anthropic-local";
@@ -121,13 +122,29 @@ export interface AnthropicClientHandle {
 export async function createAnthropicClient(): Promise<AnthropicClientHandle> {
   const auth = await resolveAnthropicAuth();
   if (auth.mode === "api" && auth.apiKey) {
-    return {
-      mode: "api",
-      client: new Anthropic({ apiKey: auth.apiKey }) as unknown as AnthropicLike,
-    };
+    const raw = new Anthropic({ apiKey: auth.apiKey }) as unknown as AnthropicLike;
+    return { mode: "api", client: wrapWithLimiter(raw) };
   }
   if (auth.mode === "cli" && auth.claudePath) {
-    return { mode: "cli", client: new LocalClaudeClient(auth.claudePath) };
+    return {
+      mode: "cli",
+      client: wrapWithLimiter(new LocalClaudeClient(auth.claudePath)),
+    };
   }
   return { mode: "none", client: null };
+}
+
+/**
+ * Wrap the client's non-streaming `messages.create` with the process-wide
+ * Anthropic limiter so every call site honors the org rate cap. Streaming
+ * passes through; one user-initiated stream is one request and gating it
+ * just adds latency to the only flow the user is actively watching.
+ */
+function wrapWithLimiter(client: AnthropicLike): AnthropicLike {
+  return {
+    messages: {
+      create: (params) => withAnthropicLimit(() => client.messages.create(params)),
+      stream: (params) => client.messages.stream(params),
+    },
+  };
 }
