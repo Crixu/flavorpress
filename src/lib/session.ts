@@ -88,6 +88,13 @@ export async function getSession(): Promise<Session | null> {
   return loadSession(value);
 }
 
+export async function hasSessionCookieForShell(): Promise<boolean> {
+  if (isLocalAuthMode()) return true;
+  const cookieStore = await cookies();
+  const value = cookieStore.get(SESSION_COOKIE_NAME)?.value ?? null;
+  return Boolean(await verifySessionCookie(value));
+}
+
 export async function requireSession(): Promise<Session> {
   const session = await getSession();
   if (!session) throw new AuthRequiredError();

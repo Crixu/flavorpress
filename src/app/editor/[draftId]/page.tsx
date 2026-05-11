@@ -51,29 +51,30 @@ export default async function EditorPage({ params }: PageProps) {
   if (r.rows.length === 0) notFound();
   const d = r.rows[0]!;
 
-  const clusterR = await db.execute({
-    sql: `SELECT * FROM clusters WHERE id = ?`,
-    args: [String(d.cluster_id)],
-  });
-  const itemsR = await db.execute({
-    sql: `SELECT i.*, s.display_name, s.url AS source_url
-          FROM items i JOIN sources s ON s.id = i.source_id
-          WHERE i.cluster_id = ? ORDER BY i.published_at DESC`,
-    args: [String(d.cluster_id)],
-  });
-
   const mode = String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
+  const otherMode = mode === "drafter" ? "researcher" : "drafter";
+  const [clusterR, itemsR, siblingR] = await Promise.all([
+    db.execute({
+      sql: `SELECT * FROM clusters WHERE id = ?`,
+      args: [String(d.cluster_id)],
+    }),
+    db.execute({
+      sql: `SELECT i.*, s.display_name, s.url AS source_url
+            FROM items i JOIN sources s ON s.id = i.source_id
+            WHERE i.cluster_id = ? ORDER BY i.published_at DESC`,
+      args: [String(d.cluster_id)],
+    }),
+    db.execute({
+      sql: `SELECT id FROM drafts
+            WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = ?
+            ORDER BY created_at DESC LIMIT 1`,
+      args: [String(d.cluster_id), String(d.outlet_id ?? ""), session.userId, otherMode],
+    }),
+  ]);
   const sourceCount = clusterR.rows[0] ? Number(clusterR.rows[0].source_count) : 0;
 
   // Lookup the sibling artifact (same cluster + outlet, opposite mode).
   // Used by SiblingArtifactLink to either link to it or commission it.
-  const otherMode = mode === "drafter" ? "researcher" : "drafter";
-  const siblingR = await db.execute({
-    sql: `SELECT id FROM drafts
-          WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = ?
-          ORDER BY created_at DESC LIMIT 1`,
-    args: [String(d.cluster_id), String(d.outlet_id ?? ""), session.userId, otherMode],
-  });
   const siblingDraftId = siblingR.rows.length > 0 ? String(siblingR.rows[0]!.id) : null;
   const sibling = (
     <SiblingArtifactLink
@@ -159,12 +160,14 @@ export default async function EditorPage({ params }: PageProps) {
     );
   }
 
-  const initialAnnotationsByExt = await loadAllAnnotations(String(d.id));
+  const [initialAnnotationsByExt, disabledExtensionIds] = await Promise.all([
+    loadAllAnnotations(String(d.id)),
+    getDisabledExtensionIds(),
+  ]);
   const totalAnnotations = Object.values(initialAnnotationsByExt).reduce(
     (n, payload) => n + payload.annotations.length,
     0,
   );
-  const disabledExtensionIds = await getDisabledExtensionIds();
   const enabledExtensionIds = SERVER_EXTENSIONS.map((ext) => ext.id).filter(
     (id) => !disabledExtensionIds.has(id),
   );

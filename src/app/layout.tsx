@@ -3,8 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Inter, Newsreader } from "next/font/google";
 import { HelpFlyout, HelpIndexButton } from "@/components/Help";
-import { getSession, isLocalAuthMode } from "@/lib/session";
-import { AccountMenu } from "./_components/AccountMenu";
+import { hasSessionCookieForShell } from "@/lib/session";
+import { AccountMenuClient } from "./_components/AccountMenuClient";
 import { AgentationDev } from "./_components/Agentation";
 import { ShellNav } from "./_components/ShellNav";
 import { PublishToastBridge, ToastProvider } from "./_components/Toast";
@@ -34,9 +34,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Hide the topbar + shell nav on logged-out pages (login, signup, reset
   // flows, verify-email status). The auth surface should look like a clean
   // standalone form, not a chrome with broken links to gated routes.
-  const session = await getSession();
-  const isAuthed = Boolean(session);
-  const showAccountMenu = isAuthed && !isLocalAuthMode();
+  // The cookie-only check avoids a user-row read on every shell render;
+  // AccountMenuClient fetches its own data via /api/account/me.
+  const isAuthed = await hasSessionCookieForShell();
 
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
@@ -56,7 +56,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <Suspense fallback={null}>
                     <HelpIndexButton />
                   </Suspense>
-                  {showAccountMenu && session ? <AccountMenu email={session.email} /> : null}
+                  <AccountMenuClient />
                 </div>
               </header>
               <ShellNav />

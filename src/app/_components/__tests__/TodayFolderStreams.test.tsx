@@ -83,6 +83,7 @@ function makeStream(overrides: {
 }
 
 const outlets = [{ id: "outlet-1", displayName: "My Blog" }];
+const renderedAt = 1_700_000_000_000;
 
 describe("TodayFolderStreams", () => {
   it("expands the first folder by default and leaves others collapsed", () => {
@@ -99,7 +100,14 @@ describe("TodayFolderStreams", () => {
       }),
     ];
 
-    render(<TodayFolderStreams streams={streams} outlets={outlets} defaultOutletId="outlet-1" />);
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
 
     // First folder header should have aria-expanded=true
     const headers = screen.getAllByRole("button", { name: /coffee|tech/i });
@@ -128,7 +136,14 @@ describe("TodayFolderStreams", () => {
       }),
     ];
 
-    render(<TodayFolderStreams streams={streams} outlets={outlets} defaultOutletId="outlet-1" />);
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
 
     // Tech folder starts collapsed; its cluster headline is not visible
     expect(screen.queryByText("Cluster c2 headline")).not.toBeInTheDocument();
@@ -164,7 +179,14 @@ describe("TodayFolderStreams", () => {
       }),
     ];
 
-    render(<TodayFolderStreams streams={streams} outlets={outlets} defaultOutletId="outlet-1" />);
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
 
     const coffeeHeader = screen
       .getAllByRole("button")
@@ -187,7 +209,14 @@ describe("TodayFolderStreams", () => {
       }),
     ];
 
-    render(<TodayFolderStreams streams={streams} outlets={outlets} defaultOutletId="outlet-1" />);
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
 
     // The card wrapping "Single source story" should carry the emphasis class
     const headline = screen.getByText("Single source story");
@@ -213,7 +242,14 @@ describe("TodayFolderStreams", () => {
       }),
     ];
 
-    render(<TodayFolderStreams streams={streams} outlets={outlets} defaultOutletId="outlet-1" />);
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
 
     const headline = screen.getByText("Multi source story");
     let el: HTMLElement | null = headline;

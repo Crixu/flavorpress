@@ -65,9 +65,10 @@ interface Props {
   streams: TodayFolderStream[];
   outlets: OutletOption[];
   defaultOutletId: string | null;
+  renderedAt: number;
 }
 
-export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props) {
+export function TodayFolderStreams({ streams, outlets, defaultOutletId, renderedAt }: Props) {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   // Filter out optimistically-dismissed clusters but keep the lane visible
@@ -157,6 +158,7 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
           onToggle={() => toggleFolder(stream.id)}
           outlets={outlets}
           defaultOutletId={defaultOutletId}
+          renderedAt={renderedAt}
           onDismiss={dismissOptimistically}
           onDismissFailed={restoreAfterFailure}
         />
@@ -171,6 +173,7 @@ function FolderSection({
   onToggle,
   outlets,
   defaultOutletId,
+  renderedAt,
   onDismiss,
   onDismissFailed,
 }: {
@@ -179,6 +182,7 @@ function FolderSection({
   onToggle: () => void;
   outlets: OutletOption[];
   defaultOutletId: string | null;
+  renderedAt: number;
   onDismiss: (id: string) => void;
   onDismissFailed: (id: string) => void;
 }) {
@@ -211,6 +215,7 @@ function FolderSection({
                 isTop
                 outlets={outlets}
                 defaultOutletId={defaultOutletId}
+                renderedAt={renderedAt}
                 onDismiss={onDismiss}
                 onDismissFailed={onDismissFailed}
               />
@@ -221,6 +226,7 @@ function FolderSection({
                   rank={idx + 2}
                   outlets={outlets}
                   defaultOutletId={defaultOutletId}
+                  renderedAt={renderedAt}
                   onDismiss={onDismiss}
                   onDismissFailed={onDismissFailed}
                 />
@@ -289,11 +295,8 @@ function FolderSectionHeader({
   }
 
   return (
-    <button
-      type="button"
-      aria-expanded={expanded}
-      onClick={onToggle}
-      className="text-left w-full"
+    <div
+      className="w-full"
       style={{
         display: "flex",
         alignItems: "center",
@@ -303,35 +306,38 @@ function FolderSectionHeader({
         background: "transparent",
         border: 0,
         borderRadius: expanded ? "var(--radius-xl) var(--radius-xl) 0 0" : "var(--radius-xl)",
-        cursor: "pointer",
         fontFamily: "inherit",
         borderBottom: expanded ? "1px solid var(--border)" : "none",
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <h2
-          className="fp-h1-serif"
-          style={{ fontSize: "1.25rem", lineHeight: 1, fontWeight: 500, margin: 0 }}
-        >
-          {stream.name}
-        </h2>
-        <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-          {stream.clusters.length} {stream.clusters.length === 1 ? "cluster" : "clusters"}
-        </span>
-      </div>
-      <div
-        style={{ display: "flex", alignItems: "center", gap: 8 }}
-        // Prevent this inner div from triggering the outer button click twice.
-        onClick={(e) => e.stopPropagation()}
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className="min-w-0 flex-1 text-left"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          background: "transparent",
+          border: 0,
+          padding: 0,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
       >
-        <button
-          type="button"
-          className="fp-btn fp-btn-ghost"
-          style={{ fontSize: 12, padding: "0.3rem 0.7rem" }}
-          onClick={refresh}
-        >
-          Refresh
-        </button>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span
+            className="fp-h1-serif"
+            style={{ fontSize: "1.25rem", lineHeight: 1, fontWeight: 500, margin: 0 }}
+          >
+            {stream.name}
+          </span>
+          <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+            {stream.clusters.length} {stream.clusters.length === 1 ? "cluster" : "clusters"}
+          </span>
+        </span>
         <span
           aria-hidden
           style={{
@@ -345,8 +351,16 @@ function FolderSectionHeader({
         >
           ▾
         </span>
-      </div>
-    </button>
+      </button>
+      <button
+        type="button"
+        className="fp-btn fp-btn-ghost shrink-0"
+        style={{ fontSize: 12, padding: "0.3rem 0.7rem" }}
+        onClick={refresh}
+      >
+        Refresh
+      </button>
+    </div>
   );
 }
 
@@ -417,6 +431,7 @@ function ClusterCard({
   isTop,
   outlets,
   defaultOutletId,
+  renderedAt,
   onDismiss,
   onDismissFailed,
 }: {
@@ -425,6 +440,7 @@ function ClusterCard({
   isTop: boolean;
   outlets: OutletOption[];
   defaultOutletId: string | null;
+  renderedAt: number;
   onDismiss: (id: string) => void;
   onDismissFailed: (id: string) => void;
 }) {
@@ -484,7 +500,7 @@ function ClusterCard({
                 <span style={{ textTransform: "none", fontWeight: 400 }}>{sourceName}</span>
                 <span style={{ color: "var(--border-strong)" }}>·</span>
                 <span style={{ textTransform: "none", fontWeight: 400 }}>
-                  marked {relativeTime(c.latestPublishedAt)}
+                  marked {relativeTime(c.latestPublishedAt, renderedAt)}
                 </span>
               </>
             ) : (
@@ -498,7 +514,7 @@ function ClusterCard({
                 </span>
                 <span style={{ color: "var(--border-strong)" }}>·</span>
                 <span style={{ textTransform: "none", fontWeight: 400 }}>
-                  {relativeTime(c.latestPublishedAt)}
+                  {relativeTime(c.latestPublishedAt, renderedAt)}
                 </span>
                 <span className="fp-chip fp-chip-emerald ml-1">fit {fit.toFixed(2)}</span>
               </>
@@ -559,6 +575,7 @@ function PeekRow({
   rank,
   outlets,
   defaultOutletId,
+  renderedAt,
   onDismiss,
   onDismissFailed,
 }: {
@@ -566,6 +583,7 @@ function PeekRow({
   rank: number;
   outlets: OutletOption[];
   defaultOutletId: string | null;
+  renderedAt: number;
   onDismiss: (id: string) => void;
   onDismissFailed: (id: string) => void;
 }) {
@@ -602,6 +620,7 @@ function PeekRow({
         isTop={false}
         outlets={outlets}
         defaultOutletId={defaultOutletId}
+        renderedAt={renderedAt}
         onDismiss={onDismiss}
         onDismissFailed={onDismissFailed}
       />
@@ -642,13 +661,13 @@ function PeekRow({
               <>
                 <span>Saved · {sourceName}</span>
                 <span style={{ color: "var(--border-strong)" }}>·</span>
-                <span>{relativeTime(c.latestPublishedAt)}</span>
+                <span>{relativeTime(c.latestPublishedAt, renderedAt)}</span>
               </>
             ) : (
               <>
                 <span>{c.sourceCount} sources</span>
                 <span style={{ color: "var(--border-strong)" }}>·</span>
-                <span>{relativeTime(c.latestPublishedAt)}</span>
+                <span>{relativeTime(c.latestPublishedAt, renderedAt)}</span>
               </>
             )}
           </span>
@@ -699,8 +718,8 @@ function RankerSignal({ label, value }: { label: string; value: number }) {
   );
 }
 
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
+function relativeTime(ms: number, now: number): string {
+  const diff = now - ms;
   const min = Math.floor(diff / 60000);
   if (min < 1) return "just now";
   if (min < 60) return `${min}m ago`;
