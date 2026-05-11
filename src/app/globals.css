@@ -798,6 +798,130 @@ p[data-fp-para-pending="1"] {
   color: #fff;
 }
 
+.fp-account-menu {
+  position: relative;
+}
+
+.fp-account-menu[open] {
+  z-index: 40;
+}
+
+.fp-account-trigger {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: #2c3338;
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
+}
+
+.fp-account-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.fp-account-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  transform: translateY(-1px);
+}
+
+.fp-account-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.32);
+}
+
+.fp-account-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  display: block;
+  background: var(--surface-tag);
+  background-position: center;
+  background-size: cover;
+}
+
+.fp-account-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(260px, calc(100vw - 32px));
+  background: var(--surface-canvas);
+  color: var(--ink-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+}
+
+.fp-account-popover::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  background: var(--surface-canvas);
+  border-left: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-default);
+  transform: rotate(45deg);
+}
+
+.fp-account-meta {
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
+.fp-account-label {
+  display: block;
+  color: var(--ink-tertiary);
+  font-size: var(--type-meta);
+  line-height: 1.35;
+}
+
+.fp-account-email {
+  display: block;
+  color: var(--ink-primary);
+  font-size: var(--type-body);
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.fp-account-menu-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  font: inherit;
+  font-size: var(--type-body);
+  line-height: 1.35;
+  padding: 8px 10px;
+  text-align: left;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.fp-account-menu-item:hover,
+.fp-account-menu-item:focus-visible {
+  background: var(--surface-muted);
+  color: var(--ink-primary);
+  outline: none;
+}
+
 .fp-tabs {
   height: 48px;
   background: var(--surface-canvas);
