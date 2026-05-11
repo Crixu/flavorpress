@@ -1,7 +1,9 @@
+import { PassThrough, Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetLookupForTests,
   _resetPinnedFetchForTests,
+  _responseFromNodeIncoming,
   _setLookupForTests,
   _setPinnedFetchForTests,
   safeFetchText,
@@ -87,6 +89,37 @@ describe("safeFetch", () => {
       code: "aborted",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("builds a body-less Response for null-body statuses without throwing", async () => {
+    const stream = new PassThrough();
+    const resumeSpy = vi.spyOn(stream, "resume");
+    const incoming = Object.assign(stream, {
+      statusCode: 304,
+      statusMessage: "Not Modified",
+      headers: { etag: 'W/"abc"' } as Record<string, string>,
+    });
+
+    const response = _responseFromNodeIncoming(incoming);
+
+    expect(response.status).toBe(304);
+    expect(response.body).toBeNull();
+    expect(response.headers.get("etag")).toBe('W/"abc"');
+    expect(resumeSpy).toHaveBeenCalled();
+  });
+
+  it("preserves the body stream for normal statuses", async () => {
+    const stream = Readable.from([new TextEncoder().encode("hello")]);
+    const incoming = Object.assign(stream, {
+      statusCode: 200,
+      statusMessage: "OK",
+      headers: { "content-type": "text/plain" } as Record<string, string>,
+    });
+
+    const response = _responseFromNodeIncoming(incoming);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("hello");
   });
 
   it("strips sensitive headers on cross-origin POST redirects", async () => {
