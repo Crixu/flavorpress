@@ -19,6 +19,9 @@ import {
   hasAdmin,
   migrateDefaultUser,
 } from "@/lib/users";
+import { issueVerificationToken } from "@/lib/email-tokens";
+import { sendEmail } from "@/lib/email";
+import { verificationEmail } from "@/lib/email-templates";
 
 function signupErrorPath(invite: string, error: string): string {
   const params = new URLSearchParams();
@@ -113,6 +116,18 @@ export async function signupAction(formData: FormData) {
     maxAge: getSessionTtlSeconds(),
     expires: new Date(session.expiresAt),
   });
+
+  // Send verification email. Swallow errors so a transient email-provider
+  // failure does not block signup.
+  try {
+    const verifyToken = await issueVerificationToken(userId);
+    const origin = (process.env.FLAVORPRESS_ORIGIN ?? requestOrigin ?? "http://localhost:3000").replace(/\/$/, "");
+    const url = `${origin}/verify-email/${verifyToken}`;
+    const tmpl = verificationEmail(url);
+    await sendEmail({ to: email, subject: tmpl.subject, html: tmpl.html, text: tmpl.text });
+  } catch {
+    // best-effort
+  }
 
   redirect("/");
 }

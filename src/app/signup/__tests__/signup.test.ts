@@ -34,12 +34,27 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+const emailSendCalls: { to: string; subject: string }[] = [];
+vi.mock("@/lib/email", async () => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  type EmailModule = typeof import("@/lib/email");
+  const actual = await vi.importActual<EmailModule>("@/lib/email");
+  return {
+    ...actual,
+    sendEmail: async (msg: { to: string; subject: string; html: string; text: string }) => {
+      emailSendCalls.push({ to: msg.to, subject: msg.subject });
+    },
+  };
+});
+
 beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM invites");
+  await db.execute("DELETE FROM email_verification_tokens");
   cookieJar = new Map();
   redirectCalls.length = 0;
+  emailSendCalls.length = 0;
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
   process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
   delete process.env.FLAVORPRESS_ADMIN_EMAIL;
@@ -169,5 +184,17 @@ describe("signupAction", () => {
     expect(String(o.rows[0]?.user_id)).toBe(u?.id);
     const orphan = await db.execute({ sql: "SELECT 1 FROM users WHERE id = 'default-user'" });
     expect(orphan.rows.length).toBe(0);
+  });
+
+  it("sends a verification email on successful signup", async () => {
+    const { token } = await issueInvite({});
+    await callSignup({
+      invite: token,
+      email: "verify@example.com",
+      password: "correct horse battery staple",
+    });
+    expect(emailSendCalls).toHaveLength(1);
+    expect(emailSendCalls[0]!.to).toBe("verify@example.com");
+    expect(emailSendCalls[0]!.subject).toMatch(/verify/i);
   });
 });
