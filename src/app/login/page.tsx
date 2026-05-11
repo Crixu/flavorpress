@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { Card, Field, Button, Notice } from "@/components/wpds";
+import { isLocalAuthMode } from "@/lib/session";
 import { loginAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +18,7 @@ const errorMessages: Record<string, string> = {
 };
 
 export default async function LoginPage({ searchParams }: PageProps) {
+  if (isLocalAuthMode()) redirect("/");
   const sp = await searchParams;
   const next = typeof sp.next === "string" ? sp.next : "/";
   const error = sp.error ? errorMessages[sp.error] : null;

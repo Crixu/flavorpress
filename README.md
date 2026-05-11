@@ -83,6 +83,16 @@ Admin CLIs:
 These are wrappers around `tsx --conditions=react-server`; the flag is required
 because the underlying modules use `import "server-only"`.
 
+### Local mode (macOS app, single-user dev)
+
+Set `FLAVORPRESS_AUTH=local` to skip signup and login entirely. Every
+request resolves to a bootstrap admin user with id `default-user`. Any
+pre-existing single-user data on disk (e.g., from an earlier FlavorPress
+build) is picked up without an explicit migration. The macOS launcher
+sets this for you; for local dev, add `FLAVORPRESS_AUTH=local` to `.env`.
+
+Override the bootstrap email via `FLAVORPRESS_LOCAL_EMAIL=you@example.com`.
+
 WordPress.com OAuth as a login method lands in sub-spec 2.
 Email verification and self-serve password reset land in sub-spec 5.
 

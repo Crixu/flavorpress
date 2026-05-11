@@ -161,6 +161,11 @@ final class EmbeddedServer: ObservableObject {
         // it, server actions hand WP a localhost:3000 callback that won't resolve
         // back to the embedded server's random port.
         env["FLAVORPRESS_ORIGIN"] = "http://127.0.0.1:\(port)"
+        // The packaged desktop app is single-user by definition. Skip the
+        // invite/login flow and pin every request to the bootstrap user id
+        // (default-user), which is also the legacy single-user id so any
+        // pre-existing data continues to work.
+        env["FLAVORPRESS_AUTH"] = "local"
         // PATH augmentation for Claude Code auto-detect. Apps launched from
         // Finder inherit a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), so
         // anything managed by fnm/nvm/Homebrew/.claude/local is unreachable.

@@ -23,6 +23,13 @@ export async function middleware(req: NextRequest) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
+  // Local mode (macOS app, single-user dev): skip the session-cookie gate
+  // entirely. The action layer still calls requireSession() which resolves
+  // to a fixed bootstrap user via the same env var.
+  if (process.env.FLAVORPRESS_AUTH === "local") {
+    return NextResponse.next();
+  }
+
   const session = await verifySessionCookie(req.cookies.get(SESSION_COOKIE_NAME)?.value);
   if (session) return NextResponse.next();
 

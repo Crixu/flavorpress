@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { Card, Field, Button, Notice } from "@/components/wpds";
 import { readInvite } from "@/lib/invites";
+import { isLocalAuthMode } from "@/lib/session";
 import { signupAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,7 @@ const errorMessages: Record<string, string> = {
 };
 
 export default async function SignupPage({ searchParams }: PageProps) {
+  if (isLocalAuthMode()) redirect("/");
   const sp = await searchParams;
   const invite = typeof sp.invite === "string" ? sp.invite : "";
   const error = sp.error ? errorMessages[sp.error] : null;
