@@ -68,12 +68,20 @@ Quickstart:
 1. Set `FLAVORPRESS_ADMIN_EMAIL` in `.env` to your email.
 2. Set `FLAVORPRESS_SESSION_SECRET` to a 32+ byte random string.
 3. Run `npm run dev`.
-4. In another terminal, issue your invite: `npx tsx scripts/issue-invite.ts`.
+4. In another terminal, issue your invite: `npm run auth:invite`.
 5. Open the printed URL, sign up with the email from step 1, and pick a password.
 
-Forgot a password? Run `npx tsx scripts/reset-password.ts <email>` and hand the
-printed temporary password to the user out-of-band. This bumps the user's
-session version, killing any existing sessions.
+Admin CLIs:
+
+- `npm run auth:invite -- [--days N]` issues a single-use invite token.
+- `npm run auth:reset -- <email>` resets a user's password to a printed random
+  temporary value and bumps the session version, killing any existing sessions.
+- `npm run auth:promote -- <email>` flips an existing user to admin.
+- `npm run auth:claim -- <email>` re-keys orphaned `default-user` rows to a
+  real account if the auto-migration on first signup did not run.
+
+These are wrappers around `tsx --conditions=react-server`; the flag is required
+because the underlying modules use `import "server-only"`.
 
 WordPress.com OAuth as a login method lands in sub-spec 2.
 Email verification and self-serve password reset land in sub-spec 5.
