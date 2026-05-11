@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Cross-link between drafter and researcher artifacts for the same
- * cluster + outlet. Drafter and researcher produce different work
- * products, not two views of the same content; this link surfaces the
- * sibling artifact when it exists, or commissions one on demand.
+ * Cross-link between drafter and notes artifacts for the same cluster
+ * + outlet. Drafter and notes produce different work products, not two
+ * views of the same content; this link surfaces the sibling artifact
+ * when it exists, or commissions one on demand.
  *
  * Two states:
  *   1. Sibling exists -> link to /editor/[siblingDraftId]
@@ -41,7 +41,7 @@ export function SiblingArtifactLink({
 }: Props) {
   const [pending, startTransition] = useTransition();
   const otherMode: Mode = currentMode === "drafter" ? "researcher" : "drafter";
-  const otherLabel = otherMode === "drafter" ? "drafted version" : "research notes";
+  const otherLabel = otherMode === "drafter" ? "drafted version" : "notes";
 
   // One visual treatment regardless of state: a small text-with-arrow that
   // either jumps to an existing sibling or commissions one. Earlier this
@@ -65,7 +65,7 @@ export function SiblingArtifactLink({
     fd.set("mode", otherMode);
     if (otherMode === "drafter") {
       fd.set("wordCount", "600");
-      // Coming from a research view: seed the drafter with the writer's
+      // Coming from a notebook view: seed the drafter with the writer's
       // curated angles + verbatim quotes so they survive the handoff.
       if (currentMode === "researcher") fd.set("seedFromDraftId", currentDraftId);
     }

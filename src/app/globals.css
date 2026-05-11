@@ -1043,18 +1043,18 @@ p[data-fp-para-pending="1"] {
   line-height: 1.4;
 }
 
-/* Researcher notebook - single-column layout */
-.fp-researcher-notebook {
+/* Notebook view - single-column layout */
+.fp-notebook {
   max-width: 760px;
   margin: 0 auto;
   padding: 32px 32px 64px;
 }
 
-.fp-researcher-h {
+.fp-notebook-h {
   margin-bottom: 28px;
 }
 
-.fp-researcher-title {
+.fp-notebook-title {
   font-family: var(--font-serif), Georgia, serif;
   font-size: 32px;
   font-weight: 500;
@@ -1064,7 +1064,7 @@ p[data-fp-para-pending="1"] {
   color: var(--ink-primary);
 }
 
-.fp-researcher-lede {
+.fp-notebook-lede {
   font-size: 13px;
   color: var(--ink-tertiary);
   margin: 0 0 14px;
@@ -1072,20 +1072,20 @@ p[data-fp-para-pending="1"] {
   max-width: 60ch;
 }
 
-.fp-researcher-header-actions {
+.fp-notebook-header-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.fp-researcher-section {
+.fp-notebook-section {
   margin-bottom: 36px;
   border-top: 1px solid var(--border-default);
   padding-top: 24px;
 }
 
-.fp-researcher-section-h {
+.fp-notebook-section-h {
   font-family: var(--font-serif), Georgia, serif;
   font-size: 18px;
   font-weight: 500;
@@ -1097,7 +1097,7 @@ p[data-fp-para-pending="1"] {
   color: var(--ink-primary);
 }
 
-.fp-researcher-section-dot {
+.fp-notebook-section-dot {
   display: inline-block;
   width: 8px;
   height: 8px;
@@ -1106,7 +1106,7 @@ p[data-fp-para-pending="1"] {
   translate: 0 1px;
 }
 
-.fp-researcher-section-count {
+.fp-notebook-section-count {
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 11px;
   font-weight: 400;
@@ -1114,14 +1114,14 @@ p[data-fp-para-pending="1"] {
   font-variant-numeric: tabular-nums;
 }
 
-.fp-researcher-section-desc {
+.fp-notebook-section-desc {
   font-size: 12px;
   color: var(--ink-muted);
   margin: 0 0 14px;
   line-height: 1.5;
 }
 
-.fp-researcher-section-actions {
+.fp-notebook-section-actions {
   margin-top: 14px;
   padding-top: 10px;
   border-top: 1px solid var(--border-default);
@@ -1131,7 +1131,7 @@ p[data-fp-para-pending="1"] {
   flex-wrap: wrap;
 }
 
-.fp-researcher-empty {
+.fp-notebook-empty {
   font-size: 13px;
   color: var(--ink-muted);
   font-style: italic;
@@ -1139,7 +1139,7 @@ p[data-fp-para-pending="1"] {
 }
 
 /* Angles */
-.fp-researcher-angles {
+.fp-notebook-angles {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1148,20 +1148,20 @@ p[data-fp-para-pending="1"] {
   gap: 8px;
 }
 
-.fp-researcher-angle {
+.fp-notebook-angle {
   border-radius: var(--radius-md);
   padding: 12px 14px;
   background: var(--surface-tag);
   color: #9c4a22;
 }
 
-.fp-researcher-angle-text {
+.fp-notebook-angle-text {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
 }
 
-.fp-researcher-angle-rationale {
+.fp-notebook-angle-rationale {
   font-size: 12.5px;
   margin-top: 4px;
   line-height: 1.5;
@@ -1169,7 +1169,7 @@ p[data-fp-para-pending="1"] {
 }
 
 /* Quotes */
-.fp-researcher-quotes {
+.fp-notebook-quotes {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1178,7 +1178,7 @@ p[data-fp-para-pending="1"] {
   gap: 12px;
 }
 
-.fp-researcher-quote {
+.fp-notebook-quote {
   border-left: 2px solid var(--ink-primary);
   padding: 6px 0 6px 14px;
   margin: 0;
@@ -1186,30 +1186,30 @@ p[data-fp-para-pending="1"] {
   font-family: var(--font-serif), Georgia, serif;
 }
 
-.fp-researcher-quote blockquote {
+.fp-notebook-quote blockquote {
   margin: 0 0 6px;
 }
 
-.fp-researcher-quote blockquote p {
+.fp-notebook-quote blockquote p {
   font-size: 15px;
   line-height: 1.6;
   margin: 0;
   color: var(--ink-primary);
 }
 
-.fp-researcher-quote footer {
+.fp-notebook-quote footer {
   font-style: normal;
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 12px;
   color: var(--ink-muted);
 }
 
-.fp-researcher-quote footer cite {
+.fp-notebook-quote footer cite {
   font-style: normal;
 }
 
 /* Facts / leads */
-.fp-researcher-facts {
+.fp-notebook-facts {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1218,7 +1218,7 @@ p[data-fp-para-pending="1"] {
   gap: 6px;
 }
 
-.fp-researcher-fact {
+.fp-notebook-fact {
   background: var(--surface-subtle);
   border-radius: var(--radius-md);
   padding: 10px 14px;
@@ -1227,7 +1227,7 @@ p[data-fp-para-pending="1"] {
   gap: 8px;
 }
 
-.fp-researcher-fact p {
+.fp-notebook-fact p {
   font-size: 13.5px;
   margin: 0;
   line-height: 1.5;
@@ -1235,7 +1235,7 @@ p[data-fp-para-pending="1"] {
   flex: 1;
 }
 
-.fp-researcher-fact a {
+.fp-notebook-fact a {
   font-size: 12px;
   color: var(--accent-blue);
   white-space: nowrap;
@@ -1243,7 +1243,7 @@ p[data-fp-para-pending="1"] {
 }
 
 /* Sources */
-.fp-researcher-sources {
+.fp-notebook-sources {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1252,28 +1252,28 @@ p[data-fp-para-pending="1"] {
   gap: 8px;
 }
 
-.fp-researcher-source {
+.fp-notebook-source {
   border-radius: var(--radius-md);
   padding: 10px 14px;
   background: var(--surface-canvas);
   border: 1px solid var(--border-default);
 }
 
-.fp-researcher-source-name {
+.fp-notebook-source-name {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-primary);
   text-decoration: none;
 }
 
-.fp-researcher-source-meta {
+.fp-notebook-source-meta {
   font-size: 10px;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
 
-.fp-researcher-source-title {
+.fp-notebook-source-title {
   font-size: 12px;
   color: var(--ink-tertiary);
   margin-top: 4px;
@@ -1285,11 +1285,11 @@ p[data-fp-para-pending="1"] {
 }
 
 /* Add source sub-block inside section actions */
-.fp-researcher-add-source {
+.fp-notebook-add-source {
   width: 100%;
 }
 
-.fp-researcher-add-source-hint {
+.fp-notebook-add-source-hint {
   font-size: 11px;
   color: var(--ink-muted);
   margin: 0 0 8px;
@@ -1297,7 +1297,7 @@ p[data-fp-para-pending="1"] {
 }
 
 /* Notebook footer */
-.fp-researcher-footer {
+.fp-notebook-footer {
   border-top: 1px solid var(--border-default);
   padding-top: 20px;
   display: flex;
@@ -1307,13 +1307,13 @@ p[data-fp-para-pending="1"] {
   flex-wrap: wrap;
 }
 
-.fp-researcher-footer-label {
+.fp-notebook-footer-label {
   font-size: 12px;
   color: var(--ink-muted);
   margin: 0;
 }
 
-.fp-researcher-footer-actions {
+.fp-notebook-footer-actions {
   display: flex;
   align-items: center;
   gap: 16px;

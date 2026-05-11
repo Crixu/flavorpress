@@ -266,7 +266,7 @@ export async function rewriteParagraph(
     );
   }
   if (String(row.mode ?? "drafter") === "researcher") {
-    throw new ParagraphRewriteError("Research notes don't have rewritable paragraphs.", "invalid");
+    throw new ParagraphRewriteError("Notes don't have rewritable paragraphs.", "invalid");
   }
 
   const body = String(row.body ?? "");
