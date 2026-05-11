@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { SINGLE_USER_ID } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 import {
   clusterMarkedItems,
   dismissItem,
@@ -26,11 +26,12 @@ export interface SwipeResult {
  * clusters now" button for the (b) escape hatch.
  */
 export async function markItemAction(itemId: string): Promise<SwipeResult> {
-  await markItem(itemId, SINGLE_USER_ID);
-  const count = await countMarked(SINGLE_USER_ID);
+  const session = await requireSession();
+  await markItem(itemId, session.userId);
+  const count = await countMarked(session.userId);
   let formed: FormedCluster[] | undefined;
   if (count >= READER_CLUSTER_THRESHOLD) {
-    formed = await clusterMarkedItems(SINGLE_USER_ID);
+    formed = await clusterMarkedItems(session.userId);
     revalidatePath("/");
     revalidatePath("/reader");
   }
@@ -43,8 +44,9 @@ export async function markItemAction(itemId: string): Promise<SwipeResult> {
 }
 
 export async function dismissItemAction(itemId: string): Promise<SwipeResult> {
-  await dismissItem(itemId, SINGLE_USER_ID);
-  const count = await countMarked(SINGLE_USER_ID);
+  const session = await requireSession();
+  await dismissItem(itemId, session.userId);
+  const count = await countMarked(session.userId);
   return {
     ok: true,
     markedCount: count,
@@ -53,8 +55,9 @@ export async function dismissItemAction(itemId: string): Promise<SwipeResult> {
 }
 
 export async function unmarkItemAction(itemId: string): Promise<SwipeResult> {
-  await unmarkItem(itemId, SINGLE_USER_ID);
-  const count = await countMarked(SINGLE_USER_ID);
+  const session = await requireSession();
+  await unmarkItem(itemId, session.userId);
+  const count = await countMarked(session.userId);
   return {
     ok: true,
     markedCount: count,
@@ -66,7 +69,8 @@ export async function clusterMarkedAction(): Promise<{
   ok: true;
   formed: FormedCluster[];
 }> {
-  const formed = await clusterMarkedItems(SINGLE_USER_ID);
+  const session = await requireSession();
+  const formed = await clusterMarkedItems(session.userId);
   revalidatePath("/");
   revalidatePath("/reader");
   return { ok: true, formed };

@@ -10,7 +10,8 @@
  */
 
 import { redirect } from "next/navigation";
-import { ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "@/lib/db";
+import { ensureSchema } from "@/lib/db";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { getOutlet, listOutlets } from "@/lib/v1/outlets";
 import { canUseAuthorizeFlow } from "@/lib/v1/origin";
 import { decodePreflight } from "@/lib/wordpress";
@@ -33,10 +34,16 @@ interface PageProps {
 
 export default async function VoicePage({ searchParams }: PageProps) {
   await ensureSchema();
-  await ensureSingleUser();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
 
   const sp = await searchParams;
-  const outlets = await listOutlets(SINGLE_USER_ID);
+  const outlets = await listOutlets(session.userId);
   const authorizeAvailable = await canUseAuthorizeFlow();
   const hasStatus = Boolean(sp.wp_error || sp.wp_rejected || sp.check);
 
@@ -63,7 +70,7 @@ export default async function VoicePage({ searchParams }: PageProps) {
 
   const checkOutlet = sp.check ? await getOutlet(sp.check) : null;
   const preflight =
-    checkOutlet && checkOutlet.userId === SINGLE_USER_ID && checkOutlet.lastError
+    checkOutlet && checkOutlet.userId === session.userId && checkOutlet.lastError
       ? decodePreflight(checkOutlet.lastError)
       : null;
 

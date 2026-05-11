@@ -1,6 +1,7 @@
 "use server";
 
-import { ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "@/lib/db";
+import { ensureSchema } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { topicSearch, type TopicSearchOutcome } from "@/lib/v1/topic-search";
 
@@ -12,11 +13,11 @@ export interface TopicSearchActionResult {
 
 export async function runTopicSearchAction(topic: string): Promise<TopicSearchActionResult> {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   await ensureRegisteredCapabilities();
 
   try {
-    const outcome = await topicSearch(SINGLE_USER_ID, topic);
+    const outcome = await topicSearch(session.userId, topic);
     return { ok: true, outcome };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error." };

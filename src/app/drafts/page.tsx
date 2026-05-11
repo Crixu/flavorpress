@@ -14,7 +14,9 @@
  */
 
 import Link from "next/link";
-import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
+import { ensureSchema, db } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { deleteDraftAction } from "@/lib/v1/actions";
 import { Card } from "@/components/wpds";
 import { BucketTabs, type Bucket } from "./_components/BucketTabs";
@@ -67,7 +69,13 @@ interface PageProps {
 
 export default async function DraftsPage({ searchParams }: PageProps) {
   await ensureSchema();
-  await ensureSingleUser();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
 
   const sp = await searchParams;
   const rawBucket = sp.bucket;
@@ -95,7 +103,7 @@ export default async function DraftsPage({ searchParams }: PageProps) {
           LEFT JOIN outlets o ON o.id = d.outlet_id
           WHERE d.user_id = ?
           ORDER BY d.created_at DESC`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
 
   const drafts: DraftRow[] = [];

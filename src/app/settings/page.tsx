@@ -13,7 +13,9 @@ import {
   toggleExtensionAction,
 } from "@/lib/v1/settings-actions";
 import { resolveAnthropicAuth, type AuthMode } from "@/lib/anthropic";
-import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
+import { db, ensureSchema } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
@@ -44,6 +46,13 @@ const extensionErrorMessages: Record<string, string> = Object.fromEntries(
 
 export default async function SettingsPage({ searchParams }: PageProps) {
   await ensureSchema();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
   const sp = await searchParams;
   const section = sp.section ?? "authentication";
 
@@ -57,7 +66,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
     ),
     db.execute({
       sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ?`,
-      args: [SINGLE_USER_ID],
+      args: [session.userId],
     }),
   ]);
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);

@@ -5,8 +5,9 @@
  * The right pane renders the full voice editor for the selected outlet.
  */
 
-import { notFound } from "next/navigation";
-import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
+import { notFound, redirect } from "next/navigation";
+import { ensureSchema, db } from "@/lib/db";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { getOutlet, getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
 import { getOutletPostCount, MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import { canUseAuthorizeFlow } from "@/lib/v1/origin";
@@ -23,17 +24,23 @@ interface PageProps {
 
 export default async function VoiceDetailPage({ params, searchParams }: PageProps) {
   await ensureSchema();
-  await ensureSingleUser();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
   const { outletId } = await params;
   const sp = await searchParams;
 
   const [outlet, outlets, authorizeAvailable] = await Promise.all([
     getOutlet(outletId),
-    listOutlets(SINGLE_USER_ID),
+    listOutlets(session.userId),
     canUseAuthorizeFlow(),
   ]);
 
-  if (!outlet || outlet.userId !== SINGLE_USER_ID) notFound();
+  if (!outlet || outlet.userId !== session.userId) notFound();
 
   const r = await db.execute({
     sql: `SELECT * FROM voice_profiles WHERE outlet_id = ?`,

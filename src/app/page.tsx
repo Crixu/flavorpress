@@ -6,7 +6,9 @@
  */
 
 import Link from "next/link";
-import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
+import { ensureSchema, db } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { CLUSTER_WINDOW_MS } from "@/lib/v1/cluster-engine";
 import { listOutlets } from "@/lib/v1/outlets";
@@ -35,10 +37,16 @@ type TodayClusterCandidate = TodayClusterPreview["cluster"] & {
 
 export default async function TodayPage() {
   await ensureSchema();
-  await ensureSingleUser();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
   await ensureRegisteredCapabilities();
 
-  const outlets = await listOutlets(SINGLE_USER_ID);
+  const outlets = await listOutlets(session.userId);
   const connectedOutlets = outlets.filter((o) => o.connected);
   const hasOutlet = connectedOutlets.length > 0;
 
@@ -46,7 +54,7 @@ export default async function TodayPage() {
     sql: `SELECT COUNT(*) AS n FROM sources
           WHERE user_id = ? AND active = 1
             AND (paused_until IS NULL OR paused_until <= ?)`,
-    args: [SINGLE_USER_ID, Date.now()],
+    args: [session.userId, Date.now()],
   });
   const sourceCount = Number(sourceCountR.rows[0]!.n);
 
@@ -55,14 +63,14 @@ export default async function TodayPage() {
             (SELECT COUNT(*) FROM sources
               WHERE user_id = ? AND active = 1 AND last_polled_at IS NOT NULL) AS polled,
             (SELECT COUNT(*) FROM items WHERE user_id = ?) AS items_total`,
-    args: [SINGLE_USER_ID, SINGLE_USER_ID],
+    args: [session.userId, session.userId],
   });
   const polledSourceCount = Number(pollStatsR.rows[0]!.polled ?? 0);
   const itemsTotal = Number(pollStatsR.rows[0]!.items_total ?? 0);
 
   const voiceR = await db.execute({
     sql: `SELECT outlet_id FROM voice_profiles WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
   const profiledOutletIds = new Set(voiceR.rows.map((row) => String(row.outlet_id)));
 
@@ -88,15 +96,15 @@ export default async function TodayPage() {
   const [newItemsR, draftsInProgressR, sentThisMonthR] = await Promise.all([
     db.execute({
       sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND fetched_at > ?`,
-      args: [SINGLE_USER_ID, last24h],
+      args: [session.userId, last24h],
     }),
     db.execute({
       sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ? AND wp_synced_at IS NULL`,
-      args: [SINGLE_USER_ID],
+      args: [session.userId],
     }),
     db.execute({
       sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ? AND wp_synced_at IS NOT NULL AND wp_synced_at > ?`,
-      args: [SINGLE_USER_ID, monthStart],
+      args: [session.userId, monthStart],
     }),
   ]);
 
@@ -117,7 +125,7 @@ export default async function TodayPage() {
   const folderRows = await db.execute({
     sql: `SELECT id, name FROM source_folders
           WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
   const folders = folderRows.rows.map((row) => ({
     id: String(row.id),
@@ -129,12 +137,12 @@ export default async function TodayPage() {
   // contributed to, even when a noisier folder contributed more items. The
   // per-folder cap of PER_FOLDER_LIMIT keeps each lane bounded, so the
   // result set is still bounded at folders.length * PER_FOLDER_LIMIT.
-  const clustersByFolder = await listTodayClustersByFolder(SINGLE_USER_ID);
+  const clustersByFolder = await listTodayClustersByFolder(session.userId);
 
   const draftableOutletIds = draftableOutlets.map((o) => o.id);
   const signatureTermsByOutlet = await loadSignatureTermsByOutlet(
     draftableOutletIds,
-    SINGLE_USER_ID,
+    session.userId,
   );
 
   // Build each preview once per distinct cluster (a cluster may appear in
@@ -146,7 +154,7 @@ export default async function TodayPage() {
   const previewsById = new Map<string, TodayClusterPreview>();
   await Promise.all(
     Array.from(distinctClusters.values()).map(async (c) => {
-      const preview = await buildClusterPreview(c, draftableOutletIds, signatureTermsByOutlet);
+      const preview = await buildClusterPreview(c, draftableOutletIds, signatureTermsByOutlet, session.userId);
       previewsById.set(c.id, preview);
     }),
   );
@@ -214,6 +222,7 @@ async function buildClusterPreview(
   c: TodayClusterCandidate,
   draftableOutletIds: string[],
   signatureTermsByOutlet: Map<string, Set<string>>,
+  userId: string,
 ): Promise<TodayClusterPreview> {
   const r = await db.execute({
     sql: `SELECT i.title, i.entities, s.id AS source_id, s.url AS source_url, s.display_name
@@ -239,7 +248,7 @@ async function buildClusterPreview(
     sql: `SELECT id, outlet_id, mode, voice_match_score, wp_post_id, wp_edit_link
           FROM drafts WHERE cluster_id = ? AND user_id = ?
           ORDER BY created_at DESC`,
-    args: [c.id, SINGLE_USER_ID],
+    args: [c.id, userId],
   });
   const draftsByOutlet: Record<
     string,

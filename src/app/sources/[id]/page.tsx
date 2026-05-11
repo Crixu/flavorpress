@@ -8,8 +8,9 @@
  */
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
+import { notFound, redirect } from "next/navigation";
+import { ensureSchema, db } from "@/lib/db";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { HelpTrigger } from "@/components/Help";
 import { PendingMessage, SubmitButton } from "@/app/_components/SubmitButton";
 import {
@@ -31,6 +32,13 @@ interface PageProps {
 
 export default async function SourceDetailPage({ params }: PageProps) {
   await ensureSchema();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
   const { id } = await params;
 
   const sourceR = await db.execute({
@@ -39,7 +47,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
             (SELECT COUNT(*) FROM items WHERE source_id = s.id AND fetched_at > ?) AS items_24h,
             (SELECT COUNT(DISTINCT cluster_id) FROM items WHERE source_id = s.id AND cluster_id IS NOT NULL) AS clusters_joined
           FROM sources s WHERE s.id = ? AND s.user_id = ?`,
-    args: [Date.now() - 24 * 60 * 60 * 1000, id, SINGLE_USER_ID],
+    args: [Date.now() - 24 * 60 * 60 * 1000, id, session.userId],
   });
   if (sourceR.rows.length === 0) notFound();
   const source = sourceR.rows[0]!;
@@ -51,7 +59,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
     args: [id],
   });
 
-  const outlets = await listOutlets(SINGLE_USER_ID);
+  const outlets = await listOutlets(session.userId);
   const assignedOutletIds = new Set(await getOutletIdsForSource(id));
 
   // For each item that has a cluster_id, list the OTHER sources in that
