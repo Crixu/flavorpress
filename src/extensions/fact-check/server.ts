@@ -200,7 +200,16 @@ async function persistFactCheckRun(
 }
 
 export async function loadFactCheckRunAt(draftId: string): Promise<number | null> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before returning any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) return null;
+
   const r = await db.execute({
     sql: `SELECT computed_at FROM fact_check_results
           WHERE draft_id = ? AND capability_id = ? AND idempotency_key = ?`,
@@ -211,7 +220,16 @@ export async function loadFactCheckRunAt(draftId: string): Promise<number | null
 }
 
 export async function loadFactCheckClaims(draftId: string): Promise<FactCheckClaim[]> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before returning any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) return [];
+
   const r = await db.execute({
     sql: `SELECT id, draft_id, claim_index, claim_text, verdict, comment,
                  source_url, source_title, created_at
@@ -528,7 +546,16 @@ async function loadDraftAndClaim(
 }
 
 export async function clearFactCheckClaims(draftId: string): Promise<void> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before deleting any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) throw new Error("Draft not found.");
+
   await db.execute({
     sql: `DELETE FROM fact_check_claims WHERE draft_id = ?`,
     args: [draftId],
