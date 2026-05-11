@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -59,6 +59,8 @@ export interface TodayFolderStream {
   clusters: TodayClusterPreview[];
 }
 
+const LAST_OPENED_FOLDER_KEY = "flavorpress.today.lastOpenedFolderId";
+
 interface Props {
   streams: TodayFolderStream[];
   outlets: OutletOption[];
@@ -82,10 +84,25 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
 
   // Default: first folder with content is expanded. If every lane is empty,
   // fall back to the first folder so the user still sees an empty-lane state.
+  // Read from localStorage in an effect rather than the initializer so SSR
+  // and client hydration agree on the initial markup.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
     const first = streams.find((stream) => stream.clusters.length > 0)?.id ?? streams[0]?.id;
     return first ? new Set([first]) : new Set();
   });
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(LAST_OPENED_FOLDER_KEY);
+      if (stored && streams.some((s) => s.id === stored)) {
+        setExpandedIds(new Set([stored]));
+      }
+    } catch {
+      // localStorage may be unavailable (private mode, quota); fall back to default.
+    }
+    // Only re-run if the set of folder ids changes, not on every clusters update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streams.map((s) => s.id).join("|")]);
 
   function toggleFolder(id: string) {
     setExpandedIds((prev) => {
@@ -94,6 +111,11 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId }: Props)
         next.delete(id);
       } else {
         next.add(id);
+        try {
+          window.localStorage.setItem(LAST_OPENED_FOLDER_KEY, id);
+        } catch {
+          // ignore persistence failures
+        }
       }
       return next;
     });
