@@ -52,6 +52,7 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/reset-password" || pathname.startsWith("/reset-password/")) return true;
   if (pathname === "/api/cron/poll") return true;
   if (pathname === "/api/wp/callback") return true;
+  if (pathname.startsWith("/api/auth/wpcom")) return true;
   if (pathname === "/api/mcp") return true;
   if (pathname.startsWith("/_next/")) return true;
   if (PUBLIC_PATHS.has(pathname)) return true;
