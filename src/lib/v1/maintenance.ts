@@ -29,12 +29,15 @@ export interface JobProgress {
   error: string | null;
 }
 
-export async function getJobProgress(jobId: string): Promise<JobProgress | null> {
+export async function getJobProgress(
+  jobId: string,
+  userId: string,
+): Promise<JobProgress | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT id, kind, total, completed, started_at, completed_at, error
-          FROM job_progress WHERE id = ?`,
-    args: [jobId],
+          FROM job_progress WHERE id = ? AND user_id = ?`,
+    args: [jobId, userId],
   });
   if (r.rows.length === 0) return null;
   const row = r.rows[0]!;
@@ -49,24 +52,27 @@ export async function getJobProgress(jobId: string): Promise<JobProgress | null>
   };
 }
 
-export async function getRunningJob(kind: JobKind): Promise<JobProgress | null> {
+export async function getRunningJob(
+  kind: JobKind,
+  userId: string,
+): Promise<JobProgress | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT id FROM job_progress
-          WHERE kind = ? AND completed_at IS NULL AND error IS NULL
+          WHERE kind = ? AND user_id = ? AND completed_at IS NULL AND error IS NULL
           ORDER BY started_at DESC LIMIT 1`,
-    args: [kind],
+    args: [kind, userId],
   });
   if (r.rows.length === 0) return null;
-  return getJobProgress(String(r.rows[0]!.id));
+  return getJobProgress(String(r.rows[0]!.id), userId);
 }
 
-async function createJob(kind: JobKind, total: number): Promise<string> {
+async function createJob(kind: JobKind, total: number, userId: string): Promise<string> {
   const id = crypto.randomUUID();
   await db.execute({
-    sql: `INSERT INTO job_progress (id, kind, total, completed, started_at)
-          VALUES (?, ?, ?, 0, ?)`,
-    args: [id, kind, total, Date.now()],
+    sql: `INSERT INTO job_progress (id, user_id, kind, total, completed, started_at)
+          VALUES (?, ?, ?, ?, 0, ?)`,
+    args: [id, userId, kind, total, Date.now()],
   });
   return id;
 }
@@ -98,7 +104,7 @@ export interface JobStartResult {
  */
 export async function runReextractEntitiesJob(userId: string): Promise<JobStartResult> {
   await ensureSchema();
-  const running = await getRunningJob("reextract-entities");
+  const running = await getRunningJob("reextract-entities", userId);
   if (running) return { jobId: running.id, total: running.total, alreadyRunning: true };
 
   const r = await db.execute({
@@ -107,7 +113,7 @@ export async function runReextractEntitiesJob(userId: string): Promise<JobStartR
     args: [userId],
   });
   const total = r.rows.length;
-  const jobId = await createJob("reextract-entities", total);
+  const jobId = await createJob("reextract-entities", total, userId);
 
   // Snapshot the rows so the worker doesn't keep the cursor open.
   const items = r.rows.map((row) => ({
@@ -168,7 +174,7 @@ async function runReextractInBackground(
  */
 export async function runReclusterJob(userId: string): Promise<JobStartResult> {
   await ensureSchema();
-  const running = await getRunningJob("recluster");
+  const running = await getRunningJob("recluster", userId);
   if (running) return { jobId: running.id, total: running.total, alreadyRunning: true };
 
   const drafts = await db.execute({
@@ -200,7 +206,7 @@ export async function runReclusterJob(userId: string): Promise<JobStartResult> {
     args: [userId],
   });
   const total = r.rows.length;
-  const jobId = await createJob("recluster", total);
+  const jobId = await createJob("recluster", total, userId);
 
   const items = r.rows.map((row) => ({
     id: String(row.id),

@@ -342,3 +342,54 @@ describe("pollSourceAction - cross-user isolation", () => {
     await expect(mod.pollSourceAction!(fd)).rejects.toThrow(/not found/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// getJobProgressAction (maintenance jobs)
+// ---------------------------------------------------------------------------
+
+describe("job_progress - cross-user isolation", () => {
+  it("getRunningJob is scoped per user (user A's job does not block user B)", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const { getRunningJob } = await import("@/lib/v1/maintenance");
+
+    // Seed an in-flight job for user A.
+    await db.execute({
+      sql: `INSERT INTO job_progress (id, user_id, kind, total, completed, started_at)
+            VALUES (?, ?, ?, ?, 0, ?)`,
+      args: ["job_a_running", userA.id, "reextract-entities", 100, Date.now()],
+    });
+
+    expect(await getRunningJob("reextract-entities", userA.id)).not.toBeNull();
+    expect(await getRunningJob("reextract-entities", userB.id)).toBeNull();
+  });
+
+  it("getJobProgressAction returns null for another user's job id", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    await db.execute({
+      sql: `INSERT INTO job_progress (id, user_id, kind, total, completed, started_at)
+            VALUES (?, ?, ?, ?, 0, ?)`,
+      args: ["job_a_progress", userA.id, "reextract-entities", 100, Date.now()],
+    });
+
+    await loginAs(userB.id);
+    const { getJobProgressAction } = await import("@/lib/v1/actions");
+    const r = await getJobProgressAction("job_a_progress");
+    expect(r).toBeNull();
+  });
+
+  it("getJobProgressAction returns the job for its owner", async () => {
+    const { userA } = await createTwoUserFixture();
+    await db.execute({
+      sql: `INSERT INTO job_progress (id, user_id, kind, total, completed, started_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ["job_a_self", userA.id, "reextract-entities", 100, 42, Date.now()],
+    });
+
+    await loginAs(userA.id);
+    const { getJobProgressAction } = await import("@/lib/v1/actions");
+    const r = await getJobProgressAction("job_a_self");
+    expect(r).not.toBeNull();
+    expect(r?.total).toBe(100);
+    expect(r?.completed).toBe(42);
+  });
+});

@@ -205,6 +205,7 @@ export async function ensureSchema(): Promise<void> {
       // jobs of the same kind running concurrently.
       `CREATE TABLE IF NOT EXISTS job_progress (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         kind TEXT NOT NULL,
         total INTEGER NOT NULL,
         completed INTEGER NOT NULL DEFAULT 0,
@@ -750,6 +751,21 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("session_version")) {
         console.info("[migrate] users: adding session_version column");
         await db.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // job_progress: add user_id so maintenance jobs scope per-user. Nullable
+  // for legacy rows; new inserts always set it.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(job_progress)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("user_id")) {
+        console.info("[migrate] job_progress: adding user_id column");
+        await db.execute("ALTER TABLE job_progress ADD COLUMN user_id TEXT");
       }
     }
   } catch {

@@ -974,8 +974,9 @@ export async function getJobProgressAction(jobId: string): Promise<{
   error: string | null;
 } | null> {
   await ensureSchema();
+  const session = await requireSession();
   const { getJobProgress } = await import("./maintenance");
-  const j = await getJobProgress(jobId);
+  const j = await getJobProgress(jobId, session.userId);
   if (!j) return null;
   return {
     completed: j.completed,
