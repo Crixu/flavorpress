@@ -15,12 +15,30 @@ import { runDuePolls } from "@/lib/v1/scheduler";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// Vercel Pro gives function invocations up to 5 minutes; Hobby caps at 60s.
+// Opt into the 5-minute window so a tick has headroom when many sources
+// happen to fall due at once. The maxBatch cap further bounds per-tick
+// work so we never get close to this limit.
+export const maxDuration = 300;
+
+function readMaxBatch(): number | undefined {
+  const raw = process.env.FLAVORPRESS_CRON_MAX_BATCH;
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.floor(n);
+}
+
 export async function GET(req: Request) {
   const authError = rejectInvalidCronRequest(req);
   if (authError) return authError;
 
   await ensureRegisteredCapabilities();
-  const result = await runDuePolls({ wait: true, throwOnError: true });
+  const result = await runDuePolls({
+    wait: true,
+    throwOnError: true,
+    maxBatch: readMaxBatch(),
+  });
   return NextResponse.json(result, {
     headers: {
       "cache-control": "no-store",

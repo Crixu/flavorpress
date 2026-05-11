@@ -51,31 +51,52 @@ export interface DuePollResult {
   due: number;
   queued: number;
   skipped: number;
+  pending: number;
 }
 
+const DEFAULT_MAX_BATCH = 50;
+
 export async function runDuePolls(
-  options: { wait?: boolean; throwOnError?: boolean } = {},
+  options: {
+    wait?: boolean;
+    throwOnError?: boolean;
+    /**
+     * Maximum number of sources processed per invocation. Bounds the
+     * cron-tick runtime so a single Vercel function call cannot time
+     * out regardless of how many sources are due. Remaining due sources
+     * are picked up on the next tick. Defaults to 50.
+     */
+    maxBatch?: number;
+  } = {},
 ): Promise<DuePollResult> {
+  const maxBatch = Math.max(1, options.maxBatch ?? DEFAULT_MAX_BATCH);
   try {
     await ensureSchema();
     const now = Date.now();
+    // Most-overdue first so any remaining sources for this user get picked
+    // up on the next tick. NULL last_polled_at sorts first via the COALESCE
+    // pattern so brand-new sources run on their first tick.
     const due = await db.execute({
       sql: `SELECT id, user_id, url, kind FROM sources
             WHERE active = 1
               AND (paused_until IS NULL OR paused_until <= ?)
               AND (backoff_until IS NULL OR backoff_until <= ?)
               AND (last_polled_at IS NULL
-                   OR last_polled_at + (poll_interval_seconds * 1000) <= ?)`,
-      args: [now, now, now],
+                   OR last_polled_at + (poll_interval_seconds * 1000) <= ?)
+            ORDER BY COALESCE(last_polled_at, 0) ASC
+            LIMIT ?`,
+      args: [now, now, now, maxBatch + 1],
     });
-    if (due.rows.length === 0) return { due: 0, queued: 0, skipped: 0 };
+    if (due.rows.length === 0) return { due: 0, queued: 0, skipped: 0, pending: 0 };
+    const batch = due.rows.slice(0, maxBatch);
+    const pending = Math.max(0, due.rows.length - maxBatch);
 
     const queue = getPollQueue();
     const registry = getRegistry();
     const tasks: Promise<void>[] = [];
     let queued = 0;
     let skipped = 0;
-    for (const row of due.rows) {
+    for (const row of batch) {
       const sourceId = String(row.id);
       const userId = String(row.user_id);
       const kind = String(row.kind ?? "rss");
@@ -116,10 +137,10 @@ export async function runDuePolls(
       }
     }
     if (tasks.length > 0) await Promise.all(tasks);
-    return { due: due.rows.length, queued, skipped };
+    return { due: batch.length, queued, skipped, pending };
   } catch (err) {
     console.warn(`[scheduler] tick failed: ${err}`);
     if (options.throwOnError) throw err;
-    return { due: 0, queued: 0, skipped: 0 };
+    return { due: 0, queued: 0, skipped: 0, pending: 0 };
   }
 }
