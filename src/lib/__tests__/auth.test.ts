@@ -31,7 +31,14 @@ describe("auth session cookie", () => {
       sessionVersion: 0,
       secret: SECRET,
     });
-    const tampered = cookie.value.replace(/.$/, (c) => (c === "A" ? "B" : "A"));
+    // Flip the first signature character. Replacing the last char of a
+    // base64url signature is flaky: the last char encodes only 4 of its
+    // 6 bits (the bottom 2 are padding), so some flips decode to the same
+    // bytes and the signature still verifies.
+    const parts = cookie.value.split(".");
+    const sig = parts[2]!;
+    const flippedHead = sig[0] === "A" ? "B" : "A";
+    const tampered = `${parts[0]}.${parts[1]}.${flippedHead}${sig.slice(1)}`;
     expect(await verifySessionCookie(tampered, SECRET)).toBeNull();
   });
 

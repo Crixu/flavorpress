@@ -31,7 +31,15 @@ describe("wpcom state token", () => {
 
   it("rejects tampered token", async () => {
     const token = await issueWpcomState({ nonce: "n3", mode: "login" });
-    const tampered = token.replace(/.$/, (c) => (c === "A" ? "B" : "A"));
+    // Flip the first character of the signature segment. Tampering the last
+    // base64url character is flaky: the last char encodes only 4 of its 6
+    // bits (the bottom 2 are padding), so some flips decode to the same
+    // bytes and the signature still matches. The first signature char
+    // always encodes load-bearing bits.
+    const parts = token.split(".");
+    const sig = parts[2]!;
+    const flippedHead = sig[0] === "A" ? "B" : "A";
+    const tampered = `${parts[0]}.${parts[1]}.${flippedHead}${sig.slice(1)}`;
     expect(await consumeWpcomState(tampered)).toBeNull();
   });
 
