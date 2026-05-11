@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Card, Field, Button, Notice } from "@/components/wpds";
 import { isLocalAuthMode } from "@/lib/session";
+import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { loginAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ interface PageProps {
 const errorMessages: Record<string, string> = {
   credentials: "Invalid credentials.",
   origin: "This sign-in request did not come from this FlavorPress app.",
+  oauth_state: "The sign-in link expired or was tampered with. Try again.",
+  oauth: "WordPress.com sign-in failed. Try again.",
 };
 
 export default async function LoginPage({ searchParams }: PageProps) {
@@ -22,6 +25,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const next = typeof sp.next === "string" ? sp.next : "/";
   const error = sp.error ? errorMessages[sp.error] : null;
+  const oauthEnabled = isWpcomOAuthConfigured();
 
   return (
     <div
@@ -78,6 +82,24 @@ export default async function LoginPage({ searchParams }: PageProps) {
               Sign in
             </Button>
           </form>
+          {oauthEnabled ? (
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <a
+                href="/api/auth/wpcom?mode=login"
+                style={{
+                  display: "inline-block",
+                  padding: "8px 16px",
+                  border: "1px solid var(--ink-tertiary)",
+                  borderRadius: 6,
+                  textDecoration: "none",
+                  color: "var(--ink-primary)",
+                  fontSize: 14,
+                }}
+              >
+                Sign in with WordPress.com
+              </a>
+            </div>
+          ) : null}
         </Card>
       </div>
     </div>

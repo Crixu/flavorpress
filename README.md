@@ -106,7 +106,16 @@ your session version so any old sessions die.
 
 Admin-side reset (still available): `npm run auth:reset -- <email>`.
 
-WordPress.com OAuth as a login method lands in sub-spec 2.
+### Sign in with WordPress.com
+
+When `WPCOM_OAUTH_CLIENT_ID` and `WPCOM_OAUTH_CLIENT_SECRET` are set,
+"Sign in with WordPress.com" and "Sign up with WordPress.com" buttons
+appear on the login and signup pages. Signup still requires an invite
+token.
+
+Register an app at developer.wordpress.com with redirect URI
+`<FLAVORPRESS_ORIGIN>/api/auth/wpcom/callback`. For local development,
+also register `http://localhost:3000/api/auth/wpcom/callback`.
 
 ## Configuration
 

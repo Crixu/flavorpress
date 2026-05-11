@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Card, Field, Button, Notice } from "@/components/wpds";
 import { readInvite } from "@/lib/invites";
 import { isLocalAuthMode } from "@/lib/session";
+import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { signupAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ const errorMessages: Record<string, string> = {
   email: "Enter a valid email address.",
   account: "Could not create that account.",
   origin: "This sign-up request did not come from this FlavorPress app.",
+  oauth_state: "The sign-up link expired or was tampered with. Try again.",
+  oauth: "WordPress.com sign-up failed. Try again.",
 };
 
 export default async function SignupPage({ searchParams }: PageProps) {
@@ -27,6 +30,7 @@ export default async function SignupPage({ searchParams }: PageProps) {
   const invite = typeof sp.invite === "string" ? sp.invite : "";
   const error = sp.error ? errorMessages[sp.error] : null;
   const validInvite = invite ? await readInvite(invite) : null;
+  const oauthEnabled = isWpcomOAuthConfigured();
 
   if (!invite || !validInvite) {
     return (
@@ -77,6 +81,24 @@ export default async function SignupPage({ searchParams }: PageProps) {
               Create account
             </Button>
           </form>
+          {oauthEnabled ? (
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <a
+                href={`/api/auth/wpcom?mode=signup&invite=${encodeURIComponent(invite)}`}
+                style={{
+                  display: "inline-block",
+                  padding: "8px 16px",
+                  border: "1px solid var(--ink-tertiary)",
+                  borderRadius: 6,
+                  textDecoration: "none",
+                  color: "var(--ink-primary)",
+                  fontSize: 14,
+                }}
+              >
+                Sign up with WordPress.com
+              </a>
+            </div>
+          ) : null}
         </Card>
       </div>
     </div>
