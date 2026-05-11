@@ -20,6 +20,9 @@ import { timingSafeEqual } from "node:crypto";
 import { getRegistry } from "@/lib/v1/capability-registry";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const PROTOCOL_VERSION = "2024-11-05"; // MCP draft we target in v1
 
 // Sub-spec 4 wires per-user MCP tokens. Until then, production serves 501.
