@@ -1543,18 +1543,18 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
  */
 export async function saveBlogDescriptionAction(formData: FormData) {
   await ensureSchema();
-  const _session = await requireSession();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const description = String(formData.get("description") ?? "").trim();
   if (!outletId) throw new Error("outletId required.");
   const r = await db.execute({
-    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Build the voice profile first.");
   await db.execute({
-    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ?`,
-    args: [description.length > 0 ? description : null, outletId],
+    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [description.length > 0 ? description : null, outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
   revalidatePath("/voice");
@@ -1574,8 +1574,8 @@ export async function deriveBlogDescriptionAction(formData: FormData) {
   const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
   const r = await db.execute({
-    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Build the voice profile first.");
 
@@ -1594,8 +1594,8 @@ export async function deriveBlogDescriptionAction(formData: FormData) {
   });
 
   await db.execute({
-    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ?`,
-    args: [description, outletId],
+    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [description, outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
   revalidatePath("/voice");
@@ -1715,6 +1715,7 @@ export async function assignSourceOutletsAction(formData: FormData) {
  */
 export async function addVoiceTermAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const list = String(formData.get("list") ?? "");
   const term = String(formData.get("term") ?? "").trim();
@@ -1728,8 +1729,8 @@ export async function addVoiceTermAction(formData: FormData) {
   }
   const column = list === "banned" ? "banned_terms" : "signature_terms";
   const r = await db.execute({
-    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Build the voice profile first.");
   const existing: string[] = JSON.parse(String(r.rows[0]!.terms ?? "[]"));
@@ -1739,8 +1740,8 @@ export async function addVoiceTermAction(formData: FormData) {
   }
   const next = [...existing, term];
   await db.execute({
-    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ?`,
-    args: [JSON.stringify(next), outletId],
+    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [JSON.stringify(next), outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1750,6 +1751,7 @@ export async function addVoiceTermAction(formData: FormData) {
  */
 export async function removeVoiceTermAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const list = String(formData.get("list") ?? "");
   const term = String(formData.get("term") ?? "").trim();
@@ -1759,15 +1761,15 @@ export async function removeVoiceTermAction(formData: FormData) {
   }
   const column = list === "banned" ? "banned_terms" : "signature_terms";
   const r = await db.execute({
-    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) return;
   const existing: string[] = JSON.parse(String(r.rows[0]!.terms ?? "[]"));
   const next = existing.filter((t) => t.toLowerCase() !== term.toLowerCase());
   await db.execute({
-    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ?`,
-    args: [JSON.stringify(next), outletId],
+    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [JSON.stringify(next), outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
 }

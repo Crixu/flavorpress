@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/session";
 import { setExtensionEnabled, setSetting, SETTING_KEYS } from "./settings";
 import { findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
@@ -41,6 +42,7 @@ function getValidator(key: string): Validator | null {
  * stored value and reverts to the .env fallback.
  */
 export async function saveSettingAction(formData: FormData): Promise<void> {
+  await requireSession();
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
     redirect("/settings?error=invalid_key");
@@ -66,6 +68,7 @@ export async function saveSettingAction(formData: FormData): Promise<void> {
 }
 
 export async function clearSettingAction(formData: FormData): Promise<void> {
+  await requireSession();
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
     redirect("/settings?error=invalid_key");
@@ -83,6 +86,7 @@ export async function clearSettingAction(formData: FormData): Promise<void> {
  * server-renders.
  */
 export async function toggleExtensionAction(formData: FormData): Promise<void> {
+  await requireSession();
   const extensionId = String(formData.get("extensionId") ?? "");
   if (!findExtensionMetadata(extensionId)) {
     redirect("/settings?error=invalid_extension");
