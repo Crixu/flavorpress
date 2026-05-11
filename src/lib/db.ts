@@ -5,8 +5,17 @@
  * Per-user encryption is application-layer envelope encryption on
  * sensitive columns (Application Password, archive blobs).
  *
- * Local dev: file-based SQLite at .data/flavorpress.db.
- * Production: Turso via LIBSQL_URL + LIBSQL_AUTH_TOKEN.
+ * Three connection modes:
+ *
+ * 1. LIBSQL_URL unset: local file at .data/flavorpress.db (laptop dev).
+ * 2. LIBSQL_URL is libsql:// or https:// and we're not on Vercel:
+ *    embedded replica. Reads hit a local .data/turso-replica.db file;
+ *    writes pass through to Turso and the replica syncs every 60s.
+ *    Keeps `npm run dev` against a remote Turso DB feeling local.
+ * 3. LIBSQL_URL is libsql:// or https:// on Vercel: direct remote
+ *    connection. Vercel functions sit in the same region as Turso's
+ *    edge replica; round-trips are sub-millisecond and an embedded
+ *    file is wasteful (cold-start friction, /tmp is ephemeral anyway).
  */
 
 import { createClient, type Client } from "@libsql/client";
@@ -15,14 +24,41 @@ import fs from "node:fs";
 import { assertProductionEncryptionKey } from "./secret-crypto";
 
 const dataDir = path.join(process.cwd(), ".data");
-if (!process.env.LIBSQL_URL && !fs.existsSync(dataDir)) {
+const remoteUrl = process.env.LIBSQL_URL?.trim();
+const authToken = process.env.LIBSQL_AUTH_TOKEN;
+const onVercel = process.env.VERCEL === "1";
+const isRemote = Boolean(
+  remoteUrl && (remoteUrl.startsWith("libsql://") || remoteUrl.startsWith("https://")),
+);
+
+if (!isRemote && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const url = process.env.LIBSQL_URL ?? `file:${path.join(dataDir, "flavorpress.db")}`;
-const authToken = process.env.LIBSQL_AUTH_TOKEN;
+function buildClient(): Client {
+  // Mode 3: remote-only on Vercel.
+  if (isRemote && onVercel) {
+    return createClient({ url: remoteUrl!, authToken });
+  }
+  // Mode 2: embedded replica for local dev pointed at a remote URL.
+  if (isRemote) {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    return createClient({
+      url: `file:${path.join(dataDir, "turso-replica.db")}`,
+      syncUrl: remoteUrl,
+      authToken,
+      syncInterval: 60,
+    });
+  }
+  // Mode 1: bare local sqlite file (or whatever non-remote URL was passed,
+  // e.g., file: URLs used by the test runner).
+  const fallback = `file:${path.join(dataDir, "flavorpress.db")}`;
+  return createClient({ url: remoteUrl ?? fallback, authToken });
+}
 
-export const db: Client = createClient({ url, authToken });
+export const db: Client = buildClient();
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
