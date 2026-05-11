@@ -40,27 +40,41 @@ export default async function SourceDetailPage({ params }: PageProps) {
     throw err;
   }
   const { id } = await params;
+  const nowTs = Date.now();
 
   const sourceR = await db.execute({
-    sql: `SELECT s.*,
-            (SELECT COUNT(*) FROM items WHERE source_id = s.id) AS item_count,
-            (SELECT COUNT(*) FROM items WHERE source_id = s.id AND fetched_at > ?) AS items_24h,
-            (SELECT COUNT(DISTINCT cluster_id) FROM items WHERE source_id = s.id AND cluster_id IS NOT NULL) AS clusters_joined
-          FROM sources s WHERE s.id = ? AND s.user_id = ?`,
-    args: [Date.now() - 24 * 60 * 60 * 1000, id, session.userId],
+    sql: `WITH item_stats AS (
+            SELECT source_id,
+                   COUNT(*) AS item_count,
+                   SUM(CASE WHEN fetched_at > ? THEN 1 ELSE 0 END) AS items_24h,
+                   COUNT(DISTINCT CASE WHEN cluster_id IS NOT NULL THEN cluster_id END) AS clusters_joined
+            FROM items
+            WHERE source_id = ?
+            GROUP BY source_id
+          )
+          SELECT s.*,
+                 COALESCE(item_stats.item_count, 0) AS item_count,
+                 COALESCE(item_stats.items_24h, 0) AS items_24h,
+                 COALESCE(item_stats.clusters_joined, 0) AS clusters_joined
+          FROM sources s
+          LEFT JOIN item_stats ON item_stats.source_id = s.id
+          WHERE s.id = ? AND s.user_id = ?`,
+    args: [nowTs - 24 * 60 * 60 * 1000, id, id, session.userId],
   });
   if (sourceR.rows.length === 0) notFound();
   const source = sourceR.rows[0]!;
 
-  const itemsR = await db.execute({
-    sql: `SELECT id, canonical_url, title, lede, published_at, fetched_at, cluster_id
-          FROM items WHERE source_id = ?
-          ORDER BY published_at DESC LIMIT 30`,
-    args: [id],
-  });
-
-  const outlets = await listOutlets(session.userId);
-  const assignedOutletIds = new Set(await getOutletIdsForSource(id));
+  const [itemsR, outlets, sourceOutletIds] = await Promise.all([
+    db.execute({
+      sql: `SELECT id, canonical_url, title, lede, published_at, fetched_at, cluster_id
+            FROM items WHERE source_id = ?
+            ORDER BY published_at DESC LIMIT 30`,
+      args: [id],
+    }),
+    listOutlets(session.userId),
+    getOutletIdsForSource(id),
+  ]);
+  const assignedOutletIds = new Set(sourceOutletIds);
 
   // For each item that has a cluster_id, list the OTHER sources in that
   // cluster — the "Also covered by" widget.
@@ -105,7 +119,7 @@ export default async function SourceDetailPage({ params }: PageProps) {
     source.paused_until !== null && source.paused_until !== undefined
       ? Number(source.paused_until)
       : null;
-  const isPaused = pausedUntil !== null && pausedUntil > Date.now();
+  const isPaused = pausedUntil !== null && pausedUntil > nowTs;
 
   return (
     <div className="space-y-6">

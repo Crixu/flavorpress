@@ -71,24 +71,38 @@ export async function loadReaderQueue(
   const args: (string | number)[] = folderId
     ? [userId, folderId, READER_QUEUE_LIMIT]
     : [userId, READER_QUEUE_LIMIT];
-  const r = await db.execute({
-    sql: `SELECT i.id, i.title, i.lede, i.published_at, i.canonical_url,
-                 i.score, i.comment_count,
-                 s.id AS source_id, s.display_name AS source_name, s.kind AS source_kind,
-                 f.id AS folder_id, f.name AS folder_name
-          FROM items i
-          JOIN sources s ON s.id = i.source_id
-          LEFT JOIN source_folders f ON f.id = s.folder_id
-          WHERE i.user_id = ?
-            AND i.cluster_id IS NULL
-            AND i.marked_at IS NULL
-            AND i.dismissed_at IS NULL
-            AND s.folder_id IS NOT NULL
-            ${folderClause}
-          ORDER BY i.published_at DESC
-          LIMIT ?`,
-    args,
-  });
+  const [r, markedR] = await db.batch(
+    [
+      {
+        sql: `SELECT i.id, i.title, i.lede, i.published_at, i.canonical_url,
+                     i.score, i.comment_count,
+                     s.id AS source_id, s.display_name AS source_name, s.kind AS source_kind,
+                     f.id AS folder_id, f.name AS folder_name
+              FROM items i
+              JOIN sources s ON s.id = i.source_id
+              LEFT JOIN source_folders f ON f.id = s.folder_id
+              WHERE i.user_id = ?
+                AND i.cluster_id IS NULL
+                AND i.marked_at IS NULL
+                AND i.dismissed_at IS NULL
+                AND s.folder_id IS NOT NULL
+                ${folderClause}
+              ORDER BY i.published_at DESC
+              LIMIT ?`,
+        args,
+      },
+      {
+        sql: `SELECT COUNT(*) AS n FROM items
+              JOIN sources s ON s.id = items.source_id
+              WHERE items.user_id = ?
+                AND items.marked_at IS NOT NULL
+                AND items.cluster_id IS NULL
+                AND s.folder_id IS NOT NULL`,
+        args: [userId],
+      },
+    ],
+    "read",
+  );
   const baseItems = r.rows.map((row) => ({
     id: String(row.id),
     title: String(row.title),
@@ -111,7 +125,7 @@ export async function loadReaderQueue(
     ...it,
     alsoCoveredBy: alsoCoveredMap.get(it.id) ?? [],
   }));
-  const markedCount = await countMarked(userId);
+  const markedCount = Number(markedR.rows[0]!.n ?? 0);
   return {
     items,
     markedCount,
@@ -137,15 +151,21 @@ export async function listReaderFolderOptions(userId: string): Promise<{
 }> {
   await ensureSchema();
   const r = await db.execute({
-    sql: `SELECT f.id AS id, f.name AS name,
-                 (SELECT COUNT(*) FROM items i
-                  JOIN sources s2 ON s2.id = i.source_id
-                  WHERE i.user_id = ?
-                    AND i.cluster_id IS NULL
-                    AND i.marked_at IS NULL
-                    AND i.dismissed_at IS NULL
-                    AND s2.folder_id = f.id) AS queue_count
+    sql: `WITH queue_counts AS (
+            SELECT s.folder_id, COUNT(*) AS queue_count
+            FROM items i
+            JOIN sources s ON s.id = i.source_id
+            WHERE i.user_id = ?
+              AND i.cluster_id IS NULL
+              AND i.marked_at IS NULL
+              AND i.dismissed_at IS NULL
+              AND s.folder_id IS NOT NULL
+            GROUP BY s.folder_id
+          )
+          SELECT f.id AS id, f.name AS name,
+                 COALESCE(queue_counts.queue_count, 0) AS queue_count
           FROM source_folders f
+          LEFT JOIN queue_counts ON queue_counts.folder_id = f.id
           WHERE f.user_id = ?
             AND EXISTS (SELECT 1 FROM sources s WHERE s.folder_id = f.id)
           ORDER BY f.sort_order ASC, f.name ASC`,
@@ -244,63 +264,53 @@ async function computeAlsoCoveredBy(
   const result = new Map<string, string[]>();
   if (items.length === 0) return result;
 
-  const itemPhrases = new Map<string, Set<string>>();
-  const allPhrases = new Set<string>();
-  for (const it of items) {
-    const phrases = extractPhrases(it.title);
-    itemPhrases.set(it.id, phrases);
-    for (const p of phrases) allPhrases.add(p);
+  const itemTags = await loadReaderItemTags(items.map((it) => it.id));
+  const allTags = new Set<string>();
+  for (const tags of itemTags.values()) {
+    for (const tag of tags) allTags.add(tag);
   }
-  if (allPhrases.size === 0) return result;
+  if (allTags.size === 0) return result;
 
   const since = Date.now() - ALSO_COVERED_LOOKBACK_MS;
-  const phraseList = Array.from(allPhrases).slice(0, ALSO_COVERED_MAX_PHRASES);
-  const phraseClause = phraseList.map(() => "LOWER(i.title) LIKE ?").join(" OR ");
+  const tagList = Array.from(allTags).slice(0, ALSO_COVERED_MAX_PHRASES);
+  const placeholders = tagList.map(() => "?").join(",");
   const candidates = await db.execute({
-    sql: `SELECT i.id, i.title, i.source_id, s.display_name
-          FROM items i
+    sql: `SELECT lower(it.tag) AS tag, i.id, i.source_id, s.display_name
+          FROM item_tags it
+          JOIN items i ON i.id = it.item_id
           JOIN sources s ON s.id = i.source_id
           WHERE i.user_id = ?
             AND i.published_at > ?
-            AND (${phraseClause})
+            AND lower(it.tag) IN (${placeholders})
           ORDER BY i.published_at DESC
           LIMIT ?`,
-    args: [userId, since, ...phraseList.map((p) => `%${p}%`), ALSO_COVERED_CANDIDATE_LIMIT],
+    args: [userId, since, ...tagList, ALSO_COVERED_CANDIDATE_LIMIT],
   });
 
-  // Index candidates by phrase so each queue item costs one set lookup
-  // per phrase rather than a full-table scan.
-  const phraseIndex = new Map<
-    string,
-    Array<{ id: string; sourceId: string; sourceName: string }>
-  >();
+  const tagIndex = new Map<string, Array<{ id: string; sourceId: string; sourceName: string }>>();
   for (const row of candidates.rows) {
-    const cid = String(row.id);
+    const tag = String(row.tag ?? "");
     const sourceId = String(row.source_id);
     const sourceName = String(row.display_name ?? "").trim();
-    if (!sourceName) continue;
-    const phrases = extractPhrases(String(row.title));
-    for (const p of phrases) {
-      if (!allPhrases.has(p)) continue;
-      let bucket = phraseIndex.get(p);
-      if (!bucket) {
-        bucket = [];
-        phraseIndex.set(p, bucket);
-      }
-      bucket.push({ id: cid, sourceId, sourceName });
+    if (!tag || !sourceName) continue;
+    let bucket = tagIndex.get(tag);
+    if (!bucket) {
+      bucket = [];
+      tagIndex.set(tag, bucket);
     }
+    bucket.push({ id: String(row.id), sourceId, sourceName });
   }
 
   for (const it of items) {
-    const phrases = itemPhrases.get(it.id);
-    if (!phrases || phrases.size === 0) {
+    const tags = itemTags.get(it.id);
+    if (!tags || tags.size === 0) {
       result.set(it.id, []);
       continue;
     }
     const seenSources = new Set<string>();
     const names: string[] = [];
-    for (const p of phrases) {
-      const bucket = phraseIndex.get(p);
+    for (const tag of tags) {
+      const bucket = tagIndex.get(tag);
       if (!bucket) continue;
       for (const c of bucket) {
         if (c.id === it.id) continue;
@@ -317,15 +327,27 @@ async function computeAlsoCoveredBy(
   return result;
 }
 
-function extractPhrases(title: string): Set<string> {
-  const matches = title.match(/\b[A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+){0,2}\b/g) ?? [];
-  const out = new Set<string>();
-  for (const m of matches) {
-    const norm = m.toLowerCase();
-    // Drop very short tokens; "A", "I", "On" trigger noise. Keep multi-word
-    // phrases regardless of length because they're already specific.
-    if (!norm.includes(" ") && norm.length < 4) continue;
-    out.add(norm);
+async function loadReaderItemTags(itemIds: string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (itemIds.length === 0) return out;
+  const placeholders = itemIds.map(() => "?").join(",");
+  const r = await db.execute({
+    sql: `SELECT item_id, lower(tag) AS tag
+          FROM item_tags
+          WHERE item_id IN (${placeholders})
+          ORDER BY confidence DESC`,
+    args: itemIds,
+  });
+  for (const row of r.rows) {
+    const itemId = String(row.item_id);
+    const tag = String(row.tag ?? "").trim();
+    if (!tag) continue;
+    let tags = out.get(itemId);
+    if (!tags) {
+      tags = new Set();
+      out.set(itemId, tags);
+    }
+    tags.add(tag);
   }
   return out;
 }

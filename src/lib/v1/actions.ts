@@ -548,6 +548,7 @@ export async function createFolderAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Folder name required.");
   await ensureFolderByName(name, session.userId);
+  await invalidateTodayForUser(session.userId);
   revalidatePath("/sources");
 }
 
@@ -561,6 +562,7 @@ export async function renameFolderAction(formData: FormData) {
     sql: `UPDATE source_folders SET name = ? WHERE id = ? AND user_id = ?`,
     args: [name, folderId, session.userId],
   });
+  await invalidateTodayForUser(session.userId);
   revalidatePath("/sources");
 }
 
@@ -581,6 +583,7 @@ export async function deleteFolderAction(formData: FormData) {
     sql: `DELETE FROM source_folders WHERE id = ? AND user_id = ?`,
     args: [folderId, session.userId],
   });
+  await invalidateTodayForUser(session.userId);
   revalidatePath("/sources");
 }
 
@@ -594,6 +597,7 @@ export async function assignSourceToFolderAction(formData: FormData) {
     sql: `UPDATE sources SET folder_id = ? WHERE id = ? AND user_id = ?`,
     args: [folderId, sourceId, session.userId],
   });
+  await invalidateTodayForUser(session.userId);
   revalidatePath("/sources");
 }
 
@@ -617,6 +621,7 @@ export async function bulkAssignSourcesToFolderAction(formData: FormData) {
           WHERE user_id = ? AND id IN (${placeholders})`,
     args: [folderId, session.userId, ...sourceIds],
   });
+  await invalidateTodayForUser(session.userId);
   revalidatePath("/sources");
 }
 
@@ -635,6 +640,7 @@ export async function dismissClusterAction(formData: FormData) {
   });
   if (r.rowsAffected > 0) {
     await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed, session.userId);
+    await invalidateTodayForUser(session.userId);
     revalidatePath("/sources");
   }
   revalidatePath("/");
@@ -660,6 +666,7 @@ export async function flagClusterMismatchAction(formData: FormData) {
     args: [clusterId, session.userId],
   });
   await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed * 2, session.userId);
+  await invalidateTodayForUser(session.userId);
 
   if (draftId) {
     await db.execute({
@@ -826,6 +833,7 @@ export async function addSourceToClusterAction(formData: FormData) {
         args: [clusterId, itemId, session.userId],
       });
       await recomputeClusterSourceCount(clusterId, session.userId);
+      await invalidateTodayForUser(session.userId);
     }
     if (draftId) revalidatePath(`/editor/${draftId}`);
     return;
@@ -861,6 +869,7 @@ export async function addSourceToClusterAction(formData: FormData) {
     ],
   });
   await recomputeClusterSourceCount(clusterId, session.userId);
+  await invalidateTodayForUser(session.userId);
 
   if (draftId) revalidatePath(`/editor/${draftId}`);
 }
@@ -1056,6 +1065,34 @@ export async function cleanupLibraryAction(input: {
     sql: `DELETE FROM items WHERE user_id = ? AND cluster_id IS NULL AND published_at < ?`,
     args: [session.userId, cutoff],
   });
+  cleanupStatements.push({
+    sql: `DELETE FROM item_tags WHERE item_id NOT IN (SELECT id FROM items)`,
+    args: [],
+  });
+  cleanupStatements.push({
+    sql: `DELETE FROM entity_cache
+          WHERE content_hash NOT IN (SELECT DISTINCT content_hash FROM items)`,
+    args: [],
+  });
+  cleanupStatements.push({
+    sql: `DELETE FROM embedding_cache
+          WHERE NOT EXISTS (
+            SELECT 1 FROM items i
+            WHERE i.canonical_url = embedding_cache.canonical_url
+              AND i.content_hash = embedding_cache.content_hash
+          )`,
+    args: [],
+  });
+  cleanupStatements.push({
+    sql: `DELETE FROM merge_oracle_cache
+          WHERE hash_a NOT IN (SELECT DISTINCT content_hash FROM items)
+             OR hash_b NOT IN (SELECT DISTINCT content_hash FROM items)`,
+    args: [],
+  });
+  cleanupStatements.push({
+    sql: `DELETE FROM view_cache WHERE user_id = ?`,
+    args: [session.userId],
+  });
   if (clusterIds.length > 0) {
     const placeholders = clusterIds.map(() => "?").join(",");
     cleanupStatements.push({
@@ -1072,8 +1109,13 @@ export async function cleanupLibraryAction(input: {
     });
   }
   await db.batch(cleanupStatements, "write");
+  await invalidateTodayForUser(session.userId);
 
-  return { deletedClusters: clusterIds.length, deletedItems, preview: false };
+  return {
+    deletedClusters: clusterIds.length,
+    deletedItems,
+    preview: false,
+  };
 }
 
 export async function getFolderPollProgressAction(input: {
@@ -2540,15 +2582,48 @@ export async function runClusterPassAction(): Promise<{
 }> {
   await ensureSchema();
   const session = await requireSession();
+  return runClusterPassForUser(session.userId);
+}
 
+export async function startClusterPassAction(): Promise<{
+  itemsQueued: number;
+  startedAt: number;
+}> {
+  await ensureSchema();
+  const session = await requireSession();
+  const cutoff = Date.now() - CLUSTER_WINDOW_MS;
+  const r = await db.execute({
+    sql: `SELECT COUNT(*) AS n
+          FROM items
+          WHERE user_id = ? AND cluster_id IS NULL AND published_at >= ?`,
+    args: [session.userId, cutoff],
+  });
+  const itemsQueued = Number(r.rows[0]?.n ?? 0);
+  // Stale-marking and the heavy cluster work both belong off the response
+  // hot path; the user gets `itemsQueued` immediately and the page render
+  // after the click will see "stale" once the bump lands.
+  after(async () => {
+    const { invalidateTodayCache, refreshTodayCacheForUser } = await import("./today-view");
+    await invalidateTodayCache(session.userId);
+    await runClusterPassForUser(session.userId);
+    await refreshTodayCacheForUser(session.userId);
+    revalidatePath("/");
+  });
+  return { itemsQueued, startedAt: Date.now() };
+}
+
+async function runClusterPassForUser(userId: string): Promise<{
+  clustersFired: number;
+  itemsClustered: number;
+}> {
   // Snapshot counts before the pass so we can return a meaningful delta.
   const beforeClusters = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
-    args: [session.userId],
+    args: [userId],
   });
   const beforeItems = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND cluster_id IS NOT NULL`,
-    args: [session.userId],
+    args: [userId],
   });
   const firedBefore = Number(beforeClusters.rows[0]?.n ?? 0);
   const clusteredBefore = Number(beforeItems.rows[0]?.n ?? 0);
@@ -2563,7 +2638,7 @@ export async function runClusterPassAction(): Promise<{
           FROM items
           WHERE user_id = ? AND cluster_id IS NULL AND published_at >= ?
           ORDER BY published_at ASC`,
-    args: [session.userId, cutoff],
+    args: [userId, cutoff],
   });
 
   try {
@@ -2575,7 +2650,7 @@ export async function runClusterPassAction(): Promise<{
           canonicalUrl: String(row.canonical_url),
           contentHash: String(row.content_hash),
         },
-        { userId: session.userId, traceId: crypto.randomUUID() },
+        { userId, traceId: crypto.randomUUID() },
       );
     }
   } catch {
@@ -2584,15 +2659,21 @@ export async function runClusterPassAction(): Promise<{
 
   const afterClusters = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
-    args: [session.userId],
+    args: [userId],
   });
   const afterItems = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND cluster_id IS NOT NULL`,
-    args: [session.userId],
+    args: [userId],
   });
 
   return {
     clustersFired: Math.max(0, Number(afterClusters.rows[0]?.n ?? 0) - firedBefore),
     itemsClustered: Math.max(0, Number(afterItems.rows[0]?.n ?? 0) - clusteredBefore),
   };
+}
+
+async function invalidateTodayForUser(userId: string): Promise<void> {
+  const { invalidateTodayCache } = await import("./today-view");
+  await invalidateTodayCache(userId);
+  revalidatePath("/");
 }

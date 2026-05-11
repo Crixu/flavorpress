@@ -87,17 +87,7 @@ export default async function DraftsPage({ searchParams }: PageProps) {
                  d.wp_post_id, d.wp_edit_link, d.wp_synced_at,
                  c.source_count AS source_count,
                  o.display_name AS outlet_display_name,
-                 o.base_url AS outlet_base_url,
-                 (SELECT GROUP_CONCAT(it.tag, ',')
-                  FROM (
-                    SELECT DISTINCT it2.tag
-                    FROM items i2
-                    JOIN item_tags it2 ON it2.item_id = i2.id
-                    WHERE i2.cluster_id = d.cluster_id
-                    ORDER BY it2.confidence DESC
-                    LIMIT 3
-                  ) AS it
-                 ) AS top_tags
+                 o.base_url AS outlet_base_url
           FROM drafts d
           LEFT JOIN clusters c ON c.id = d.cluster_id
           LEFT JOIN outlets o ON o.id = d.outlet_id
@@ -105,6 +95,8 @@ export default async function DraftsPage({ searchParams }: PageProps) {
           ORDER BY d.created_at DESC`,
     args: [session.userId],
   });
+  const clusterIds = Array.from(new Set(r.rows.map((row) => String(row.cluster_id))));
+  const tagMap = await loadTopTagsByCluster(clusterIds);
 
   const drafts: DraftRow[] = [];
   const sent: SentRow[] = [];
@@ -113,7 +105,7 @@ export default async function DraftsPage({ searchParams }: PageProps) {
   for (const row of r.rows) {
     const mode = String(row.mode ?? "drafter");
     const isSent = Boolean(row.wp_post_id);
-    const tags = parseTags(row.top_tags ? String(row.top_tags) : null);
+    const tags = tagMap.get(String(row.cluster_id)) ?? [];
 
     if (isSent && mode !== "researcher") {
       sent.push({
@@ -452,13 +444,43 @@ function VoiceChip({ score }: { score: number }) {
   );
 }
 
-function parseTags(raw: string | null): string[] {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .slice(0, 3);
+async function loadTopTagsByCluster(clusterIds: string[]): Promise<Map<string, string[]>> {
+  const uniqueIds = Array.from(new Set(clusterIds.filter(Boolean)));
+  const out = new Map<string, string[]>();
+  if (uniqueIds.length === 0) return out;
+  const placeholders = uniqueIds.map(() => "?").join(",");
+  const r = await db.execute({
+    sql: `WITH tag_scores AS (
+            SELECT i.cluster_id, it.tag, MAX(it.confidence) AS confidence
+            FROM items i
+            JOIN item_tags it ON it.item_id = i.id
+            WHERE i.cluster_id IN (${placeholders})
+            GROUP BY i.cluster_id, it.tag
+          ),
+          ranked AS (
+            SELECT cluster_id, tag,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY cluster_id
+                     ORDER BY confidence DESC, tag ASC
+                   ) AS rn
+            FROM tag_scores
+          )
+          SELECT cluster_id, GROUP_CONCAT(tag, ',') AS top_tags
+          FROM ranked
+          WHERE rn <= 3
+          GROUP BY cluster_id`,
+    args: uniqueIds,
+  });
+  for (const row of r.rows) {
+    out.set(
+      String(row.cluster_id),
+      String(row.top_tags ?? "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    );
+  }
+  return out;
 }
 
 function parseNoteCounts(raw: string | null): {

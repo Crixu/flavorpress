@@ -43,6 +43,25 @@ describe("auth-foundation schema", () => {
     expect(cols.has("user_id")).toBe(true);
   });
 
+  it("creates view_cache table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("view_cache");
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("view_key")).toBe(true);
+    expect(cols.has("payload")).toBe(true);
+    expect(cols.has("input_hash")).toBe(true);
+    expect(cols.has("computed_at")).toBe(true);
+    expect(cols.has("refresh_started_at")).toBe(true);
+  });
+
+  it("creates user_cache_versions table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("user_cache_versions");
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("today_version")).toBe(true);
+    expect(cols.has("updated_at")).toBe(true);
+  });
+
   it("enforces wpcom_id uniqueness via partial index", async () => {
     await ensureSchema();
     const r = await db.execute(

@@ -244,6 +244,10 @@ export async function runConnector<TRaw>(
     sql: `UPDATE sources SET last_polled_at = ?, last_error = NULL WHERE id = ?`,
     args: [Date.now(), source.id],
   });
+  if (ingestedCount > 0) {
+    const { markTodayCacheStale } = await import("./today-view");
+    await markTodayCacheStale(source.userId);
+  }
 
   await log.info("connector.fetch", "done", {
     ingested: ingestedCount,

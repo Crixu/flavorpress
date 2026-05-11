@@ -51,14 +51,46 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     ? new Set(await resolveOutletSourceIds(session.userId, outletFilter))
     : null;
 
-  const sourcesR = await db.execute({
-    sql: `SELECT s.*,
-            (SELECT COUNT(*) FROM items WHERE source_id = s.id) AS item_count,
-            (SELECT COUNT(*) FROM items WHERE source_id = s.id AND fetched_at > ?) AS items_24h,
-            (SELECT MAX(published_at) FROM items WHERE source_id = s.id) AS last_item_at
-          FROM sources s WHERE s.user_id = ? ORDER BY s.created_at DESC`,
-    args: [Date.now() - 24 * 60 * 60 * 1000, session.userId],
-  });
+  const nowTs = Date.now();
+  const last24h = nowTs - 24 * 60 * 60 * 1000;
+  const [sourcesR, foldersR, stats] = await db.batch(
+    [
+      {
+        sql: `WITH item_stats AS (
+                SELECT source_id,
+                       COUNT(*) AS item_count,
+                       SUM(CASE WHEN fetched_at > ? THEN 1 ELSE 0 END) AS items_24h,
+                       MAX(published_at) AS last_item_at
+                FROM items
+                WHERE user_id = ?
+                GROUP BY source_id
+              )
+              SELECT s.*,
+                     COALESCE(item_stats.item_count, 0) AS item_count,
+                     COALESCE(item_stats.items_24h, 0) AS items_24h,
+                     item_stats.last_item_at AS last_item_at
+              FROM sources s
+              LEFT JOIN item_stats ON item_stats.source_id = s.id
+              WHERE s.user_id = ?
+              ORDER BY s.created_at DESC`,
+        args: [last24h, session.userId, session.userId],
+      },
+      {
+        sql: `SELECT id, name, sort_order, created_at FROM source_folders
+              WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
+        args: [session.userId],
+      },
+      {
+        sql: `SELECT
+                (SELECT COUNT(*) FROM items WHERE user_id = ?) AS items_total,
+                (SELECT COUNT(*) FROM items WHERE user_id = ? AND fetched_at > ?) AS items_24h,
+                (SELECT COUNT(*) FROM clusters WHERE user_id = ? AND state = 'fired') AS fired_clusters,
+                (SELECT COUNT(*) FROM clusters WHERE user_id = ?) AS clusters_total`,
+        args: [session.userId, session.userId, last24h, session.userId, session.userId],
+      },
+    ],
+    "read",
+  );
 
   const allRows = sourcesR.rows as unknown as SourceRow[];
   const outletRows = inScopeIds ? allRows.filter((r) => inScopeIds.has(String(r.id))) : allRows;
@@ -66,31 +98,11 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   // Folder filter applies on top of outlet filter.
   const visibleRows = applyFolderFilter(outletRows, folderParam);
 
-  const foldersR = await db.execute({
-    sql: `SELECT id, name, sort_order, created_at FROM source_folders
-          WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
-    args: [session.userId],
-  });
   const folders = foldersR.rows as unknown as FolderRow[];
 
   const outletDisplayMap = new Map(
     outlets.map((o) => [o.id, o.displayName ?? hostFromUrl(o.baseUrl)] as const),
   );
-
-  const stats = await db.execute({
-    sql: `SELECT
-            (SELECT COUNT(*) FROM items WHERE user_id = ?) AS items_total,
-            (SELECT COUNT(*) FROM items WHERE user_id = ? AND fetched_at > ?) AS items_24h,
-            (SELECT COUNT(*) FROM clusters WHERE user_id = ? AND state = 'fired') AS fired_clusters,
-            (SELECT COUNT(*) FROM clusters WHERE user_id = ?) AS clusters_total`,
-    args: [
-      session.userId,
-      session.userId,
-      Date.now() - 24 * 60 * 60 * 1000,
-      session.userId,
-      session.userId,
-    ],
-  });
 
   const isEmpty = allRows.length === 0;
   const filteredEmpty = !isEmpty && visibleRows.length === 0;
@@ -120,7 +132,6 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   // Sources currently waiting on a 429/503 retry-after. Drawn from the same
   // outlet-scoped set as the explorer so the chip count and the waiting list
   // agree about what the user is looking at.
-  const nowTs = Date.now();
   const waitingRows = plainVisibleRows
     .filter(
       (r) =>

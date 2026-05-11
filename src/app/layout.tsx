@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Inter, Newsreader } from "next/font/google";
 import { HelpFlyout, HelpIndexButton } from "@/components/Help";
-import { getSession } from "@/lib/session";
+import { hasSessionCookieForShell } from "@/lib/session";
+import { AccountMenuClient } from "./_components/AccountMenuClient";
 import { AgentationDev } from "./_components/Agentation";
 import { ShellNav } from "./_components/ShellNav";
 import { PublishToastBridge, ToastProvider } from "./_components/Toast";
@@ -33,8 +34,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Hide the topbar + shell nav on logged-out pages (login, signup, reset
   // flows, verify-email status). The auth surface should look like a clean
   // standalone form, not a chrome with broken links to gated routes.
-  const session = await getSession();
-  const isAuthed = Boolean(session);
+  const isAuthed = await hasSessionCookieForShell();
 
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
@@ -54,6 +54,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <Suspense fallback={null}>
                     <HelpIndexButton />
                   </Suspense>
+                  <AccountMenuClient />
                 </div>
               </header>
               <ShellNav />

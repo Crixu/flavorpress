@@ -196,9 +196,13 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_items_user_published ON items(user_id, published_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_user_fetched ON items(user_id, fetched_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_items_source_fetched ON items(source_id, fetched_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_items_source_published ON items(source_id, published_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_cluster ON items(cluster_id)`,
       `CREATE INDEX IF NOT EXISTS idx_items_cluster_published ON items(cluster_id, published_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_marked ON items(user_id, marked_at) WHERE marked_at IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS idx_items_reader_queue ON items(user_id, published_at DESC)
+        WHERE cluster_id IS NULL AND marked_at IS NULL AND dismissed_at IS NULL`,
 
       `CREATE TABLE IF NOT EXISTS embedding_cache (
         canonical_url TEXT NOT NULL,
@@ -259,6 +263,25 @@ export async function ensureSchema(): Promise<void> {
         error TEXT
       )`,
       `CREATE INDEX IF NOT EXISTS idx_job_progress_kind ON job_progress(kind, started_at DESC)`,
+
+      `CREATE TABLE IF NOT EXISTS view_cache (
+        user_id TEXT NOT NULL,
+        view_key TEXT NOT NULL,
+        payload TEXT,
+        payload_version INTEGER NOT NULL DEFAULT 1,
+        input_hash TEXT,
+        computed_at INTEGER,
+        refresh_started_at INTEGER,
+        error TEXT,
+        PRIMARY KEY (user_id, view_key)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_view_cache_refresh ON view_cache(view_key, refresh_started_at)`,
+
+      `CREATE TABLE IF NOT EXISTS user_cache_versions (
+        user_id TEXT PRIMARY KEY,
+        today_version INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )`,
 
       `CREATE TABLE IF NOT EXISTS clusters (
         id TEXT PRIMARY KEY,
@@ -513,6 +536,7 @@ export async function ensureSchema(): Promise<void> {
         PRIMARY KEY (item_id, tag)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_item_tags_item ON item_tags(item_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_item_tags_item_confidence ON item_tags(item_id, confidence DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag)`,
 
       // App-level settings the user can edit from /settings instead of .env.

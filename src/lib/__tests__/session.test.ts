@@ -1,15 +1,35 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+const { cookieJar } = vi.hoisted(() => ({
+  cookieJar: new Map<string, string>(),
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => {
+      const value = cookieJar.get(name);
+      return value ? { value } : undefined;
+    },
+  }),
+}));
+
 import { db, ensureSchema } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { createUser, setStatus, bumpSessionVersion } from "@/lib/users";
 import { createSessionCookie } from "@/lib/auth";
-import { loadSession, AuthRequiredError, isLocalAuthMode } from "@/lib/session";
+import {
+  loadSession,
+  AuthRequiredError,
+  isLocalAuthMode,
+  hasSessionCookieForShell,
+} from "@/lib/session";
 
 const SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
 
 beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM users");
+  cookieJar.clear();
   process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
   delete process.env.FLAVORPRESS_AUTH;
   delete process.env.FLAVORPRESS_LOCAL_EMAIL;
@@ -73,6 +93,24 @@ describe("AuthRequiredError", () => {
     const err = new AuthRequiredError();
     expect(err).toBeInstanceOf(Error);
     expect(err.name).toBe("AuthRequiredError");
+  });
+});
+
+describe("hasSessionCookieForShell", () => {
+  it("trusts a valid signed cookie without requiring a user row", async () => {
+    const c = await createSessionCookie({
+      userId: "u_deleted",
+      sessionVersion: 0,
+      secret: SECRET,
+    });
+    cookieJar.set("flavorpress_session", c.value);
+
+    expect(await hasSessionCookieForShell()).toBe(true);
+  });
+
+  it("returns false without a valid signed cookie", async () => {
+    cookieJar.set("flavorpress_session", "garbage");
+    expect(await hasSessionCookieForShell()).toBe(false);
   });
 });
 
