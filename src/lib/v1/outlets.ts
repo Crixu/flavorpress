@@ -9,7 +9,7 @@
  * doesn't choose explicitly. There is at most one default per user.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../db";
+import { db, ensureSchema } from "../db";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
 import type { WPCredentials } from "../wordpress";
 
@@ -67,7 +67,7 @@ const OUTLET_COLS = `id, user_id, base_url, display_name, username,
   app_password_encrypted, kind, is_default, last_error,
   connected_at, created_at, last_used_at`;
 
-export async function listOutlets(userId = SINGLE_USER_ID): Promise<Outlet[]> {
+export async function listOutlets(userId: string): Promise<Outlet[]> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets WHERE user_id = ? ORDER BY is_default DESC, created_at ASC`,
@@ -76,7 +76,7 @@ export async function listOutlets(userId = SINGLE_USER_ID): Promise<Outlet[]> {
   return r.rows.map((row) => rowToOutlet(row as unknown as OutletRow));
 }
 
-export async function getOutlet(outletId: string, userId = SINGLE_USER_ID): Promise<Outlet | null> {
+export async function getOutlet(outletId: string, userId: string): Promise<Outlet | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets WHERE id = ? AND user_id = ?`,
@@ -86,7 +86,7 @@ export async function getOutlet(outletId: string, userId = SINGLE_USER_ID): Prom
   return rowToOutlet(r.rows[0] as unknown as OutletRow);
 }
 
-export async function getDefaultOutlet(userId = SINGLE_USER_ID): Promise<Outlet | null> {
+export async function getDefaultOutlet(userId: string): Promise<Outlet | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets
@@ -183,7 +183,7 @@ export async function recordOutletError(
   });
 }
 
-export async function setDefaultOutlet(outletId: string, userId = SINGLE_USER_ID): Promise<void> {
+export async function setDefaultOutlet(outletId: string, userId: string): Promise<void> {
   await ensureSchema();
   await db.batch(
     [
@@ -210,7 +210,7 @@ export async function setDefaultOutlet(outletId: string, userId = SINGLE_USER_ID
 export async function disconnectOutlet(
   outletId: string,
   opts: { purge?: boolean } = {},
-  userId = SINGLE_USER_ID,
+  userId: string,
 ): Promise<void> {
   await ensureSchema();
   if (opts.purge) {

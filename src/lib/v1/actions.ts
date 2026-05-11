@@ -166,19 +166,21 @@ export async function startWPAuthorizeAction(formData: FormData) {
 
 export async function disconnectOutletAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const purge = formData.get("purge") === "1";
   if (!outletId) throw new Error("outletId required.");
-  await disconnectOutlet(outletId, { purge });
+  await disconnectOutlet(outletId, { purge }, session.userId);
   revalidatePath("/voice");
   revalidatePath("/");
 }
 
 export async function setDefaultOutletAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
-  await setDefaultOutlet(outletId);
+  await setDefaultOutlet(outletId, session.userId);
   revalidatePath("/voice");
   revalidatePath("/");
 }
@@ -635,7 +637,7 @@ export async function dismissClusterAction(formData: FormData) {
     args: [clusterId, session.userId],
   });
   if (r.rowsAffected > 0) {
-    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed);
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed, session.userId);
     revalidatePath("/sources");
   }
   revalidatePath("/");
@@ -660,7 +662,7 @@ export async function flagClusterMismatchAction(formData: FormData) {
     sql: `UPDATE clusters SET state = 'dismissed' WHERE id = ? AND user_id = ?`,
     args: [clusterId, session.userId],
   });
-  await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed * 2);
+  await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed * 2, session.userId);
 
   if (draftId) {
     await db.execute({
@@ -947,8 +949,9 @@ export async function runReextractEntitiesAction(): Promise<{
   alreadyRunning: boolean;
 }> {
   await ensureSchema();
+  const session = await requireSession();
   const { runReextractEntitiesJob } = await import("./maintenance");
-  const r = await runReextractEntitiesJob();
+  const r = await runReextractEntitiesJob(session.userId);
   return { jobId: r.jobId, total: r.total, alreadyRunning: r.alreadyRunning ?? false };
 }
 
@@ -958,8 +961,9 @@ export async function runReclusterAction(): Promise<{
   alreadyRunning: boolean;
 }> {
   await ensureSchema();
+  const session = await requireSession();
   const { runReclusterJob } = await import("./maintenance");
-  const r = await runReclusterJob();
+  const r = await runReclusterJob(session.userId);
   return { jobId: r.jobId, total: r.total, alreadyRunning: r.alreadyRunning ?? false };
 }
 
@@ -1398,7 +1402,7 @@ async function deleteDraftRows(
       // Trust penalty applies to abandoned drafts. A sent draft already
       // earned its trust bump on publish; pruning the local receipt later
       // shouldn't reverse that, and the post is still live on WordPress.
-      await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted);
+      await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted, opts.userId);
     }
     revalidatePath("/sources");
   }
@@ -1414,7 +1418,7 @@ export async function buildVoiceProfileAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
   if (!outlet.connected) throw new Error("Connect this outlet first.");
 
@@ -1459,7 +1463,7 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
   if (!outletId) throw new Error("outletId required.");
   if (!samples) throw new Error("Paste at least one sample of your writing.");
 
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
 
   const wordCount = samples.split(/\s+/).filter(Boolean).length;
@@ -1497,7 +1501,7 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
 
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
 
   const rawAnswers: string[] = [];
@@ -1564,10 +1568,10 @@ export async function saveBlogDescriptionAction(formData: FormData) {
  */
 export async function deriveBlogDescriptionAction(formData: FormData) {
   await ensureSchema();
-  const _session = await requireSession();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
   const r = await db.execute({
     sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ?`,
@@ -2276,7 +2280,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
 
   const clusterId = row.cluster_id ? String(row.cluster_id) : null;
   if (clusterId) {
-    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished);
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished, session.userId);
   }
 
   // Deliberately do NOT revalidate /editor/[draftId] here. The client form

@@ -68,7 +68,7 @@ export default async function VoicePage({ searchParams }: PageProps) {
     return <ZeroState authorizeAvailable={authorizeAvailable} status={sp} />;
   }
 
-  const checkOutlet = sp.check ? await getOutlet(sp.check) : null;
+  const checkOutlet = sp.check ? await getOutlet(sp.check, session.userId) : null;
   const preflight =
     checkOutlet && checkOutlet.userId === session.userId && checkOutlet.lastError
       ? decodePreflight(checkOutlet.lastError)

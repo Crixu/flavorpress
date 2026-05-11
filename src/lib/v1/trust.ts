@@ -16,7 +16,7 @@
  * Create+delete nets 0. Pure dismiss nets -0.01. All deltas clamp to [0, 1].
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../db";
+import { db, ensureSchema } from "../db";
 
 export const TRUST_DELTA = {
   draftCreated: 0.02,
@@ -30,7 +30,7 @@ export const TRUST_DELTA = {
  * given cluster. No-ops on zero/non-finite delta or empty cluster. Single
  * UPDATE clamps to [0, 1] inline.
  */
-export async function adjustClusterSourceTrust(clusterId: string, delta: number): Promise<void> {
+export async function adjustClusterSourceTrust(clusterId: string, delta: number, userId: string): Promise<void> {
   if (!Number.isFinite(delta) || delta === 0) return;
   await ensureSchema();
 
@@ -48,6 +48,6 @@ export async function adjustClusterSourceTrust(clusterId: string, delta: number)
     sql: `UPDATE sources
           SET trust_score = MAX(0.0, MIN(1.0, COALESCE(trust_score, 0.5) + ?))
           WHERE id IN (${placeholders}) AND user_id = ?`,
-    args: [delta, ...sourceIds, SINGLE_USER_ID],
+    args: [delta, ...sourceIds, userId],
   });
 }

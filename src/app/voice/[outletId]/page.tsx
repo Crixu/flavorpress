@@ -35,7 +35,7 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
   const sp = await searchParams;
 
   const [outlet, outlets, authorizeAvailable] = await Promise.all([
-    getOutlet(outletId),
+    getOutlet(outletId, session.userId),
     listOutlets(session.userId),
     canUseAuthorizeFlow(),
   ]);

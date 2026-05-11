@@ -111,7 +111,7 @@ export async function generateResearch(input: ResearchInput): Promise<ResearchOu
   // Researcher notes don't consume the cluster the way a drafter post does;
   // the user may still want to draft from it. Leave the cluster in 'fired'
   // state so it stays on Today. Trust still bumps because the user engaged.
-  await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated);
+  await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated, input.userId);
 
   await getBus().emit<DraftRenderedPayload>(
     "draft.rendered",

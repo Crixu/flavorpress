@@ -10,7 +10,7 @@
  * progress bar in the toast.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../db";
+import { db, ensureSchema } from "../db";
 import { after } from "next/server";
 import { extractItemEntities } from "./entity-extractor";
 import { handleItemIngested } from "./cluster-engine";
@@ -96,7 +96,7 @@ export interface JobStartResult {
  * LLM extractor. Same logic as scripts/reextract-entities.ts but driven
  * from the UI with a job_progress row backing the toast progress bar.
  */
-export async function runReextractEntitiesJob(): Promise<JobStartResult> {
+export async function runReextractEntitiesJob(userId: string): Promise<JobStartResult> {
   await ensureSchema();
   const running = await getRunningJob("reextract-entities");
   if (running) return { jobId: running.id, total: running.total, alreadyRunning: true };
@@ -104,7 +104,7 @@ export async function runReextractEntitiesJob(): Promise<JobStartResult> {
   const r = await db.execute({
     sql: `SELECT id, title, lede, content_hash FROM items
           WHERE user_id = ? ORDER BY published_at ASC`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   const total = r.rows.length;
   const jobId = await createJob("reextract-entities", total);
@@ -166,14 +166,14 @@ async function runReextractInBackground(
  * scripts/recluster.ts. Use after a re-extract pass to take advantage
  * of fresh entity tags.
  */
-export async function runReclusterJob(): Promise<JobStartResult> {
+export async function runReclusterJob(userId: string): Promise<JobStartResult> {
   await ensureSchema();
   const running = await getRunningJob("recluster");
   if (running) return { jobId: running.id, total: running.total, alreadyRunning: true };
 
   const drafts = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   const draftCount = Number(drafts.rows[0]!.n ?? 0);
   if (draftCount > 0) {
@@ -187,17 +187,17 @@ export async function runReclusterJob(): Promise<JobStartResult> {
   // Wipe before counting items so the worker sees a clean state.
   await db.execute({
     sql: `UPDATE items SET cluster_id = NULL WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   await db.execute({
     sql: `DELETE FROM clusters WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
 
   const r = await db.execute({
     sql: `SELECT id, source_id, canonical_url, content_hash FROM items
           WHERE user_id = ? ORDER BY published_at ASC`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   const total = r.rows.length;
   const jobId = await createJob("recluster", total);
@@ -209,13 +209,14 @@ export async function runReclusterJob(): Promise<JobStartResult> {
     contentHash: String(row.content_hash),
   }));
 
-  after(() => runReclusterInBackground(jobId, items));
+  after(() => runReclusterInBackground(jobId, items, userId));
   return { jobId, total };
 }
 
 async function runReclusterInBackground(
   jobId: string,
   items: { id: string; sourceId: string; canonicalUrl: string; contentHash: string }[],
+  userId: string,
 ): Promise<void> {
   try {
     // Sequential. Layer 2 needs to see prior items in the window before
@@ -230,7 +231,7 @@ async function runReclusterInBackground(
           canonicalUrl: it.canonicalUrl,
           contentHash: it.contentHash,
         },
-        { userId: SINGLE_USER_ID, traceId: crypto.randomUUID() },
+        { userId, traceId: crypto.randomUUID() },
       );
       await bumpCompleted(jobId, 1);
     }

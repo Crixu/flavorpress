@@ -18,7 +18,7 @@ import "server-only";
  * Skips: sources that are paused, under HTTP backoff, or inactive.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../db";
+import { db, ensureSchema } from "../db";
 import { getRegistry } from "./capability-registry";
 import { registrableDomain } from "./polite-fetch";
 import { getPollQueue } from "./run-queue";
@@ -60,13 +60,13 @@ export async function runDuePolls(
     await ensureSchema();
     const now = Date.now();
     const due = await db.execute({
-      sql: `SELECT id, url, kind FROM sources
-            WHERE user_id = ? AND active = 1
+      sql: `SELECT id, user_id, url, kind FROM sources
+            WHERE active = 1
               AND (paused_until IS NULL OR paused_until <= ?)
               AND (backoff_until IS NULL OR backoff_until <= ?)
               AND (last_polled_at IS NULL
                    OR last_polled_at + (poll_interval_seconds * 1000) <= ?)`,
-      args: [SINGLE_USER_ID, now, now, now],
+      args: [now, now, now],
     });
     if (due.rows.length === 0) return { due: 0, queued: 0, skipped: 0 };
 
@@ -77,6 +77,7 @@ export async function runDuePolls(
     let skipped = 0;
     for (const row of due.rows) {
       const sourceId = String(row.id);
+      const userId = String(row.user_id);
       const kind = String(row.kind ?? "rss");
       const url = String(row.url ?? "");
       let host = "unknown";
@@ -92,7 +93,7 @@ export async function runDuePolls(
           undefined,
           { sourceId },
           {
-            userId: SINGLE_USER_ID,
+            userId,
             requestId: crypto.randomUUID(),
             traceId: crypto.randomUUID(),
           },

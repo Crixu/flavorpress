@@ -247,7 +247,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     args: [input.clusterId],
   });
 
-  await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated);
+  await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated, input.userId);
 
   await getBus().emit<DraftRenderedPayload>(
     "draft.rendered",
