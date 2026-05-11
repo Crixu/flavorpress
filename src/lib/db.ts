@@ -195,7 +195,9 @@ export async function ensureSchema(): Promise<void> {
         UNIQUE(canonical_url, user_id)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_items_user_published ON items(user_id, published_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_items_user_fetched ON items(user_id, fetched_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_cluster ON items(cluster_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_items_cluster_published ON items(cluster_id, published_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_marked ON items(user_id, marked_at) WHERE marked_at IS NOT NULL`,
 
       `CREATE TABLE IF NOT EXISTS embedding_cache (
@@ -273,6 +275,7 @@ export async function ensureSchema(): Promise<void> {
         state TEXT NOT NULL DEFAULT 'forming'
       )`,
       `CREATE INDEX IF NOT EXISTS idx_clusters_user_state ON clusters(user_id, state, ranker_score DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_clusters_user_state_formed ON clusters(user_id, state, formed_at DESC)`,
 
       `CREATE TABLE IF NOT EXISTS drafts (
         id TEXT PRIMARY KEY,

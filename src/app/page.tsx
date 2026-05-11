@@ -10,7 +10,6 @@ import { ensureSchema, db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { AuthRequiredError, requireSession } from "@/lib/session";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
-import { CLUSTER_WINDOW_MS } from "@/lib/v1/cluster-engine";
 import { listOutlets } from "@/lib/v1/outlets";
 import { loadSignatureTermsByOutlet, pickPreferredOutletForCluster } from "@/lib/v1/ranker";
 import {
@@ -26,14 +25,23 @@ import { LookForClustersButton } from "./_components/LookForClustersButton";
 export const dynamic = "force-dynamic";
 
 // Finder-column layout shows the full content of the selected folder in
-// the right pane and the user scrolls the page. The 72h cluster window
-// already bounds the dataset; this cap is just defense in depth so a feed
-// surge can't render thousands of cards.
+// the right pane and the user scrolls the page. Today should stay fresh;
+// older clusters remain reachable through history-specific surfaces.
+const TODAY_CLUSTER_WINDOW_MS = 60 * 60 * 60 * 1000;
+
+// Per-folder cap is defense in depth so a feed surge can't render
+// thousands of cards.
 const PER_FOLDER_LIMIT = 50;
 
 type TodayClusterCandidate = TodayClusterPreview["cluster"] & {
   primaryEntities: string[] | null;
 };
+
+type TodayPreviewItem = TodayClusterPreview["items"][number] & {
+  entities: string[] | null;
+};
+
+type TodayDraftsByOutlet = TodayClusterPreview["draftsByOutlet"];
 
 export default async function TodayPage() {
   await ensureSchema();
@@ -57,16 +65,6 @@ export default async function TodayPage() {
     args: [session.userId, Date.now()],
   });
   const sourceCount = Number(sourceCountR.rows[0]!.n);
-
-  const pollStatsR = await db.execute({
-    sql: `SELECT
-            (SELECT COUNT(*) FROM sources
-              WHERE user_id = ? AND active = 1 AND last_polled_at IS NOT NULL) AS polled,
-            (SELECT COUNT(*) FROM items WHERE user_id = ?) AS items_total`,
-    args: [session.userId, session.userId],
-  });
-  const polledSourceCount = Number(pollStatsR.rows[0]!.polled ?? 0);
-  const itemsTotal = Number(pollStatsR.rows[0]!.items_total ?? 0);
 
   const voiceR = await db.execute({
     sql: `SELECT outlet_id FROM voice_profiles WHERE user_id = ?`,
@@ -152,17 +150,14 @@ export default async function TodayPage() {
     for (const c of list) if (!distinctClusters.has(c.id)) distinctClusters.set(c.id, c);
   }
   const previewsById = new Map<string, TodayClusterPreview>();
-  await Promise.all(
-    Array.from(distinctClusters.values()).map(async (c) => {
-      const preview = await buildClusterPreview(
-        c,
-        draftableOutletIds,
-        signatureTermsByOutlet,
-        session.userId,
-      );
-      previewsById.set(c.id, preview);
-    }),
+  const previewData = await loadTodayPreviewData(
+    session.userId,
+    Array.from(distinctClusters.keys()),
   );
+  for (const c of distinctClusters.values()) {
+    const preview = buildClusterPreview(c, draftableOutletIds, signatureTermsByOutlet, previewData);
+    previewsById.set(c.id, preview);
+  }
 
   const streams: TodayFolderStream[] = folders.map((folder) => {
     const clusters = clustersByFolder.get(folder.id) ?? [];
@@ -178,6 +173,8 @@ export default async function TodayPage() {
   // so "Not now" never causes a folder to slide.
   const totalPreviews = distinctClusters.size;
   const streamsWithContent = streams.filter((s) => s.clusters.length > 0).length;
+  const emptyClusterStats =
+    totalPreviews === 0 ? await loadEmptyClusterStats(session.userId) : null;
 
   return (
     <div className="space-y-8">
@@ -210,7 +207,11 @@ export default async function TodayPage() {
 
       <TopicSearch outlets={outletOptions} defaultOutletId={defaultOutletId}>
         {totalPreviews === 0 ? (
-          <EmptyClusters polledSourceCount={polledSourceCount} itemsTotal={itemsTotal} />
+          <EmptyClusters
+            polledSourceCount={emptyClusterStats!.polledSourceCount}
+            itemsTotal={emptyClusterStats!.itemsTotal}
+            itemsTotalCapped={emptyClusterStats!.itemsTotalCapped}
+          />
         ) : (
           <TodayFolderStreams
             streams={streams}
@@ -223,66 +224,49 @@ export default async function TodayPage() {
   );
 }
 
-async function buildClusterPreview(
+async function loadEmptyClusterStats(
+  userId: string,
+): Promise<{ polledSourceCount: number; itemsTotal: number; itemsTotalCapped: boolean }> {
+  const r = await db.execute({
+    sql: `SELECT
+            (SELECT COUNT(*) FROM sources
+              WHERE user_id = ? AND active = 1 AND last_polled_at IS NOT NULL) AS polled,
+            (SELECT COUNT(*) FROM (
+              SELECT 1 FROM items WHERE user_id = ? LIMIT 1001
+            )) AS items_total`,
+    args: [userId, userId],
+  });
+  const cappedTotal = Number(r.rows[0]?.items_total ?? 0);
+  return {
+    polledSourceCount: Number(r.rows[0]?.polled ?? 0),
+    itemsTotal: Math.min(cappedTotal, 1000),
+    itemsTotalCapped: cappedTotal > 1000,
+  };
+}
+
+function buildClusterPreview(
   c: TodayClusterCandidate,
   draftableOutletIds: string[],
   signatureTermsByOutlet: Map<string, Set<string>>,
-  userId: string,
-): Promise<TodayClusterPreview> {
-  const r = await db.execute({
-    sql: `SELECT i.title, i.entities, s.id AS source_id, s.url AS source_url, s.display_name
-          FROM items i
-          JOIN sources s ON s.id = i.source_id
-          WHERE i.cluster_id = ?
-          ORDER BY i.published_at DESC LIMIT 8`,
-    args: [c.id],
-  });
+  previewData: Awaited<ReturnType<typeof loadTodayPreviewData>>,
+): TodayClusterPreview {
   const entitySet = new Set<string>();
   for (const e of c.primaryEntities ?? []) entitySet.add(e.toLowerCase());
-  for (const row of r.rows) {
+  const previewItems = previewData.itemsByCluster.get(c.id) ?? [];
+  for (const row of previewItems) {
     if (!row.entities) continue;
-    const ents = JSON.parse(String(row.entities)) as string[];
-    for (const e of ents) entitySet.add(e.toLowerCase());
+    for (const e of row.entities) entitySet.add(e.toLowerCase());
   }
   const preferredOutletId = pickPreferredOutletForCluster(
     Array.from(entitySet),
     draftableOutletIds,
     signatureTermsByOutlet,
   );
-  const draftR = await db.execute({
-    sql: `SELECT id, outlet_id, mode, voice_match_score, wp_post_id, wp_edit_link
-          FROM drafts WHERE cluster_id = ? AND user_id = ?
-          ORDER BY created_at DESC`,
-    args: [c.id, userId],
-  });
-  const draftsByOutlet: Record<
-    string,
-    Record<
-      "drafter" | "researcher",
-      { id: string; voiceMatch: number; wpEditLink: string | null } | null
-    >
-  > = {};
-  for (const row of draftR.rows) {
-    const oid = row.outlet_id ? String(row.outlet_id) : "";
-    if (!oid) continue;
-    const mode = (String(row.mode ?? "drafter") === "researcher" ? "researcher" : "drafter") as
-      | "drafter"
-      | "researcher";
-    const bucket = draftsByOutlet[oid] ?? { drafter: null, researcher: null };
-    if (!bucket[mode]) {
-      bucket[mode] = {
-        id: String(row.id),
-        voiceMatch: Number(row.voice_match_score ?? 0),
-        wpEditLink: row.wp_edit_link ? String(row.wp_edit_link) : null,
-      };
-    }
-    draftsByOutlet[oid] = bucket;
-  }
-  const items = r.rows.map((row) => ({
-    title: String(row.title),
-    sourceId: String(row.source_id),
-    sourceUrl: String(row.source_url),
-    displayName: String(row.display_name ?? ""),
+  const items = previewItems.map(({ title, sourceId, sourceUrl, displayName }) => ({
+    title,
+    sourceId,
+    sourceUrl,
+    displayName,
   }));
   return {
     cluster: {
@@ -302,9 +286,94 @@ async function buildClusterPreview(
     },
     folder: { id: "", name: "" },
     items,
-    draftsByOutlet,
+    draftsByOutlet: previewData.draftsByCluster.get(c.id) ?? {},
     preferredOutletId,
   };
+}
+
+async function loadTodayPreviewData(
+  userId: string,
+  clusterIds: string[],
+): Promise<{
+  itemsByCluster: Map<string, TodayPreviewItem[]>;
+  draftsByCluster: Map<string, TodayDraftsByOutlet>;
+}> {
+  const itemsByCluster = new Map<string, TodayPreviewItem[]>();
+  const draftsByCluster = new Map<string, TodayDraftsByOutlet>();
+  if (clusterIds.length === 0) return { itemsByCluster, draftsByCluster };
+
+  const placeholders = clusterIds.map(() => "?").join(",");
+  const [itemsR, draftsR] = await Promise.all([
+    db.execute({
+      sql: `WITH ranked_items AS (
+              SELECT i.cluster_id, i.title, i.entities,
+                     s.id AS source_id, s.url AS source_url, s.display_name,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY i.cluster_id
+                       ORDER BY i.published_at DESC
+                     ) AS rn
+              FROM items i
+              JOIN sources s ON s.id = i.source_id
+              WHERE i.user_id = ? AND i.cluster_id IN (${placeholders})
+            )
+            SELECT cluster_id, title, entities, source_id, source_url, display_name
+            FROM ranked_items
+            WHERE rn <= 8
+            ORDER BY cluster_id, rn`,
+      args: [userId, ...clusterIds],
+    }),
+    db.execute({
+      sql: `SELECT cluster_id, id, outlet_id, mode, voice_match_score, wp_edit_link
+            FROM drafts
+            WHERE user_id = ? AND cluster_id IN (${placeholders})
+            ORDER BY cluster_id, created_at DESC`,
+      args: [userId, ...clusterIds],
+    }),
+  ]);
+
+  for (const row of itemsR.rows) {
+    const clusterId = String(row.cluster_id);
+    const list = itemsByCluster.get(clusterId) ?? [];
+    let entities: string[] | null = null;
+    if (row.entities) {
+      try {
+        const parsed = JSON.parse(String(row.entities)) as unknown;
+        if (Array.isArray(parsed)) {
+          entities = parsed.filter((entity): entity is string => typeof entity === "string");
+        }
+      } catch {
+        entities = null;
+      }
+    }
+    list.push({
+      title: String(row.title),
+      sourceId: String(row.source_id),
+      sourceUrl: String(row.source_url),
+      displayName: String(row.display_name ?? ""),
+      entities,
+    });
+    itemsByCluster.set(clusterId, list);
+  }
+
+  for (const row of draftsR.rows) {
+    const clusterId = String(row.cluster_id);
+    const outletId = row.outlet_id ? String(row.outlet_id) : "";
+    if (!outletId) continue;
+    const mode = String(row.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
+    const draftsByOutlet = draftsByCluster.get(clusterId) ?? {};
+    const bucket = draftsByOutlet[outletId] ?? { drafter: null, researcher: null };
+    if (!bucket[mode]) {
+      bucket[mode] = {
+        id: String(row.id),
+        voiceMatch: Number(row.voice_match_score ?? 0),
+        wpEditLink: row.wp_edit_link ? String(row.wp_edit_link) : null,
+      };
+    }
+    draftsByOutlet[outletId] = bucket;
+    draftsByCluster.set(clusterId, draftsByOutlet);
+  }
+
+  return { itemsByCluster, draftsByCluster };
 }
 
 /**
@@ -320,37 +389,60 @@ async function buildClusterPreview(
 async function listTodayClustersByFolder(
   userId: string,
 ): Promise<Map<string, TodayClusterCandidate[]>> {
-  const freshnessCutoff = Date.now() - CLUSTER_WINDOW_MS;
+  const freshnessCutoff = Date.now() - TODAY_CLUSTER_WINDOW_MS;
   const r = await db.execute({
-    sql: `WITH cluster_folders AS (
+    sql: `WITH recent_item_clusters AS (
+            SELECT DISTINCT cluster_id AS id
+            FROM items
+            WHERE user_id = ?
+              AND cluster_id IS NOT NULL
+              AND published_at >= ?
+          ),
+          recent_formed_clusters AS (
+            SELECT id
+            FROM clusters
+            WHERE user_id = ? AND state = 'fired' AND formed_at >= ?
+          ),
+          candidate_ids AS (
+            SELECT id FROM recent_item_clusters
+            UNION
+            SELECT id FROM recent_formed_clusters
+          ),
+          user_clusters AS (
+            SELECT c.id, c.formed_at, c.fired_at, c.source_count, c.primary_entities
+            FROM clusters c
+            JOIN candidate_ids candidate ON candidate.id = c.id
+            WHERE c.user_id = ? AND c.state = 'fired'
+          ),
+          latest_per_cluster AS (
+            SELECT i.cluster_id, MAX(i.published_at) AS latest_published_at
+            FROM items i
+            JOIN user_clusters uc ON uc.id = i.cluster_id
+            GROUP BY i.cluster_id
+          ),
+          cluster_folders AS (
             SELECT DISTINCT i.cluster_id AS cid, s.folder_id AS fid
             FROM items i
             JOIN sources s ON s.id = i.source_id
-            JOIN clusters c ON c.id = i.cluster_id
-            WHERE c.user_id = ? AND c.state = 'fired' AND s.folder_id IS NOT NULL
-          ),
-          latest_per_cluster AS (
-            SELECT cluster_id, MAX(published_at) AS latest_published_at
-            FROM items WHERE cluster_id IS NOT NULL
-            GROUP BY cluster_id
+            JOIN user_clusters uc ON uc.id = i.cluster_id
+            WHERE s.folder_id IS NOT NULL
           ),
           ranked AS (
-            SELECT c.id, c.formed_at, c.fired_at, c.source_count, c.primary_entities,
+            SELECT uc.id, uc.formed_at, uc.fired_at, uc.source_count, uc.primary_entities,
                    rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite,
                    latest.latest_published_at,
                    cf.fid AS folder_id,
                    ROW_NUMBER() OVER (
                      PARTITION BY cf.fid
                      ORDER BY COALESCE(rs.composite, 0) DESC,
-                              COALESCE(latest.latest_published_at, c.formed_at) DESC,
-                              c.fired_at DESC
+                              COALESCE(latest.latest_published_at, uc.formed_at) DESC,
+                              uc.fired_at DESC
                    ) AS rn
-            FROM clusters c
-            JOIN cluster_folders cf ON cf.cid = c.id
-            LEFT JOIN ranker_signals rs ON rs.cluster_id = c.id AND rs.user_id = c.user_id
-            LEFT JOIN latest_per_cluster latest ON latest.cluster_id = c.id
-            WHERE c.user_id = ? AND c.state = 'fired'
-              AND COALESCE(latest.latest_published_at, c.formed_at) >= ?
+            FROM user_clusters uc
+            JOIN cluster_folders cf ON cf.cid = uc.id
+            LEFT JOIN ranker_signals rs ON rs.cluster_id = uc.id AND rs.user_id = ?
+            LEFT JOIN latest_per_cluster latest ON latest.cluster_id = uc.id
+            WHERE COALESCE(latest.latest_published_at, uc.formed_at) >= ?
           )
           SELECT id, formed_at, fired_at, source_count, primary_entities,
                  archive_overlap, beat_match, source_trust, composite,
@@ -358,7 +450,16 @@ async function listTodayClustersByFolder(
           FROM ranked
           WHERE rn <= ?
           ORDER BY folder_id, rn`,
-    args: [userId, userId, freshnessCutoff, PER_FOLDER_LIMIT],
+    args: [
+      userId,
+      freshnessCutoff,
+      userId,
+      freshnessCutoff,
+      userId,
+      userId,
+      freshnessCutoff,
+      PER_FOLDER_LIMIT,
+    ],
   });
   const byFolder = new Map<string, TodayClusterCandidate[]>();
   for (const row of r.rows) {
@@ -395,9 +496,11 @@ async function listTodayClustersByFolder(
 function EmptyClusters({
   polledSourceCount,
   itemsTotal,
+  itemsTotalCapped,
 }: {
   polledSourceCount: number;
   itemsTotal: number;
+  itemsTotalCapped: boolean;
 }) {
   // Three distinct waiting states. Each gets one action so the user is
   // never asked to pick between "manage" and "publish" in a moment that
@@ -415,7 +518,9 @@ function EmptyClusters({
       body: "A few sources may be returning errors. Open the source list to see which feeds are stuck.",
     },
     "no-cluster-yet": {
-      title: `${itemsTotal} ${itemsTotal === 1 ? "item" : "items"} in. No cluster yet.`,
+      title: `${formatItemCount(itemsTotal, itemsTotalCapped)} ${
+        itemsTotal === 1 && !itemsTotalCapped ? "item" : "items"
+      } in. No cluster yet.`,
       body: "A cluster fires when 3 sources cover the same story within 72 hours, from at least 2 distinct domains. Add another feed in this beat to bring convergence forward.",
     },
   }[stage];
@@ -457,6 +562,11 @@ function EmptyClusters({
       </div>
     </div>
   );
+}
+
+function formatItemCount(itemsTotal: number, capped: boolean): string {
+  if (capped) return "1,000+";
+  return new Intl.NumberFormat("en-US").format(itemsTotal);
 }
 
 function Onboarding({
