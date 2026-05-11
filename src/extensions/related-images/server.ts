@@ -18,7 +18,8 @@ import "server-only";
  * empty payload, while the Panel hydrates via its own server action.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
+import { db, ensureSchema } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 import { getSetting, setSetting, SETTING_KEYS } from "@/lib/v1/settings";
 import type { ServerExtensionEntry } from "../types";
 import {
@@ -92,11 +93,12 @@ export async function setLicenseFilter(codes: LicenseCode[]): Promise<LicenseCod
 export async function runRelatedImageSearch(
   draftId: string,
 ): Promise<{ results: RelatedImageResult[]; ranAt: number; licenseFilter: LicenseCode[] }> {
+  const session = await requireSession();
   await ensureSchema();
 
   const draftRow = await db.execute({
     sql: `SELECT id, headline, body FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
 

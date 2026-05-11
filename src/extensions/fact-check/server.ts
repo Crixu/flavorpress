@@ -12,7 +12,8 @@ import "server-only";
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
+import { db, ensureSchema } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 import { extractText, extractJson } from "@/lib/anthropic";
 import { sanitizeDraftHtml } from "@/lib/draft-html-sanitizer";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "@/lib/v1/settings";
@@ -44,11 +45,12 @@ Return JSON only, matching:
 export async function runFactCheck(
   draftId: string,
 ): Promise<{ claims: FactCheckClaim[]; ranAt: number }> {
+  const session = await requireSession();
   await ensureSchema();
 
   const draftRow = await db.execute({
     sql: `SELECT id, body FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
   const bodyText = stripHtml(String(draftRow.rows[0]!.body ?? ""));
@@ -254,9 +256,10 @@ export async function suggestFactCheckFix(
   draftId: string,
   claimId: string,
 ): Promise<FactCheckFixSuggestion> {
+  const session = await requireSession();
   await ensureSchema();
 
-  const { body, claim } = await loadDraftAndClaim(draftId, claimId);
+  const { body, claim } = await loadDraftAndClaim(draftId, claimId, session.userId);
   if (claim.verdict !== "disputed" && claim.verdict !== "unverified") {
     throw new Error("Only disputed or unverified claims can be fixed.");
   }
@@ -399,6 +402,7 @@ export async function applyFactCheckFix(
   original: string,
   replacement: string,
 ): Promise<{ claims: FactCheckClaim[]; ranAt: number | null }> {
+  const session = await requireSession();
   await ensureSchema();
 
   if (!original || !replacement) {
@@ -408,7 +412,7 @@ export async function applyFactCheckFix(
     throw new Error("Suggestion equals the original; nothing to apply.");
   }
 
-  const { body, claim } = await loadDraftAndClaim(draftId, claimId);
+  const { body, claim } = await loadDraftAndClaim(draftId, claimId, session.userId);
   if (claim.verdict !== "disputed" && claim.verdict !== "unverified") {
     throw new Error("Only disputed or unverified claims can be fixed.");
   }
@@ -430,7 +434,7 @@ export async function applyFactCheckFix(
 
   await db.execute({
     sql: `UPDATE drafts SET body = ?, edited_at = ? WHERE id = ? AND user_id = ?`,
-    args: [newBody, Date.now(), draftId, SINGLE_USER_ID],
+    args: [newBody, Date.now(), draftId, session.userId],
   });
   await db.execute({
     sql: `DELETE FROM fact_check_claims WHERE id = ? AND draft_id = ?`,
@@ -489,10 +493,11 @@ interface LoadedClaim {
 async function loadDraftAndClaim(
   draftId: string,
   claimId: string,
+  userId: string,
 ): Promise<{ body: string; claim: LoadedClaim }> {
   const draftRow = await db.execute({
     sql: `SELECT id, body, wp_post_id FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, userId],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
   if (draftRow.rows[0]!.wp_post_id) {
