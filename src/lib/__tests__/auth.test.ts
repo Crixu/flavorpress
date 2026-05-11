@@ -1,82 +1,53 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   createSessionCookie,
-  getAuthConfig,
-  hasValidCredentials,
+  verifySessionCookie,
+  SESSION_TTL_SECONDS_DEV,
+  SESSION_TTL_SECONDS_PROD,
+  getSessionTtlSeconds,
   isAllowedMutationOrigin,
   isAllowedOrigin,
-  isAuthConfigured,
-  requestOriginFromHeaders,
   safeRedirectPath,
-  verifySessionCookie,
+  requestOriginFromHeaders,
 } from "@/lib/auth";
 
-describe("auth config", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+const SECRET = "test-secret-that-is-at-least-32-bytes-long-string!";
 
-  it("uses obvious defaults only in development", () => {
-    vi.stubEnv("NODE_ENV", "development");
-    expect(getAuthConfig()).toMatchObject({
-      username: "writer",
-      password: "flavorpress-dev",
-      sessionSecret: "dev-only-flavorpress-session-secret-change-me",
+describe("auth session cookie", () => {
+  it("issues a v2 cookie with userId as sub", async () => {
+    const cookie = await createSessionCookie({
+      userId: "u_abc",
+      sessionVersion: 7,
+      secret: SECRET,
     });
-    expect(isAuthConfigured()).toBe(true);
-
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("FLAVORPRESS_AUTH_USER", "");
-    vi.stubEnv("FLAVORPRESS_AUTH_PASSWORD", "");
-    vi.stubEnv("FLAVORPRESS_SESSION_SECRET", "");
-    expect(isAuthConfigured()).toBe(false);
+    const verified = await verifySessionCookie(cookie.value, SECRET);
+    expect(verified?.userId).toBe("u_abc");
+    expect(verified?.sessionVersion).toBe(7);
   });
 
-  it("requires explicit credentials and a session secret outside development", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("FLAVORPRESS_AUTH_USER", "");
-    vi.stubEnv("FLAVORPRESS_AUTH_PASSWORD", "");
-    vi.stubEnv("FLAVORPRESS_SESSION_SECRET", "");
-
-    expect(hasValidCredentials("writer", "flavorpress-dev")).toBe(false);
-    await expect(createSessionCookie()).rejects.toThrow("FlavorPress auth is not configured.");
-    await expect(verifySessionCookie("v1.payload.signature")).resolves.toBeNull();
-  });
-});
-
-describe("session cookies", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("signs and verifies the single writer session", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("FLAVORPRESS_AUTH_USER", "lucas");
-    vi.stubEnv("FLAVORPRESS_AUTH_PASSWORD", "secret");
-    vi.stubEnv("FLAVORPRESS_SESSION_SECRET", "a-long-random-session-secret-for-tests");
-
-    expect(hasValidCredentials("lucas", "secret")).toBe(true);
-    const session = await createSessionCookie(undefined, 1_000);
-    await expect(verifySessionCookie(session.value, undefined, 2_000)).resolves.toMatchObject({
-      sub: "lucas",
-      issuedAt: 1_000,
+  it("rejects a tampered signature", async () => {
+    const cookie = await createSessionCookie({
+      userId: "u_abc",
+      sessionVersion: 0,
+      secret: SECRET,
     });
+    const tampered = cookie.value.replace(/.$/, (c) => (c === "A" ? "B" : "A"));
+    expect(await verifySessionCookie(tampered, SECRET)).toBeNull();
   });
 
-  it("rejects tampered, expired, and wrong-user cookies", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("FLAVORPRESS_AUTH_USER", "lucas");
-    vi.stubEnv("FLAVORPRESS_AUTH_PASSWORD", "secret");
-    vi.stubEnv("FLAVORPRESS_SESSION_SECRET", "a-long-random-session-secret-for-tests");
+  it("rejects an expired payload", async () => {
+    const cookie = await createSessionCookie({
+      userId: "u_abc",
+      sessionVersion: 0,
+      secret: SECRET,
+      now: Date.now() - (getSessionTtlSeconds() * 1000 + 1000),
+    });
+    expect(await verifySessionCookie(cookie.value, SECRET)).toBeNull();
+  });
 
-    const session = await createSessionCookie(undefined, 1_000);
-    await expect(verifySessionCookie(`${session.value}x`, undefined, 2_000)).resolves.toBeNull();
-    await expect(
-      verifySessionCookie(session.value, undefined, session.expiresAt + 1_000),
-    ).resolves.toBeNull();
-
-    vi.stubEnv("FLAVORPRESS_AUTH_USER", "other");
-    await expect(verifySessionCookie(session.value, undefined, 2_000)).resolves.toBeNull();
+  it("getSessionTtlSeconds returns 1 day in production, 7 in development", () => {
+    expect(SESSION_TTL_SECONDS_DEV).toBe(60 * 60 * 24 * 7);
+    expect(SESSION_TTL_SECONDS_PROD).toBe(60 * 60 * 24);
   });
 });
 
