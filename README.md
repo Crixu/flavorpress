@@ -93,8 +93,20 @@ sets this for you; for local dev, add `FLAVORPRESS_AUTH=local` to `.env`.
 
 Override the bootstrap email via `FLAVORPRESS_LOCAL_EMAIL=you@example.com`.
 
+### Email
+
+Transactional email (signup verification + self-serve password reset) is
+sent via Resend. In development, leave `RESEND_API_KEY` unset and emails
+print to the console with the full body and URL. In production this key
+is required.
+
+Forgotten password (self-serve): visit `/reset-password`, enter your
+email, click the link in the email, set a new password. The reset bumps
+your session version so any old sessions die.
+
+Admin-side reset (still available): `npm run auth:reset -- <email>`.
+
 WordPress.com OAuth as a login method lands in sub-spec 2.
-Email verification and self-serve password reset land in sub-spec 5.
 
 ## Configuration
 
