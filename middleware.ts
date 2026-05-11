@@ -40,6 +40,7 @@ export async function middleware(req: NextRequest) {
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  if (pathname === "/signup" || pathname.startsWith("/signup/")) return true;
   if (pathname === "/api/cron/poll") return true;
   if (pathname === "/api/wp/callback") return true;
   if (pathname === "/api/mcp") return true;
