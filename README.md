@@ -48,7 +48,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Open http://localhost:3000. The app boots with an empty SQLite database at `.data/flavorpress.db`. Local dev accepts `writer` / `flavorpress-dev` unless you set auth env vars. Production requires explicit auth env vars and fails closed when they are missing.
+Open http://localhost:3000. The app boots with an empty SQLite database at `.data/flavorpress.db`. Accounts are gated by single-use invite tokens; see the Auth section below for the full signup flow.
 
 To verify the foundation is wired correctly:
 
@@ -58,6 +58,65 @@ npx tsx scripts/v1-smoke.ts
 
 You should see 7 capabilities registered, 3 sources created, 1 cluster fired (entity overlap 5/5, cosine 0.99), and the ranker compute a composite. If any step fails, the trace logs are in the `trace_log` table; query by `trace_id` to debug.
 
+## Auth
+
+FlavorPress is multi-user. Accounts are gated by single-use invite tokens. The
+first signup whose email matches `FLAVORPRESS_ADMIN_EMAIL` becomes the admin.
+
+Quickstart:
+
+1. Set `FLAVORPRESS_ADMIN_EMAIL` in `.env` to your email.
+2. Set `FLAVORPRESS_SESSION_SECRET` to a 32+ byte random string.
+3. Run `npm run dev`.
+4. In another terminal, issue your invite: `npm run auth:invite`.
+5. Open the printed URL, sign up with the email from step 1, and pick a password.
+
+Admin CLIs:
+
+- `npm run auth:invite -- [--days N]` issues a single-use invite token.
+- `npm run auth:reset -- <email>` resets a user's password to a printed random
+  temporary value and bumps the session version, killing any existing sessions.
+- `npm run auth:promote -- <email>` flips an existing user to admin.
+- `npm run auth:claim -- <email>` re-keys orphaned `default-user` rows to a
+  real account if the auto-migration on first signup did not run.
+
+These are wrappers around `tsx --conditions=react-server`; the flag is required
+because the underlying modules use `import "server-only"`.
+
+### Local mode (macOS app, single-user dev)
+
+Set `FLAVORPRESS_AUTH=local` to skip signup and login entirely. Every
+request resolves to a bootstrap admin user with id `default-user`. Any
+pre-existing single-user data on disk (e.g., from an earlier FlavorPress
+build) is picked up without an explicit migration. The macOS launcher
+sets this for you; for local dev, add `FLAVORPRESS_AUTH=local` to `.env`.
+
+Override the bootstrap email via `FLAVORPRESS_LOCAL_EMAIL=you@example.com`.
+
+### Email
+
+Transactional email (signup verification + self-serve password reset) is
+sent via Resend. In development, leave `RESEND_API_KEY` unset and emails
+print to the console with the full body and URL. In production this key
+is required.
+
+Forgotten password (self-serve): visit `/reset-password`, enter your
+email, click the link in the email, set a new password. The reset bumps
+your session version so any old sessions die.
+
+Admin-side reset (still available): `npm run auth:reset -- <email>`.
+
+### Sign in with WordPress.com
+
+When `WPCOM_OAUTH_CLIENT_ID` and `WPCOM_OAUTH_CLIENT_SECRET` are set,
+"Sign in with WordPress.com" and "Sign up with WordPress.com" buttons
+appear on the login and signup pages. Signup still requires an invite
+token.
+
+Register an app at developer.wordpress.com with redirect URI
+`<FLAVORPRESS_ORIGIN>/api/auth/wpcom/callback`. For local development,
+also register `http://localhost:3000/api/auth/wpcom/callback`.
+
 ## Configuration
 
 `.env` keys. Anthropic auth is optional for local drafting when Claude Code is installed and logged in; fact-check still requires an API key.
@@ -65,9 +124,8 @@ You should see 7 capabilities registered, 3 sources created, 1 cluster fired (en
 | Key                           | Required          | Purpose                                                                                                                                                                                                                                                                        |
 | ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ANTHROPIC_API_KEY`           | no                | Claude calls for the draft generator when configured, and required for fact-check. Without it, drafting can use a local Claude Code login; if neither auth path is available, the generator returns a deterministic stub so the loop still closes for local dev.               |
-| `FLAVORPRESS_AUTH_USER`       | yes in production | Single writer login username. Defaults to `writer` only in local dev.                                                                                                                                                                                                          |
-| `FLAVORPRESS_AUTH_PASSWORD`   | yes in production | Single writer login password. Defaults to `flavorpress-dev` only in local dev.                                                                                                                                                                                                 |
-| `FLAVORPRESS_SESSION_SECRET`  | yes in production | Secret used to sign the HttpOnly session cookie. Use at least 32 random bytes. Defaults to a dev-only value only in local dev.                                                                                                                                                 |
+| `FLAVORPRESS_ADMIN_EMAIL`     | yes in production | Email address of the initial admin user. The first signup matching this address is promoted to admin and can issue invites.                                                                                                                                                    |
+| `FLAVORPRESS_SESSION_SECRET`  | yes in production | Secret used to sign the HttpOnly session cookie. Use at least 32 random bytes. Defaults to a placeholder in local dev only.                                                                                                                                                    |
 | `FLAVORPRESS_ORIGIN`          | yes in production | Public app origin, for example `https://your-flavorpress.example.com`. Production fails closed without this so callbacks and mutation checks do not trust arbitrary Host headers.                                                                                              |
 | `FLAVORPRESS_ENCRYPTION_KEY`  | yes in production | AES-GCM key for WordPress Application Passwords and sensitive settings stored in the database. Generate one with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.                                                                           |
 | `FLAVORPRESS_ALLOWED_ORIGINS` | no                | Optional comma-separated allowlist for trusted reverse proxy origins on mutation requests. The current request origin is always allowed.                                                                                                                                       |

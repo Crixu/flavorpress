@@ -8,7 +8,6 @@ const { executeMock, ensureSchemaMock } = vi.hoisted(() => ({
 vi.mock("../../db", () => ({
   db: { execute: executeMock },
   ensureSchema: ensureSchemaMock,
-  SINGLE_USER_ID: "default-user",
 }));
 
 import { buildExportEnvelope } from "../export";
@@ -80,7 +79,7 @@ describe("buildExportEnvelope", () => {
       throw new Error(`Unexpected query: ${sql}`);
     });
 
-    const envelope = await buildExportEnvelope();
+    const envelope = await buildExportEnvelope("default-user");
 
     expect(envelope.outletSourceAssignments).toEqual([
       { outletId: "outlet-a", sourceId: "source-a", createdAt: 1300 },
@@ -121,7 +120,7 @@ describe("buildExportEnvelope", () => {
       throw new Error(`Unexpected query: ${sql}`);
     });
 
-    const envelope = await buildExportEnvelope();
+    const envelope = await buildExportEnvelope("default-user");
 
     expect(envelope.voiceProfiles).toMatchObject([
       {

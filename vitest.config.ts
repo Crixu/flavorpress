@@ -15,7 +15,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}", "src/**/__tests__/**/*.{ts,tsx}"],
-    exclude: ["node_modules", ".next", "macos/build"],
+    exclude: ["node_modules", ".next", "macos/build", "src/**/__tests__/__helpers__/**"],
     css: false,
     coverage: {
       provider: "v8",

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ensureSchema: vi.fn(),
-  ensureSingleUser: vi.fn(),
   getOrigin: vi.fn(),
   consumeWPAuthorizeState: vi.fn(),
   getOutlet: vi.fn(),
@@ -13,7 +12,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   ensureSchema: mocks.ensureSchema,
-  ensureSingleUser: mocks.ensureSingleUser,
 }));
 
 vi.mock("@/lib/v1/origin", () => ({
@@ -71,7 +69,6 @@ describe("WordPress authorize callback", () => {
     for (const mock of Object.values(mocks)) mock.mockReset();
     mocks.getOrigin.mockResolvedValue("https://app.example");
     mocks.ensureSchema.mockResolvedValue(undefined);
-    mocks.ensureSingleUser.mockResolvedValue(undefined);
     mocks.recordOutletError.mockResolvedValue(undefined);
     mocks.commitOutletCredentials.mockResolvedValue(undefined);
   });
@@ -176,6 +173,30 @@ describe("WordPress authorize callback", () => {
       "WordPress authorize callback returned a different site URL.",
     );
     expect(mocks.probeWordPress).not.toHaveBeenCalled();
+    expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
+  });
+
+  it("rejects a callback when the outlet in state does not belong to the state userId", async () => {
+    // State belongs to user A but getOutlet returns null, simulating an outlet
+    // owned by a different user (user B). The route must not commit credentials.
+    mocks.consumeWPAuthorizeState.mockResolvedValue({
+      ok: true,
+      value: { ...authorizeState, userId: "user-a", outletId: "outlet-of-user-b" },
+    });
+    mocks.getOutlet.mockResolvedValue(null); // getOutlet(outletId, userId) returns null for wrong owner
+
+    const response = await GET(
+      request({
+        outlet_id: "outlet-of-user-b",
+        state: "state-1",
+        site_url: "https://wp.example",
+        user_login: "author",
+        password: "secret",
+      }),
+    );
+
+    expect(mocks.getOutlet).toHaveBeenCalledWith("outlet-of-user-b", "user-a");
+    expect(locationOf(response)).toBe("https://app.example/voice?wp_error=unknown_outlet");
     expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
   });
 

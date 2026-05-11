@@ -1,5 +1,7 @@
-import { isAuthConfigured } from "@/lib/auth";
-import { Card, Field, Button, Notice } from "@/components/wpds";
+import { redirect } from "next/navigation";
+import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
+import { isLocalAuthMode } from "@/lib/session";
+import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { loginAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,15 +14,18 @@ interface PageProps {
 }
 
 const errorMessages: Record<string, string> = {
-  credentials: "That username and password did not match this FlavorPress app.",
+  credentials: "Invalid credentials.",
   origin: "This sign-in request did not come from this FlavorPress app.",
+  oauth_state: "The sign-in link expired or was tampered with. Try again.",
+  oauth: "WordPress.com sign-in failed. Try again.",
 };
 
 export default async function LoginPage({ searchParams }: PageProps) {
+  if (isLocalAuthMode()) redirect("/");
   const sp = await searchParams;
   const next = typeof sp.next === "string" ? sp.next : "/";
   const error = sp.error ? errorMessages[sp.error] : null;
-  const configured = isAuthConfigured();
+  const oauthEnabled = isWpcomOAuthConfigured();
 
   return (
     <div
@@ -54,19 +59,11 @@ export default async function LoginPage({ searchParams }: PageProps) {
               margin: 0,
             }}
           >
-            One writer, one WordPress site.
+            Your reading becomes your writing.
           </p>
         </header>
 
         <Card>
-          {!configured ? (
-            <div style={{ marginBottom: 14 }}>
-              <Notice tone="warn">
-                Set <code>FLAVORPRESS_AUTH_USER</code>, <code>FLAVORPRESS_AUTH_PASSWORD</code>, and{" "}
-                <code>FLAVORPRESS_SESSION_SECRET</code> before signing in.
-              </Notice>
-            </div>
-          ) : null}
           {error ? (
             <div style={{ marginBottom: 14 }}>
               <Notice tone="error">{error}</Notice>
@@ -75,16 +72,37 @@ export default async function LoginPage({ searchParams }: PageProps) {
 
           <form action={loginAction}>
             <input type="hidden" name="next" value={next} />
-            <Field label="Username">
-              <input name="username" type="text" autoComplete="username" required autoFocus />
+            <Field label="Email">
+              <input name="email" type="email" autoComplete="email" required autoFocus />
             </Field>
             <Field label="Password">
               <input name="password" type="password" autoComplete="current-password" required />
             </Field>
-            <Button type="submit" style={{ width: "100%", justifyContent: "center" }}>
+            <SubmitButton
+              style={{ width: "100%", justifyContent: "center" }}
+              pendingLabel="Signing in…"
+            >
               Sign in
-            </Button>
+            </SubmitButton>
           </form>
+          {oauthEnabled ? (
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <a
+                href="/api/auth/wpcom?mode=login"
+                style={{
+                  display: "inline-block",
+                  padding: "8px 16px",
+                  border: "1px solid var(--ink-tertiary)",
+                  borderRadius: 6,
+                  textDecoration: "none",
+                  color: "var(--ink-primary)",
+                  fontSize: 14,
+                }}
+              >
+                Sign in with WordPress.com
+              </a>
+            </div>
+          ) : null}
         </Card>
       </div>
     </div>

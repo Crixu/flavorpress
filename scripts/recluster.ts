@@ -11,32 +11,50 @@
  * IDs would lose their reference, but at this stage no drafts exist.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../src/lib/db";
+import { db, ensureSchema } from "../src/lib/db";
 import { handleItemIngested } from "../src/lib/v1/cluster-engine";
+import { getUserByEmail } from "../src/lib/users";
+
+async function resolveUserId(argv: string[]): Promise<string> {
+  const i = argv.indexOf("--email");
+  if (i !== -1) {
+    const email = argv[i + 1];
+    if (!email) throw new Error("--email requires a value");
+    const user = await getUserByEmail(email);
+    if (!user) throw new Error(`No user with email ${email}`);
+    return user.id;
+  }
+  const r = await db.execute("SELECT 1 FROM users WHERE id = 'default-user'");
+  if (r.rows.length === 0) {
+    throw new Error("No default-user row exists. Pass --email <addr> to target a real account.");
+  }
+  return "default-user";
+}
 
 async function main() {
   await ensureSchema();
+  const userId = await resolveUserId(process.argv);
 
   const before = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   console.log(`before: ${before.rows[0]!.n} clusters`);
 
   // Wipe.
   await db.execute({
     sql: `UPDATE items SET cluster_id = NULL WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   await db.execute({
     sql: `DELETE FROM clusters WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
 
   const items = await db.execute({
     sql: `SELECT id, source_id, canonical_url, content_hash
           FROM items WHERE user_id = ? ORDER BY published_at ASC`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   console.log(`re-running cluster engine on ${items.rows.length} items...`);
 
@@ -52,7 +70,7 @@ async function main() {
         canonicalUrl: String(row.canonical_url),
         contentHash: String(row.content_hash),
       },
-      { userId: SINGLE_USER_ID, traceId: crypto.randomUUID() },
+      { userId, traceId: crypto.randomUUID() },
     );
     if (result.clusterId) clustered++;
     if (result.layer === 1) layer1++;
@@ -73,15 +91,15 @@ async function main() {
                   ) ds JOIN sources s ON s.id = ds.source_id) AS trust_sum
           FROM clusters WHERE user_id = ?
           ORDER BY trust_sum DESC, source_count DESC LIMIT 12`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   const fired = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   const total = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   console.log(`\nafter: ${total.rows[0]!.n} clusters · ${fired.rows[0]!.n} fired`);
   console.log(`\ntop clusters by trust_sum:`);

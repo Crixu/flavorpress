@@ -18,7 +18,8 @@ import "server-only";
  * empty payload, while the Panel hydrates via its own server action.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
+import { db, ensureSchema } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 import { getSetting, setSetting, SETTING_KEYS } from "@/lib/v1/settings";
 import type { ServerExtensionEntry } from "../types";
 import {
@@ -92,11 +93,12 @@ export async function setLicenseFilter(codes: LicenseCode[]): Promise<LicenseCod
 export async function runRelatedImageSearch(
   draftId: string,
 ): Promise<{ results: RelatedImageResult[]; ranAt: number; licenseFilter: LicenseCode[] }> {
+  const session = await requireSession();
   await ensureSchema();
 
   const draftRow = await db.execute({
     sql: `SELECT id, headline, body FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
 
@@ -201,7 +203,16 @@ export async function runRelatedImageSearch(
 export async function loadRelatedImages(
   draftId: string,
 ): Promise<{ results: RelatedImageResult[]; ranAt: number | null }> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before returning any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) return { results: [], ranAt: null };
+
   const [r, runRow, currentFilter] = await Promise.all([
     db.execute({
       sql: `SELECT id, draft_id, result_index, image_url, thumbnail_url, source_url,
@@ -268,7 +279,16 @@ function encodeFilterKey(codes: readonly LicenseCode[]): string {
 }
 
 export async function clearRelatedImages(draftId: string): Promise<void> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before deleting any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) throw new Error("Draft not found.");
+
   await db.execute({
     sql: `DELETE FROM related_image_results WHERE draft_id = ?`,
     args: [draftId],

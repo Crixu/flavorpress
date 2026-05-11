@@ -5,8 +5,17 @@
  * Per-user encryption is application-layer envelope encryption on
  * sensitive columns (Application Password, archive blobs).
  *
- * Local dev: file-based SQLite at .data/flavorpress.db.
- * Production: Turso via LIBSQL_URL + LIBSQL_AUTH_TOKEN.
+ * Three connection modes:
+ *
+ * 1. LIBSQL_URL unset: local file at .data/flavorpress.db (laptop dev).
+ * 2. LIBSQL_URL is libsql:// or https:// and we're not on Vercel:
+ *    embedded replica. Reads hit a local .data/turso-replica.db file;
+ *    writes pass through to Turso and the replica syncs every 60s.
+ *    Keeps `npm run dev` against a remote Turso DB feeling local.
+ * 3. LIBSQL_URL is libsql:// or https:// on Vercel: direct remote
+ *    connection. Vercel functions sit in the same region as Turso's
+ *    edge replica; round-trips are sub-millisecond and an embedded
+ *    file is wasteful (cold-start friction, /tmp is ephemeral anyway).
  */
 
 import { createClient, type Client } from "@libsql/client";
@@ -15,14 +24,48 @@ import fs from "node:fs";
 import { assertProductionEncryptionKey } from "./secret-crypto";
 
 const dataDir = path.join(process.cwd(), ".data");
-if (!process.env.LIBSQL_URL && !fs.existsSync(dataDir)) {
+const remoteUrl = process.env.LIBSQL_URL?.trim();
+const authToken = process.env.LIBSQL_AUTH_TOKEN;
+const onVercel = process.env.VERCEL === "1";
+// `next build` spawns several workers that all import this module. If each
+// worker opens the same embedded-replica file, libsql races on
+// wal_insert_begin and emits sync errors. The build itself does not need a
+// real DB connection (all routes are `dynamic = "force-dynamic"`), so during
+// the build phase we use the same remote-only path Vercel uses at runtime.
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+const useRemoteOnly = onVercel || isBuildPhase;
+const isRemote = Boolean(
+  remoteUrl && (remoteUrl.startsWith("libsql://") || remoteUrl.startsWith("https://")),
+);
+
+if (!isRemote && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const url = process.env.LIBSQL_URL ?? `file:${path.join(dataDir, "flavorpress.db")}`;
-const authToken = process.env.LIBSQL_AUTH_TOKEN;
+function buildClient(): Client {
+  // Mode 3: remote-only (Vercel runtime, or local `next build`).
+  if (isRemote && useRemoteOnly) {
+    return createClient({ url: remoteUrl!, authToken });
+  }
+  // Mode 2: embedded replica for local dev pointed at a remote URL.
+  if (isRemote) {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    return createClient({
+      url: `file:${path.join(dataDir, "turso-replica.db")}`,
+      syncUrl: remoteUrl,
+      authToken,
+      syncInterval: 60,
+    });
+  }
+  // Mode 1: bare local sqlite file (or whatever non-remote URL was passed,
+  // e.g., file: URLs used by the test runner).
+  const fallback = `file:${path.join(dataDir, "flavorpress.db")}`;
+  return createClient({ url: remoteUrl ?? fallback, authToken });
+}
 
-export const db: Client = createClient({ url, authToken });
+export const db: Client = buildClient();
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -38,9 +81,17 @@ export async function ensureSchema(): Promise<void> {
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
         niche_label TEXT,
+        password_hash TEXT,
+        wpcom_id TEXT,
+        wpcom_username TEXT,
+        email_verified_at INTEGER,
+        status TEXT NOT NULL DEFAULT 'active',
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        session_version INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         last_active_at INTEGER
       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_wpcom_id_unique ON users(wpcom_id) WHERE wpcom_id IS NOT NULL`,
 
       // Outlets - a writer can publish to many WordPress sites; each has its
       // own voice profile, derived from that outlet's archive. The 1:N
@@ -197,6 +248,7 @@ export async function ensureSchema(): Promise<void> {
       // jobs of the same kind running concurrently.
       `CREATE TABLE IF NOT EXISTS job_progress (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         kind TEXT NOT NULL,
         total INTEGER NOT NULL,
         completed INTEGER NOT NULL DEFAULT 0,
@@ -468,6 +520,34 @@ export async function ensureSchema(): Promise<void> {
         value TEXT,
         updated_at INTEGER NOT NULL
       )`,
+
+      `CREATE TABLE IF NOT EXISTS invites (
+        token TEXT PRIMARY KEY,
+        created_by_user_id TEXT,
+        used_by_user_id TEXT,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        used_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_invites_unused ON invites(used_at) WHERE used_at IS NULL`,
+
+      `CREATE TABLE IF NOT EXISTS email_verification_tokens (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_email_verif_user ON email_verification_tokens(user_id)`,
+
+      `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id)`,
     ],
     "write",
   );
@@ -679,19 +759,59 @@ async function migrateLegacyTables(): Promise<void> {
   } catch {
     // Table will be created clean by CREATE IF NOT EXISTS.
   }
-}
 
-// ===== single-user helper for v1 alpha =====
-//
-// Auth is deferred (Supabase Auth wiring is Epic 1.2, owned by Matthias).
-// Until that lands, the OSS app runs single-user under a fixed user id so
-// sources, voice profile, drafts all attach correctly.
-export const SINGLE_USER_ID = "default-user";
+  // users: auth-foundation columns. Additive ALTERs; safe on fresh DBs
+  // because CREATE TABLE IF NOT EXISTS runs after this and seeds users
+  // without the new columns the first time the migration runs.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(users)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("password_hash")) {
+        console.info("[migrate] users: adding password_hash column");
+        await db.execute("ALTER TABLE users ADD COLUMN password_hash TEXT");
+      }
+      if (!cols.includes("wpcom_id")) {
+        console.info("[migrate] users: adding wpcom_id column");
+        await db.execute("ALTER TABLE users ADD COLUMN wpcom_id TEXT");
+      }
+      if (!cols.includes("wpcom_username")) {
+        console.info("[migrate] users: adding wpcom_username column");
+        await db.execute("ALTER TABLE users ADD COLUMN wpcom_username TEXT");
+      }
+      if (!cols.includes("email_verified_at")) {
+        console.info("[migrate] users: adding email_verified_at column");
+        await db.execute("ALTER TABLE users ADD COLUMN email_verified_at INTEGER");
+      }
+      if (!cols.includes("status")) {
+        console.info("[migrate] users: adding status column");
+        await db.execute("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+      }
+      if (!cols.includes("is_admin")) {
+        console.info("[migrate] users: adding is_admin column");
+        await db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!cols.includes("session_version")) {
+        console.info("[migrate] users: adding session_version column");
+        await db.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
 
-export async function ensureSingleUser(email = "you@flavorpress.local"): Promise<void> {
-  await ensureSchema();
-  await db.execute({
-    sql: `INSERT OR IGNORE INTO users (id, email, created_at) VALUES (?, ?, ?)`,
-    args: [SINGLE_USER_ID, email, Date.now()],
-  });
+  // job_progress: add user_id so maintenance jobs scope per-user. Nullable
+  // for legacy rows; new inserts always set it.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(job_progress)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("user_id")) {
+        console.info("[migrate] job_progress: adding user_id column");
+        await db.execute("ALTER TABLE job_progress ADD COLUMN user_id TEXT");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
 }

@@ -13,7 +13,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { ensureSchema, ensureSingleUser } from "@/lib/db";
+import { ensureSchema } from "@/lib/db";
 import { probeWordPress } from "@/lib/wordpress";
 import { commitOutletCredentials, recordOutletError, getOutlet } from "@/lib/v1/outlets";
 import { getOrigin } from "@/lib/v1/origin";
@@ -21,7 +21,6 @@ import { consumeWPAuthorizeState, normalizeSiteUrl, siteOrigin } from "@/lib/v1/
 
 export async function GET(req: Request) {
   await ensureSchema();
-  await ensureSingleUser();
   const appOrigin = await getOrigin();
   const url = new URL(req.url);
   const outletId = url.searchParams.get("outlet_id") ?? "";
@@ -50,7 +49,7 @@ export async function GET(req: Request) {
     return redirectTo("/voice?wp_error=missing_params", appOrigin);
   }
 
-  const outlet = await getOutlet(authorizeState.outletId);
+  const outlet = await getOutlet(authorizeState.outletId, authorizeState.userId);
   if (!outlet) {
     return redirectTo("/voice?wp_error=unknown_outlet", appOrigin);
   }

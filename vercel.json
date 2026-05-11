@@ -1,8 +1,9 @@
 {
+  "regions": ["fra1"],
   "crons": [
     {
       "path": "/api/cron/poll",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }

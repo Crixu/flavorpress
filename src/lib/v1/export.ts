@@ -9,7 +9,7 @@
  * human-meaningful part of the voice profile.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../db";
+import { db, ensureSchema } from "../db";
 
 export const EXPORT_SCHEMA_VERSION = "1";
 
@@ -132,7 +132,7 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function buildExportEnvelope(userId = SINGLE_USER_ID): Promise<ExportEnvelope> {
+export async function buildExportEnvelope(userId: string): Promise<ExportEnvelope> {
   await ensureSchema();
 
   const [userRows, outletRows, voiceRows, folderRows, sourceRows, outletSourceRows, draftRows] =

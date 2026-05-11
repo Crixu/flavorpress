@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Inter, Newsreader } from "next/font/google";
 import { HelpFlyout, HelpIndexButton } from "@/components/Help";
+import { getSession } from "@/lib/session";
 import { AgentationDev } from "./_components/Agentation";
 import { ShellNav } from "./_components/ShellNav";
 import { PublishToastBridge, ToastProvider } from "./_components/Toast";
@@ -28,30 +29,42 @@ export const metadata: Metadata = {
   description: "Your reading turns into your writing.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Hide the topbar + shell nav on logged-out pages (login, signup, reset
+  // flows, verify-email status). The auth surface should look like a clean
+  // standalone form, not a chrome with broken links to gated routes.
+  const session = await getSession();
+  const isAuthed = Boolean(session);
+
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body>
         <ToastProvider>
-          <header className="fp-topbar">
-            <Link href="/" className="fp-brand">
-              <span className="fp-brand-name">FlavorPress</span>
-              <span className="fp-version-badge">v1 alpha</span>
-            </Link>
-            <div className="fp-topbar-right">
-              <Link href="/settings" className="fp-topbar-link">
-                Settings
-              </Link>
-              <Suspense fallback={null}>
-                <HelpIndexButton />
-              </Suspense>
-            </div>
-          </header>
-          <ShellNav />
+          {isAuthed ? (
+            <>
+              <header className="fp-topbar">
+                <Link href="/" className="fp-brand">
+                  <span className="fp-brand-name">FlavorPress</span>
+                  <span className="fp-version-badge">v1 alpha</span>
+                </Link>
+                <div className="fp-topbar-right">
+                  <Link href="/settings" className="fp-topbar-link">
+                    Settings
+                  </Link>
+                  <Suspense fallback={null}>
+                    <HelpIndexButton />
+                  </Suspense>
+                </div>
+              </header>
+              <ShellNav />
+            </>
+          ) : null}
           <main className="fp-main">{children}</main>
-          <Suspense fallback={null}>
-            <HelpFlyout />
-          </Suspense>
+          {isAuthed ? (
+            <Suspense fallback={null}>
+              <HelpFlyout />
+            </Suspense>
+          ) : null}
           <AgentationDev />
           <PublishToastBridge />
         </ToastProvider>

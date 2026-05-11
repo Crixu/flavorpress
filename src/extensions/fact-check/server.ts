@@ -12,7 +12,8 @@ import "server-only";
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
+import { db, ensureSchema } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 import { extractText, extractJson } from "@/lib/anthropic";
 import { sanitizeDraftHtml } from "@/lib/draft-html-sanitizer";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "@/lib/v1/settings";
@@ -44,11 +45,12 @@ Return JSON only, matching:
 export async function runFactCheck(
   draftId: string,
 ): Promise<{ claims: FactCheckClaim[]; ranAt: number }> {
+  const session = await requireSession();
   await ensureSchema();
 
   const draftRow = await db.execute({
     sql: `SELECT id, body FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
   const bodyText = stripHtml(String(draftRow.rows[0]!.body ?? ""));
@@ -198,7 +200,16 @@ async function persistFactCheckRun(
 }
 
 export async function loadFactCheckRunAt(draftId: string): Promise<number | null> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before returning any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) return null;
+
   const r = await db.execute({
     sql: `SELECT computed_at FROM fact_check_results
           WHERE draft_id = ? AND capability_id = ? AND idempotency_key = ?`,
@@ -209,7 +220,16 @@ export async function loadFactCheckRunAt(draftId: string): Promise<number | null
 }
 
 export async function loadFactCheckClaims(draftId: string): Promise<FactCheckClaim[]> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before returning any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) return [];
+
   const r = await db.execute({
     sql: `SELECT id, draft_id, claim_index, claim_text, verdict, comment,
                  source_url, source_title, created_at
@@ -254,9 +274,10 @@ export async function suggestFactCheckFix(
   draftId: string,
   claimId: string,
 ): Promise<FactCheckFixSuggestion> {
+  const session = await requireSession();
   await ensureSchema();
 
-  const { body, claim } = await loadDraftAndClaim(draftId, claimId);
+  const { body, claim } = await loadDraftAndClaim(draftId, claimId, session.userId);
   if (claim.verdict !== "disputed" && claim.verdict !== "unverified") {
     throw new Error("Only disputed or unverified claims can be fixed.");
   }
@@ -399,6 +420,7 @@ export async function applyFactCheckFix(
   original: string,
   replacement: string,
 ): Promise<{ claims: FactCheckClaim[]; ranAt: number | null }> {
+  const session = await requireSession();
   await ensureSchema();
 
   if (!original || !replacement) {
@@ -408,7 +430,7 @@ export async function applyFactCheckFix(
     throw new Error("Suggestion equals the original; nothing to apply.");
   }
 
-  const { body, claim } = await loadDraftAndClaim(draftId, claimId);
+  const { body, claim } = await loadDraftAndClaim(draftId, claimId, session.userId);
   if (claim.verdict !== "disputed" && claim.verdict !== "unverified") {
     throw new Error("Only disputed or unverified claims can be fixed.");
   }
@@ -430,7 +452,7 @@ export async function applyFactCheckFix(
 
   await db.execute({
     sql: `UPDATE drafts SET body = ?, edited_at = ? WHERE id = ? AND user_id = ?`,
-    args: [newBody, Date.now(), draftId, SINGLE_USER_ID],
+    args: [newBody, Date.now(), draftId, session.userId],
   });
   await db.execute({
     sql: `DELETE FROM fact_check_claims WHERE id = ? AND draft_id = ?`,
@@ -489,10 +511,11 @@ interface LoadedClaim {
 async function loadDraftAndClaim(
   draftId: string,
   claimId: string,
+  userId: string,
 ): Promise<{ body: string; claim: LoadedClaim }> {
   const draftRow = await db.execute({
     sql: `SELECT id, body, wp_post_id FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, userId],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
   if (draftRow.rows[0]!.wp_post_id) {
@@ -523,7 +546,16 @@ async function loadDraftAndClaim(
 }
 
 export async function clearFactCheckClaims(draftId: string): Promise<void> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before deleting any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) throw new Error("Draft not found.");
+
   await db.execute({
     sql: `DELETE FROM fact_check_claims WHERE draft_id = ?`,
     args: [draftId],

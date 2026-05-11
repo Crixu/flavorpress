@@ -6,7 +6,9 @@
  */
 
 import Link from "next/link";
-import { ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { ensureSchema } from "@/lib/db";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { listReaderFolderOptions, loadReaderQueue } from "@/lib/v1/reader";
 import { ReaderClient } from "./_components/ReaderClient";
@@ -19,11 +21,17 @@ interface PageProps {
 
 export default async function ReaderPage({ searchParams }: PageProps) {
   await ensureSchema();
-  await ensureSingleUser();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
   await ensureRegisteredCapabilities();
 
   const sp = await searchParams;
-  const { folders, totalCount } = await listReaderFolderOptions(SINGLE_USER_ID);
+  const { folders, totalCount } = await listReaderFolderOptions(session.userId);
   const requestedFolder = sp.folder ?? null;
   // If the requested folder no longer exists (renamed, deleted, has no
   // sources), fall back to All rather than 404'ing the page.
@@ -31,7 +39,7 @@ export default async function ReaderPage({ searchParams }: PageProps) {
     ? (folders.find((f) => f.id === requestedFolder)?.id ?? null)
     : null;
 
-  const queue = await loadReaderQueue(SINGLE_USER_ID, activeFolder);
+  const queue = await loadReaderQueue(session.userId, activeFolder);
 
   return (
     <div className="space-y-6">

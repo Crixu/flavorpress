@@ -7,7 +7,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { db, ensureSchema, ensureSingleUser, SINGLE_USER_ID } from "../db";
+import { db, ensureSchema } from "../db";
+import { requireSession } from "../session";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
 import { isDraftFormat, DEFAULT_DRAFT_FORMAT, type DraftFormat } from "./draft-format";
@@ -70,13 +71,13 @@ import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
  */
 export async function preflightOutletAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const baseUrl = String(formData.get("baseUrl") ?? "")
     .trim()
     .replace(/\/$/, "");
   if (!baseUrl) throw new Error("Site URL required.");
 
-  const outletId = await stageOutlet(SINGLE_USER_ID, baseUrl);
+  const outletId = await stageOutlet(session.userId, baseUrl);
   const result = await preflightWordPress(baseUrl, await getOrigin());
   await recordOutletError(outletId, encodePreflight(result));
   revalidatePath("/voice");
@@ -90,7 +91,7 @@ export async function preflightOutletAction(formData: FormData) {
  */
 export async function connectOutletManualAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const baseUrl = String(formData.get("baseUrl") ?? "")
     .trim()
     .replace(/\/$/, "");
@@ -100,7 +101,7 @@ export async function connectOutletManualAction(formData: FormData) {
     throw new Error("All fields required.");
   }
 
-  const outletId = await stageOutlet(SINGLE_USER_ID, baseUrl);
+  const outletId = await stageOutlet(session.userId, baseUrl);
   const probe = await probeWordPress({ baseUrl, username, appPassword });
   if (!probe.ok) {
     await recordOutletError(outletId, probe.message, probe.kind);
@@ -122,14 +123,14 @@ export async function connectOutletManualAction(formData: FormData) {
  */
 export async function startWPAuthorizeAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const baseUrl = String(formData.get("baseUrl") ?? "")
     .trim()
     .replace(/\/$/, "");
   if (!baseUrl) throw new Error("Site URL required.");
   const skipPreflight = formData.get("skipPreflight") === "1";
 
-  const outletId = await stageOutlet(SINGLE_USER_ID, baseUrl);
+  const outletId = await stageOutlet(session.userId, baseUrl);
 
   // Preflight: verify reachability + Application Passwords + callback scheme
   // before sending the user out of the app. If anything fails, redirect back
@@ -147,7 +148,7 @@ export async function startWPAuthorizeAction(formData: FormData) {
   }
 
   const authorizeState = await createWPAuthorizeState({
-    userId: SINGLE_USER_ID,
+    userId: session.userId,
     outletId,
     expectedSiteUrl: baseUrl,
   });
@@ -165,29 +166,31 @@ export async function startWPAuthorizeAction(formData: FormData) {
 
 export async function disconnectOutletAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const purge = formData.get("purge") === "1";
   if (!outletId) throw new Error("outletId required.");
-  await disconnectOutlet(outletId, { purge });
+  await disconnectOutlet(outletId, { purge }, session.userId);
   revalidatePath("/voice");
   revalidatePath("/");
 }
 
 export async function setDefaultOutletAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
-  await setDefaultOutlet(outletId);
+  await setDefaultOutlet(outletId, session.userId);
   revalidatePath("/voice");
   revalidatePath("/");
 }
 
 export async function addSourceAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const raw = String(formData.get("urls") ?? formData.get("url") ?? "").trim();
   if (!raw) throw new Error("URL required.");
-  const folderId = await resolveFolderIdField(formData);
+  const folderId = await resolveFolderIdField(formData, session.userId);
 
   // Bulk paste support: split on newlines, commas, or spaces.
   const inputs = Array.from(
@@ -254,7 +257,7 @@ export async function addSourceAction(formData: FormData) {
               VALUES (?, ?, ?, ?, ?, ?, 0.5, ?, ?, ?, ?)`,
         args: [
           id,
-          SINGLE_USER_ID,
+          session.userId,
           kind,
           url,
           display,
@@ -277,7 +280,7 @@ export async function addSourceAction(formData: FormData) {
   }
 
   if (titleJobs.length > 0) {
-    after(() => runBackgroundAutoTitling(titleJobs));
+    after(() => runBackgroundAutoTitling(titleJobs, session.userId));
   }
   revalidatePath("/sources");
   revalidatePath("/");
@@ -314,7 +317,7 @@ export async function parseOpmlAction(
   formData: FormData,
 ): Promise<OpmlParseResponse | OpmlParseError> {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "Pick an OPML file to import." };
@@ -343,7 +346,7 @@ export async function parseOpmlAction(
 
   const existing = await db.execute({
     sql: `SELECT url FROM sources WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
   const existingSet = new Set(existing.rows.map((r) => String(r.url)));
 
@@ -381,7 +384,7 @@ export async function parseOpmlAction(
  */
 export async function importOpmlSelectionAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const urls = formData
     .getAll("url")
     .map((v) => String(v).trim())
@@ -396,7 +399,7 @@ export async function importOpmlSelectionAction(formData: FormData) {
     );
   }
 
-  const folderId = await resolveFolderIdField(formData);
+  const folderId = await resolveFolderIdField(formData, session.userId);
   const titleJobs: { id: string; url: string }[] = [];
 
   for (let i = 0; i < urls.length; i += 1) {
@@ -413,7 +416,7 @@ export async function importOpmlSelectionAction(formData: FormData) {
               VALUES (?, ?, ?, ?, ?, ?, 0.5, ?, ?, ?, ?)`,
         args: [
           id,
-          SINGLE_USER_ID,
+          session.userId,
           kind,
           url,
           seedTitle,
@@ -438,7 +441,7 @@ export async function importOpmlSelectionAction(formData: FormData) {
   }
 
   if (titleJobs.length > 0) {
-    after(() => runBackgroundAutoTitling(titleJobs));
+    after(() => runBackgroundAutoTitling(titleJobs, session.userId));
   }
   revalidatePath("/sources");
   revalidatePath("/");
@@ -449,7 +452,10 @@ export async function importOpmlSelectionAction(formData: FormData) {
  * any row where the user has already renamed it (display_name no longer
  * matches the host placeholder we wrote on insert).
  */
-async function runBackgroundAutoTitling(jobs: { id: string; url: string }[]): Promise<void> {
+async function runBackgroundAutoTitling(
+  jobs: { id: string; url: string }[],
+  userId: string,
+): Promise<void> {
   await Promise.all(
     jobs.map(async ({ id, url }) => {
       try {
@@ -461,7 +467,7 @@ async function runBackgroundAutoTitling(jobs: { id: string; url: string }[]): Pr
           sql: `UPDATE sources
                 SET display_name = ?
                 WHERE id = ? AND user_id = ? AND display_name = ?`,
-          args: [title, id, SINGLE_USER_ID, placeholder],
+          args: [title, id, userId, placeholder],
         });
       } catch (err) {
         console.warn(`autoTitle ${url}: ${err}`);
@@ -478,13 +484,14 @@ async function runBackgroundAutoTitling(jobs: { id: string; url: string }[]): Pr
  */
 export async function renameSourceAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   const raw = String(formData.get("displayName") ?? "").trim();
   if (!sourceId) throw new Error("sourceId required.");
 
   const r = await db.execute({
     sql: `SELECT url FROM sources WHERE id = ? AND user_id = ?`,
-    args: [sourceId, SINGLE_USER_ID],
+    args: [sourceId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Source not found.");
   const url = String(r.rows[0]!.url);
@@ -492,7 +499,7 @@ export async function renameSourceAction(formData: FormData) {
 
   await db.execute({
     sql: `UPDATE sources SET display_name = ? WHERE id = ? AND user_id = ?`,
-    args: [next, sourceId, SINGLE_USER_ID],
+    args: [next, sourceId, session.userId],
   });
   revalidatePath("/sources");
   revalidatePath(`/sources/${sourceId}`);
@@ -504,54 +511,55 @@ export async function renameSourceAction(formData: FormData) {
  * folder id, the sentinel "__new__" plus a `folderName` field for inline
  * folder creation, or empty for ungrouped.
  */
-async function resolveFolderIdField(formData: FormData): Promise<string | null> {
+async function resolveFolderIdField(formData: FormData, userId: string): Promise<string | null> {
   const raw = String(formData.get("folderId") ?? "").trim();
   if (!raw) return null;
   if (raw === "__new__") {
     const name = String(formData.get("folderName") ?? "").trim();
     if (!name) return null;
-    return await ensureFolderByName(name);
+    return await ensureFolderByName(name, userId);
   }
   // Verify the folder belongs to this user.
   const r = await db.execute({
     sql: `SELECT id FROM source_folders WHERE id = ? AND user_id = ?`,
-    args: [raw, SINGLE_USER_ID],
+    args: [raw, userId],
   });
   return r.rows.length > 0 ? raw : null;
 }
 
-async function ensureFolderByName(name: string): Promise<string> {
+async function ensureFolderByName(name: string, userId: string): Promise<string> {
   const existing = await db.execute({
     sql: `SELECT id FROM source_folders WHERE user_id = ? AND name = ?`,
-    args: [SINGLE_USER_ID, name],
+    args: [userId, name],
   });
   if (existing.rows.length > 0) return String(existing.rows[0]!.id);
   const id = crypto.randomUUID();
   await db.execute({
     sql: `INSERT INTO source_folders (id, user_id, name, sort_order, created_at)
           VALUES (?, ?, ?, ?, ?)`,
-    args: [id, SINGLE_USER_ID, name, Date.now(), Date.now()],
+    args: [id, userId, name, Date.now(), Date.now()],
   });
   return id;
 }
 
 export async function createFolderAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Folder name required.");
-  await ensureFolderByName(name);
+  await ensureFolderByName(name, session.userId);
   revalidatePath("/sources");
 }
 
 export async function renameFolderAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const folderId = String(formData.get("folderId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!folderId || !name) throw new Error("Folder id and name required.");
   await db.execute({
     sql: `UPDATE source_folders SET name = ? WHERE id = ? AND user_id = ?`,
-    args: [name, folderId, SINGLE_USER_ID],
+    args: [name, folderId, session.userId],
   });
   revalidatePath("/sources");
 }
@@ -562,33 +570,36 @@ export async function renameFolderAction(formData: FormData) {
  */
 export async function deleteFolderAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const folderId = String(formData.get("folderId") ?? "");
   if (!folderId) throw new Error("Folder id required.");
   await db.execute({
     sql: `UPDATE sources SET folder_id = NULL WHERE folder_id = ? AND user_id = ?`,
-    args: [folderId, SINGLE_USER_ID],
+    args: [folderId, session.userId],
   });
   await db.execute({
     sql: `DELETE FROM source_folders WHERE id = ? AND user_id = ?`,
-    args: [folderId, SINGLE_USER_ID],
+    args: [folderId, session.userId],
   });
   revalidatePath("/sources");
 }
 
 export async function assignSourceToFolderAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("Source id required.");
-  const folderId = await resolveFolderIdField(formData);
+  const folderId = await resolveFolderIdField(formData, session.userId);
   await db.execute({
     sql: `UPDATE sources SET folder_id = ? WHERE id = ? AND user_id = ?`,
-    args: [folderId, sourceId, SINGLE_USER_ID],
+    args: [folderId, sourceId, session.userId],
   });
   revalidatePath("/sources");
 }
 
 export async function bulkAssignSourcesToFolderAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceIds = Array.from(
     new Set(
       formData
@@ -599,18 +610,19 @@ export async function bulkAssignSourcesToFolderAction(formData: FormData) {
   );
   if (sourceIds.length === 0) throw new Error("Select at least one source.");
 
-  const folderId = await resolveFolderIdField(formData);
+  const folderId = await resolveFolderIdField(formData, session.userId);
   const placeholders = sourceIds.map(() => "?").join(",");
   await db.execute({
     sql: `UPDATE sources SET folder_id = ?
           WHERE user_id = ? AND id IN (${placeholders})`,
-    args: [folderId, SINGLE_USER_ID, ...sourceIds],
+    args: [folderId, session.userId, ...sourceIds],
   });
   revalidatePath("/sources");
 }
 
 export async function dismissClusterAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
   // The trust penalty represents "skipped without drafting", so only the
@@ -619,10 +631,10 @@ export async function dismissClusterAction(formData: FormData) {
   const r = await db.execute({
     sql: `UPDATE clusters SET state = 'dismissed'
           WHERE id = ? AND user_id = ? AND state = 'fired'`,
-    args: [clusterId, SINGLE_USER_ID],
+    args: [clusterId, session.userId],
   });
   if (r.rowsAffected > 0) {
-    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed);
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed, session.userId);
     revalidatePath("/sources");
   }
   revalidatePath("/");
@@ -638,20 +650,21 @@ export async function dismissClusterAction(formData: FormData) {
  */
 export async function flagClusterMismatchAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   const draftId = String(formData.get("draftId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
 
   await db.execute({
     sql: `UPDATE clusters SET state = 'dismissed' WHERE id = ? AND user_id = ?`,
-    args: [clusterId, SINGLE_USER_ID],
+    args: [clusterId, session.userId],
   });
-  await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed * 2);
+  await adjustClusterSourceTrust(clusterId, TRUST_DELTA.clusterDismissed * 2, session.userId);
 
   if (draftId) {
     await db.execute({
       sql: `DELETE FROM drafts WHERE id = ? AND user_id = ?`,
-      args: [draftId, SINGLE_USER_ID],
+      args: [draftId, session.userId],
     });
   }
   revalidatePath("/sources");
@@ -667,13 +680,14 @@ export async function flagClusterMismatchAction(formData: FormData) {
  */
 export async function remixNotesIdeasAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
   const r = await db.execute({
     sql: `SELECT cluster_id, notes FROM drafts
           WHERE id = ? AND user_id = ? AND mode = 'researcher'`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("notes draft not found.");
   const row = r.rows[0]!;
@@ -688,14 +702,14 @@ export async function remixNotesIdeasAction(formData: FormData) {
 
   const ideas = await remixIdeas({
     clusterId: String(row.cluster_id),
-    userId: SINGLE_USER_ID,
+    userId: session.userId,
     current: notes,
   });
   const updated: Notes = { ...notes, ideas };
   const bodyHtml = renderNotesBodyHtml(updated);
   await db.execute({
     sql: `UPDATE drafts SET notes = ?, body = ? WHERE id = ? AND user_id = ?`,
-    args: [JSON.stringify(updated), bodyHtml, draftId, SINGLE_USER_ID],
+    args: [JSON.stringify(updated), bodyHtml, draftId, session.userId],
   });
   revalidatePath(`/editor/${draftId}`);
 }
@@ -708,13 +722,14 @@ export async function remixNotesIdeasAction(formData: FormData) {
  */
 export async function addMoreNotesQuotesAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
   const r = await db.execute({
     sql: `SELECT cluster_id, notes FROM drafts
           WHERE id = ? AND user_id = ? AND mode = 'researcher'`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("notes draft not found.");
   const row = r.rows[0]!;
@@ -729,7 +744,7 @@ export async function addMoreNotesQuotesAction(formData: FormData) {
 
   const quotes = await extendQuotes({
     clusterId: String(row.cluster_id),
-    userId: SINGLE_USER_ID,
+    userId: session.userId,
     current: notes,
   });
   const updated: Notes = { ...notes, quotes };
@@ -748,7 +763,7 @@ export async function addMoreNotesQuotesAction(formData: FormData) {
       bodyHtml,
       JSON.stringify(quotesForCol),
       draftId,
-      SINGLE_USER_ID,
+      session.userId,
     ],
   });
   revalidatePath(`/editor/${draftId}`);
@@ -770,6 +785,7 @@ export async function addMoreNotesQuotesAction(formData: FormData) {
  */
 export async function addSourceToClusterAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   const draftId = String(formData.get("draftId") ?? "");
   const rawUrl = String(formData.get("url") ?? "").trim();
@@ -794,7 +810,7 @@ export async function addSourceToClusterAction(formData: FormData) {
   const existing = await db.execute({
     sql: `SELECT id, cluster_id FROM items
           WHERE user_id = ? AND canonical_url = ?`,
-    args: [SINGLE_USER_ID, canonicalUrl],
+    args: [session.userId, canonicalUrl],
   });
   if (existing.rows.length > 0) {
     const itemId = String(existing.rows[0]!.id);
@@ -807,9 +823,9 @@ export async function addSourceToClusterAction(formData: FormData) {
     if (!existingClusterId) {
       await db.execute({
         sql: `UPDATE items SET cluster_id = ? WHERE id = ? AND user_id = ?`,
-        args: [clusterId, itemId, SINGLE_USER_ID],
+        args: [clusterId, itemId, session.userId],
       });
-      await recomputeClusterSourceCount(clusterId);
+      await recomputeClusterSourceCount(clusterId, session.userId);
     }
     if (draftId) revalidatePath(`/editor/${draftId}`);
     return;
@@ -820,7 +836,7 @@ export async function addSourceToClusterAction(formData: FormData) {
   const lede = (article?.excerpt ?? article?.textContent.slice(0, 280) ?? title).trim();
   const body = article?.textContent ?? null;
 
-  const sourceId = await ensureManualSource(parsedUrl.hostname);
+  const sourceId = await ensureManualSource(parsedUrl.hostname, session.userId);
   const itemId = crypto.randomUUID();
   const contentHash = hashContent(lede + (body ?? ""));
   const now = Date.now();
@@ -832,7 +848,7 @@ export async function addSourceToClusterAction(formData: FormData) {
     args: [
       itemId,
       sourceId,
-      SINGLE_USER_ID,
+      session.userId,
       canonicalUrl,
       contentHash,
       title,
@@ -844,17 +860,17 @@ export async function addSourceToClusterAction(formData: FormData) {
       clusterId,
     ],
   });
-  await recomputeClusterSourceCount(clusterId);
+  await recomputeClusterSourceCount(clusterId, session.userId);
 
   if (draftId) revalidatePath(`/editor/${draftId}`);
 }
 
-async function recomputeClusterSourceCount(clusterId: string): Promise<void> {
+async function recomputeClusterSourceCount(clusterId: string, userId: string): Promise<void> {
   await db.execute({
     sql: `UPDATE clusters SET source_count = (
             SELECT COUNT(DISTINCT source_id) FROM items WHERE cluster_id = ? AND user_id = ?
           ) WHERE id = ? AND user_id = ?`,
-    args: [clusterId, SINGLE_USER_ID, clusterId, SINGLE_USER_ID],
+    args: [clusterId, userId, clusterId, userId],
   });
 }
 
@@ -865,10 +881,10 @@ async function recomputeClusterSourceCount(clusterId: string): Promise<void> {
  * requires a source_id, so all manual items share a single virtual
  * source per user. Marked active=0 so the polling loop ignores it.
  */
-async function ensureManualSource(displayHost: string): Promise<string> {
+async function ensureManualSource(displayHost: string, userId: string): Promise<string> {
   const r = await db.execute({
     sql: `SELECT id FROM sources WHERE user_id = ? AND kind = 'manual' LIMIT 1`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   if (r.rows.length > 0) return String(r.rows[0]!.id);
   const id = crypto.randomUUID();
@@ -876,7 +892,7 @@ async function ensureManualSource(displayHost: string): Promise<string> {
     sql: `INSERT INTO sources
           (id, user_id, kind, url, display_name, trust_score, poll_interval_seconds, active, created_at)
           VALUES (?, ?, 'manual', ?, ?, 0.5, 0, 0, ?)`,
-    args: [id, SINGLE_USER_ID, `manual://${displayHost}`, "Manual additions", Date.now()],
+    args: [id, userId, `manual://${displayHost}`, "Manual additions", Date.now()],
   });
   return id;
 }
@@ -892,6 +908,7 @@ export async function pollFolderAction(
 ): Promise<{ sourceCount: number; startedAt: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
+  const session = await requireSession();
   const folderId = String(formData.get("folderId") ?? "");
   const now = Date.now();
   // Empty string means "ungrouped" — poll all sources with folder_id NULL.
@@ -903,17 +920,17 @@ export async function pollFolderAction(
           sql: `SELECT id FROM sources
                 WHERE user_id = ? AND active = 1 AND folder_id = ?
                   AND (paused_until IS NULL OR paused_until <= ?)`,
-          args: [SINGLE_USER_ID, folderId, now],
+          args: [session.userId, folderId, now],
         }
       : {
           sql: `SELECT id FROM sources
                 WHERE user_id = ? AND active = 1 AND folder_id IS NULL
                   AND (paused_until IS NULL OR paused_until <= ?)`,
-          args: [SINGLE_USER_ID, now],
+          args: [session.userId, now],
         },
   );
   const sourceIds = sources.rows.map((row) => String(row.id));
-  after(() => runBackgroundPolls(sourceIds, "pollFolder"));
+  after(() => runBackgroundPolls(sourceIds, "pollFolder", session.userId));
   return { sourceCount: sourceIds.length, startedAt: now };
 }
 
@@ -929,8 +946,9 @@ export async function runReextractEntitiesAction(): Promise<{
   alreadyRunning: boolean;
 }> {
   await ensureSchema();
+  const session = await requireSession();
   const { runReextractEntitiesJob } = await import("./maintenance");
-  const r = await runReextractEntitiesJob();
+  const r = await runReextractEntitiesJob(session.userId);
   return { jobId: r.jobId, total: r.total, alreadyRunning: r.alreadyRunning ?? false };
 }
 
@@ -940,8 +958,9 @@ export async function runReclusterAction(): Promise<{
   alreadyRunning: boolean;
 }> {
   await ensureSchema();
+  const session = await requireSession();
   const { runReclusterJob } = await import("./maintenance");
-  const r = await runReclusterJob();
+  const r = await runReclusterJob(session.userId);
   return { jobId: r.jobId, total: r.total, alreadyRunning: r.alreadyRunning ?? false };
 }
 
@@ -952,8 +971,9 @@ export async function getJobProgressAction(jobId: string): Promise<{
   error: string | null;
 } | null> {
   await ensureSchema();
+  const session = await requireSession();
   const { getJobProgress } = await import("./maintenance");
-  const j = await getJobProgress(jobId);
+  const j = await getJobProgress(jobId, session.userId);
   if (!j) return null;
   return {
     completed: j.completed,
@@ -980,6 +1000,7 @@ export async function cleanupLibraryAction(input: {
   preview?: boolean;
 }): Promise<{ deletedClusters: number; deletedItems: number; preview: boolean }> {
   await ensureSchema();
+  const session = await requireSession();
   const hours = Math.max(1, Math.min(8760, Math.round(input.olderThanHours)));
   const cutoff = Date.now() - hours * 60 * 60 * 1000;
   const preview = input.preview === true;
@@ -995,7 +1016,7 @@ export async function cleanupLibraryAction(input: {
               (SELECT MAX(i.published_at) FROM items i WHERE i.cluster_id = c.id),
               c.formed_at
             ) < ?`,
-    args: [SINGLE_USER_ID, SINGLE_USER_ID, cutoff],
+    args: [session.userId, session.userId, cutoff],
   });
   const clusterIds = clustersR.rows.map((r) => String(r.id));
 
@@ -1007,14 +1028,14 @@ export async function cleanupLibraryAction(input: {
     const countR = await db.execute({
       sql: `SELECT COUNT(*) AS n FROM items
             WHERE user_id = ? AND cluster_id IN (${placeholders})`,
-      args: [SINGLE_USER_ID, ...clusterIds],
+      args: [session.userId, ...clusterIds],
     });
     clusterItemsCount = Number(countR.rows[0]!.n);
   }
   const orphanCountR = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM items
           WHERE user_id = ? AND cluster_id IS NULL AND published_at < ?`,
-    args: [SINGLE_USER_ID, cutoff],
+    args: [session.userId, cutoff],
   });
   const orphanItemsCount = Number(orphanCountR.rows[0]!.n);
   deletedItems = clusterItemsCount + orphanItemsCount;
@@ -1028,18 +1049,18 @@ export async function cleanupLibraryAction(input: {
     const placeholders = clusterIds.map(() => "?").join(",");
     cleanupStatements.push({
       sql: `DELETE FROM items WHERE user_id = ? AND cluster_id IN (${placeholders})`,
-      args: [SINGLE_USER_ID, ...clusterIds],
+      args: [session.userId, ...clusterIds],
     });
   }
   cleanupStatements.push({
     sql: `DELETE FROM items WHERE user_id = ? AND cluster_id IS NULL AND published_at < ?`,
-    args: [SINGLE_USER_ID, cutoff],
+    args: [session.userId, cutoff],
   });
   if (clusterIds.length > 0) {
     const placeholders = clusterIds.map(() => "?").join(",");
     cleanupStatements.push({
       sql: `DELETE FROM clusters WHERE user_id = ? AND id IN (${placeholders})`,
-      args: [SINGLE_USER_ID, ...clusterIds],
+      args: [session.userId, ...clusterIds],
     });
     // Orphaned ranker_signals rows for deleted clusters; nothing else
     // FKs into clusters, but ranker_signals carries cluster_id. Leaving
@@ -1060,6 +1081,7 @@ export async function getFolderPollProgressAction(input: {
   startedAt: number;
 }): Promise<{ completed: number; total: number }> {
   await ensureSchema();
+  const session = await requireSession();
   const { folderId, startedAt } = input;
   const now = Date.now();
   const folderSql = folderId
@@ -1067,23 +1089,23 @@ export async function getFolderPollProgressAction(input: {
         countSql: `SELECT COUNT(*) AS n FROM sources
                    WHERE user_id = ? AND active = 1 AND folder_id = ?
                      AND (paused_until IS NULL OR paused_until <= ?)`,
-        countArgs: [SINGLE_USER_ID, folderId, now],
+        countArgs: [session.userId, folderId, now],
         doneSql: `SELECT COUNT(*) AS n FROM sources
                   WHERE user_id = ? AND active = 1 AND folder_id = ?
                     AND (paused_until IS NULL OR paused_until <= ?)
                     AND last_polled_at IS NOT NULL AND last_polled_at >= ?`,
-        doneArgs: [SINGLE_USER_ID, folderId, now, startedAt],
+        doneArgs: [session.userId, folderId, now, startedAt],
       }
     : {
         countSql: `SELECT COUNT(*) AS n FROM sources
                    WHERE user_id = ? AND active = 1 AND folder_id IS NULL
                      AND (paused_until IS NULL OR paused_until <= ?)`,
-        countArgs: [SINGLE_USER_ID, now],
+        countArgs: [session.userId, now],
         doneSql: `SELECT COUNT(*) AS n FROM sources
                   WHERE user_id = ? AND active = 1 AND folder_id IS NULL
                     AND (paused_until IS NULL OR paused_until <= ?)
                     AND last_polled_at IS NOT NULL AND last_polled_at >= ?`,
-        doneArgs: [SINGLE_USER_ID, now, startedAt],
+        doneArgs: [session.userId, now, startedAt],
       };
   const totalR = await db.execute({ sql: folderSql.countSql, args: folderSql.countArgs });
   const doneR = await db.execute({ sql: folderSql.doneSql, args: folderSql.doneArgs });
@@ -1120,24 +1142,35 @@ function detectKind(url: string): "rss" | "reddit" | "podcast" | "youtube" {
 export async function pollSourceAction(formData: FormData): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
 
-  after(() => runBackgroundPolls([sourceId], "pollSource"));
+  // Tenancy: verify the source belongs to this user before enqueueing.
+  // The background runner loads sources by id without filtering, so a
+  // cross-user poll would otherwise mutate another user's source row.
+  const owner = await db.execute({
+    sql: `SELECT 1 FROM sources WHERE id = ? AND user_id = ?`,
+    args: [sourceId, session.userId],
+  });
+  if (owner.rows.length === 0) throw new Error("Source not found.");
+
+  after(() => runBackgroundPolls([sourceId], "pollSource", session.userId));
   return { sourceCount: 1 };
 }
 
 export async function pollAllSourcesAction(): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
+  const session = await requireSession();
   const sources = await db.execute({
     sql: `SELECT id FROM sources
           WHERE user_id = ? AND active = 1
             AND (paused_until IS NULL OR paused_until <= ?)`,
-    args: [SINGLE_USER_ID, Date.now()],
+    args: [session.userId, Date.now()],
   });
   const sourceIds = sources.rows.map((row) => String(row.id));
-  after(() => runBackgroundPolls(sourceIds, "pollAll"));
+  after(() => runBackgroundPolls(sourceIds, "pollAll", session.userId));
   return { sourceCount: sourceIds.length };
 }
 
@@ -1150,7 +1183,11 @@ export async function pollAllSourcesAction(): Promise<{ sourceCount: number }> {
  * from racing. Revalidates the routes the writer is most likely watching
  * once the batch settles.
  */
-async function runBackgroundPolls(sourceIds: string[], label: string): Promise<void> {
+async function runBackgroundPolls(
+  sourceIds: string[],
+  label: string,
+  userId: string,
+): Promise<void> {
   if (sourceIds.length === 0) {
     revalidatePath("/sources");
     revalidatePath("/");
@@ -1174,7 +1211,7 @@ async function runBackgroundPolls(sourceIds: string[], label: string): Promise<v
       const info = meta.get(sourceId);
       if (!info) return Promise.resolve();
       const host = hostKey(info.url);
-      const task = queue.addUnique(sourceId, host, () => invokePoll(sourceId, info.kind));
+      const task = queue.addUnique(sourceId, host, () => invokePoll(sourceId, info.kind, userId));
       if (!task) return Promise.resolve();
       return task.catch((err) => {
         console.warn(`${label} source ${sourceId}: ${err}`);
@@ -1185,7 +1222,7 @@ async function runBackgroundPolls(sourceIds: string[], label: string): Promise<v
   revalidatePath("/");
 }
 
-async function invokePoll(sourceId: string, kind: string): Promise<void> {
+async function invokePoll(sourceId: string, kind: string, userId: string): Promise<void> {
   const registry = getRegistry();
   const capabilityId = kind === "reddit" ? "source-connector.reddit" : "source-connector.rss";
   await registry.invoke(
@@ -1193,7 +1230,7 @@ async function invokePoll(sourceId: string, kind: string): Promise<void> {
     undefined,
     { sourceId },
     {
-      userId: SINGLE_USER_ID,
+      userId,
       requestId: crypto.randomUUID(),
       traceId: crypto.randomUUID(),
     },
@@ -1218,6 +1255,7 @@ function hostKey(url: string): string {
  */
 export async function pauseSourceAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
 
@@ -1230,7 +1268,7 @@ export async function pauseSourceAction(formData: FormData) {
   const until = Date.now() + hours * 3600 * 1000;
   await db.execute({
     sql: `UPDATE sources SET paused_until = ? WHERE id = ? AND user_id = ?`,
-    args: [until, sourceId, SINGLE_USER_ID],
+    args: [until, sourceId, session.userId],
   });
   revalidatePath("/sources");
   revalidatePath(`/sources/${sourceId}`);
@@ -1239,11 +1277,12 @@ export async function pauseSourceAction(formData: FormData) {
 
 export async function resumeSourceAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
   await db.execute({
     sql: `UPDATE sources SET paused_until = NULL WHERE id = ? AND user_id = ?`,
-    args: [sourceId, SINGLE_USER_ID],
+    args: [sourceId, session.userId],
   });
   revalidatePath("/sources");
   revalidatePath(`/sources/${sourceId}`);
@@ -1252,15 +1291,16 @@ export async function resumeSourceAction(formData: FormData) {
 
 export async function deleteSourceAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
   await db.execute({
     sql: `DELETE FROM sources WHERE id = ? AND user_id = ?`,
-    args: [sourceId, SINGLE_USER_ID],
+    args: [sourceId, session.userId],
   });
   await db.execute({
     sql: `DELETE FROM items WHERE source_id = ? AND user_id = ?`,
-    args: [sourceId, SINGLE_USER_ID],
+    args: [sourceId, session.userId],
   });
   revalidatePath("/sources");
 
@@ -1279,6 +1319,7 @@ export async function deleteSourceAction(formData: FormData) {
  */
 export async function boostSourceTrustAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
   const delta = Number(formData.get("delta") ?? 0);
@@ -1291,7 +1332,7 @@ export async function boostSourceTrustAction(formData: FormData) {
     sql: `UPDATE sources
           SET trust_score = MAX(0.0, MIN(1.0, COALESCE(trust_score, 0.5) + ?))
           WHERE id = ? AND user_id = ?`,
-    args: [delta, sourceId, SINGLE_USER_ID],
+    args: [delta, sourceId, session.userId],
   });
   revalidatePath("/sources");
   revalidatePath(`/sources/${sourceId}`);
@@ -1309,21 +1350,22 @@ export async function boostSourceTrustAction(formData: FormData) {
  */
 export async function deleteDraftAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
-  await deleteDraftRows(draftId, { adjustTrust: true });
+  await deleteDraftRows(draftId, { adjustTrust: true, userId: session.userId });
   const redirectTo = String(formData.get("redirectTo") ?? "");
   if (redirectTo === "/drafts") redirect("/drafts");
 }
 
 async function deleteDraftRows(
   draftId: string,
-  opts: { adjustTrust: boolean },
+  opts: { adjustTrust: boolean; userId: string },
 ): Promise<{ deleted: boolean }> {
   const r = await db.execute({
     sql: `SELECT wp_post_id, cluster_id FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, opts.userId],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const wasSent = Boolean(r.rows[0]!.wp_post_id);
@@ -1359,7 +1401,7 @@ async function deleteDraftRows(
   });
   const del = await db.execute({
     sql: `DELETE FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, opts.userId],
   });
 
   if (del.rowsAffected > 0 && clusterId && !wasSent) {
@@ -1367,7 +1409,7 @@ async function deleteDraftRows(
       // Trust penalty applies to abandoned drafts. A sent draft already
       // earned its trust bump on publish; pruning the local receipt later
       // shouldn't reverse that, and the post is still live on WordPress.
-      await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted);
+      await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftDeleted, opts.userId);
     }
     revalidatePath("/sources");
   }
@@ -1380,10 +1422,10 @@ async function deleteDraftRows(
 
 export async function buildVoiceProfileAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
   if (!outlet.connected) throw new Error("Connect this outlet first.");
 
@@ -1405,7 +1447,12 @@ export async function buildVoiceProfileAction(formData: FormData) {
     publishedAt: Date.parse(p.date),
   }));
 
-  await persistVoiceProfile(outletId, posts, { method: "archive", transcript: null });
+  await persistVoiceProfile(
+    outletId,
+    posts,
+    { method: "archive", transcript: null },
+    session.userId,
+  );
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1420,7 +1467,7 @@ export async function buildVoiceProfileAction(formData: FormData) {
  */
 export async function seedVoiceFromSamplesAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const samples = String(formData.get("samples") ?? "").trim();
   const methodInput = String(formData.get("method") ?? "paste");
@@ -1428,7 +1475,7 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
   if (!outletId) throw new Error("outletId required.");
   if (!samples) throw new Error("Paste at least one sample of your writing.");
 
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
 
   const wordCount = samples.split(/\s+/).filter(Boolean).length;
@@ -1447,7 +1494,7 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
     publishedAt: now,
   }));
 
-  await persistVoiceProfile(outletId, posts, { method, transcript: samples });
+  await persistVoiceProfile(outletId, posts, { method, transcript: samples }, session.userId);
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1462,11 +1509,11 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
  */
 export async function seedVoiceFromInterviewAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
 
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
 
   const rawAnswers: string[] = [];
@@ -1493,10 +1540,15 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
   }
 
   const now = Date.now();
-  await persistVoiceProfile(outletId, [{ title: "", body: essay, publishedAt: now }], {
-    method: "interview",
-    transcript: JSON.stringify(answers),
-  });
+  await persistVoiceProfile(
+    outletId,
+    [{ title: "", body: essay, publishedAt: now }],
+    {
+      method: "interview",
+      transcript: JSON.stringify(answers),
+    },
+    session.userId,
+  );
   revalidatePath("/voice");
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1508,18 +1560,18 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
  */
 export async function saveBlogDescriptionAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const description = String(formData.get("description") ?? "").trim();
   if (!outletId) throw new Error("outletId required.");
   const r = await db.execute({
-    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Build the voice profile first.");
   await db.execute({
-    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ?`,
-    args: [description.length > 0 ? description : null, outletId],
+    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [description.length > 0 ? description : null, outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
   revalidatePath("/voice");
@@ -1533,14 +1585,14 @@ export async function saveBlogDescriptionAction(formData: FormData) {
  */
 export async function deriveBlogDescriptionAction(formData: FormData) {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
-  const outlet = await getOutlet(outletId);
+  const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
   const r = await db.execute({
-    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Build the voice profile first.");
 
@@ -1559,8 +1611,8 @@ export async function deriveBlogDescriptionAction(formData: FormData) {
   });
 
   await db.execute({
-    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ?`,
-    args: [description, outletId],
+    sql: `UPDATE voice_profiles SET description = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [description, outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
   revalidatePath("/voice");
@@ -1610,6 +1662,7 @@ async function persistVoiceProfile(
   outletId: string,
   posts: { title: string; body: string; publishedAt: number }[],
   seed: { method: "archive" | "paste" | "freewrite" | "interview"; transcript: string | null },
+  userId: string,
 ): Promise<void> {
   const styleSheet = extractStyleSheet(posts);
   const yaml = renderStyleYaml(styleSheet);
@@ -1631,7 +1684,7 @@ async function persistVoiceProfile(
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       outletId,
-      SINGLE_USER_ID,
+      userId,
       yaml,
       posts.length,
       new Uint8Array(styleSheet.functionWordDistribution.buffer),
@@ -1661,13 +1714,14 @@ async function persistVoiceProfile(
  */
 export async function assignSourceOutletsAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
   const outletIds = formData
     .getAll("outletIds")
     .map((v) => String(v))
     .filter((v) => v.length > 0);
-  await setSourceOutlets(sourceId, outletIds);
+  await setSourceOutlets(sourceId, outletIds, session.userId);
   revalidatePath("/sources");
   revalidatePath(`/sources/${sourceId}`);
 }
@@ -1679,6 +1733,7 @@ export async function assignSourceOutletsAction(formData: FormData) {
  */
 export async function addVoiceTermAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const list = String(formData.get("list") ?? "");
   const term = String(formData.get("term") ?? "").trim();
@@ -1692,8 +1747,8 @@ export async function addVoiceTermAction(formData: FormData) {
   }
   const column = list === "banned" ? "banned_terms" : "signature_terms";
   const r = await db.execute({
-    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Build the voice profile first.");
   const existing: string[] = JSON.parse(String(r.rows[0]!.terms ?? "[]"));
@@ -1703,8 +1758,8 @@ export async function addVoiceTermAction(formData: FormData) {
   }
   const next = [...existing, term];
   await db.execute({
-    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ?`,
-    args: [JSON.stringify(next), outletId],
+    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [JSON.stringify(next), outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1714,6 +1769,7 @@ export async function addVoiceTermAction(formData: FormData) {
  */
 export async function removeVoiceTermAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   const list = String(formData.get("list") ?? "");
   const term = String(formData.get("term") ?? "").trim();
@@ -1723,15 +1779,15 @@ export async function removeVoiceTermAction(formData: FormData) {
   }
   const column = list === "banned" ? "banned_terms" : "signature_terms";
   const r = await db.execute({
-    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
+    sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+    args: [outletId, session.userId],
   });
   if (r.rows.length === 0) return;
   const existing: string[] = JSON.parse(String(r.rows[0]!.terms ?? "[]"));
   const next = existing.filter((t) => t.toLowerCase() !== term.toLowerCase());
   await db.execute({
-    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ?`,
-    args: [JSON.stringify(next), outletId],
+    sql: `UPDATE voice_profiles SET ${column} = ? WHERE outlet_id = ? AND user_id = ?`,
+    args: [JSON.stringify(next), outletId, session.userId],
   });
   revalidatePath(`/voice/${outletId}`);
 }
@@ -1746,6 +1802,7 @@ export async function removeVoiceTermAction(formData: FormData) {
  */
 export async function selectDraftHeadlineAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   const headline = String(formData.get("headline") ?? "").trim();
   if (!draftId) throw new Error("draftId required.");
@@ -1754,7 +1811,7 @@ export async function selectDraftHeadlineAction(formData: FormData) {
   const r = await db.execute({
     sql: `SELECT headline, headline_alternates, wp_post_id FROM drafts
           WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
@@ -1784,7 +1841,7 @@ export async function selectDraftHeadlineAction(formData: FormData) {
     sql: `UPDATE drafts
           SET headline = ?, headline_alternates = ?, edited_at = ?
           WHERE id = ? AND user_id = ?`,
-    args: [headline, JSON.stringify(nextAlternates), Date.now(), draftId, SINGLE_USER_ID],
+    args: [headline, JSON.stringify(nextAlternates), Date.now(), draftId, session.userId],
   });
   revalidatePath(`/editor/${draftId}`);
 }
@@ -1796,10 +1853,11 @@ export async function selectDraftHeadlineAction(formData: FormData) {
  */
 export async function rerollDraftHeadlinesAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
-  await rerollHeadlines({ draftId, userId: SINGLE_USER_ID });
+  await rerollHeadlines({ draftId, userId: session.userId });
   revalidatePath(`/editor/${draftId}`);
 }
 
@@ -1812,6 +1870,7 @@ export async function rerollDraftHeadlinesAction(formData: FormData) {
  */
 export async function rewriteDraftParagraphAction(formData: FormData) {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   const rawIndex = String(formData.get("paragraphIndex") ?? "");
   if (!draftId) throw new Error("draftId required.");
@@ -1820,19 +1879,20 @@ export async function rewriteDraftParagraphAction(formData: FormData) {
     throw new Error("paragraphIndex must be a non-negative integer.");
   }
 
-  await rewriteParagraph({ draftId, userId: SINGLE_USER_ID, paragraphIndex });
+  await rewriteParagraph({ draftId, userId: session.userId, paragraphIndex });
   revalidatePath(`/editor/${draftId}`);
 }
 
 export async function generateDraftAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
+  const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
 
   // Pick outlet: explicit > default > error.
   const explicitOutlet = String(formData.get("outletId") ?? "");
-  const outletId = explicitOutlet || (await getDefaultOutlet(SINGLE_USER_ID))?.id || "";
+  const outletId = explicitOutlet || (await getDefaultOutlet(session.userId))?.id || "";
   if (!outletId) {
     throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
   }
@@ -1862,7 +1922,7 @@ export async function generateDraftAction(formData: FormData) {
       sql: `SELECT id FROM drafts
             WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = ?
             ORDER BY created_at DESC LIMIT 1`,
-      args: [clusterId, outletId, SINGLE_USER_ID, mode],
+      args: [clusterId, outletId, session.userId, mode],
     });
     if (existing.rows.length > 0) {
       redirect(`/editor/${String(existing.rows[0]!.id)}`);
@@ -1875,7 +1935,7 @@ export async function generateDraftAction(formData: FormData) {
       sql: `SELECT format FROM drafts
             WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = 'drafter'
             ORDER BY created_at DESC LIMIT 1`,
-      args: [clusterId, outletId, SINGLE_USER_ID],
+      args: [clusterId, outletId, session.userId],
     });
     if (existing.rows.length > 0) {
       const value = existing.rows[0]!.format;
@@ -1888,7 +1948,7 @@ export async function generateDraftAction(formData: FormData) {
   if (mode === "researcher") {
     const notesResult = await generateNotes({
       clusterId,
-      userId: SINGLE_USER_ID,
+      userId: session.userId,
       outletId,
     });
     redirect(`/editor/${notesResult.draftId}`);
@@ -1907,12 +1967,12 @@ export async function generateDraftAction(formData: FormData) {
   // re-scans the cluster fresh and the writer's notes evaporate.
   const seedFromDraftId = String(formData.get("seedFromDraftId") ?? "");
   const notesSeed = seedFromDraftId
-    ? await loadNotesSeed(seedFromDraftId, clusterId, outletId)
+    ? await loadNotesSeed(seedFromDraftId, clusterId, outletId, session.userId)
     : undefined;
 
   const draft = await generateDraft({
     clusterId,
-    userId: SINGLE_USER_ID,
+    userId: session.userId,
     outletId,
     wordCount,
     format,
@@ -1927,6 +1987,7 @@ async function loadNotesSeed(
   seedDraftId: string,
   clusterId: string,
   outletId: string,
+  userId: string,
 ): Promise<
   | {
       topic: string;
@@ -1938,7 +1999,7 @@ async function loadNotesSeed(
   const r = await db.execute({
     sql: `SELECT cluster_id, outlet_id, mode, notes, headline FROM drafts
           WHERE id = ? AND user_id = ?`,
-    args: [seedDraftId, SINGLE_USER_ID],
+    args: [seedDraftId, userId],
   });
   if (r.rows.length === 0) return undefined;
   const row = r.rows[0]!;
@@ -1972,11 +2033,12 @@ export async function generateDraftAnglesAction(
   formData: FormData,
 ): Promise<{ angles: AngleSuggestion[] }> {
   await ensureSchema();
+  const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
 
   const explicitOutlet = String(formData.get("outletId") ?? "");
-  const outletId = explicitOutlet || (await getDefaultOutlet(SINGLE_USER_ID))?.id || "";
+  const outletId = explicitOutlet || (await getDefaultOutlet(session.userId))?.id || "";
   if (!outletId) {
     throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
   }
@@ -1986,7 +2048,7 @@ export async function generateDraftAnglesAction(
 
   const angles = await generateAngleSuggestions({
     clusterId,
-    userId: SINGLE_USER_ID,
+    userId: session.userId,
     outletId,
     format,
     wordCount,
@@ -2018,13 +2080,14 @@ export async function getDraftWizardPrefsAction(): Promise<DraftWizardPrefs> {
 export async function regenerateDraftAction(formData: FormData) {
   await ensureSchema();
   await ensureRegisteredCapabilities();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
   const r = await db.execute({
     sql: `SELECT cluster_id, outlet_id, mode, wp_post_id, angle_hint, custom_angle, format FROM drafts
           WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
@@ -2054,7 +2117,7 @@ export async function regenerateDraftAction(formData: FormData) {
 
   const draft = await generateDraft({
     clusterId: String(row.cluster_id),
-    userId: SINGLE_USER_ID,
+    userId: session.userId,
     outletId: String(row.outlet_id),
     angleHint: rawAngle === "custom" ? undefined : angleHint,
     customAngle: customAngle || undefined,
@@ -2066,7 +2129,7 @@ export async function regenerateDraftAction(formData: FormData) {
   // the same cluster/outlet/mode triple. The new draft already replaces it
   // in the user's mental model: same cluster, same surface, fresh attempt.
   if (draft.draftId !== draftId) {
-    await deleteDraftRows(draftId, { adjustTrust: true });
+    await deleteDraftRows(draftId, { adjustTrust: true, userId: session.userId });
   }
 
   redirect(`/editor/${draft.draftId}`);
@@ -2105,11 +2168,12 @@ function wpRoundTripBodyHash(bodyHtml: string): string {
 async function recoverWordPressEditLink(
   outletId: string,
   wpPostId: number,
+  userId: string,
 ): Promise<string | null> {
   if (!outletId || !Number.isFinite(wpPostId)) return null;
   const outletR = await db.execute({
     sql: `SELECT base_url FROM outlets WHERE id = ? AND user_id = ?`,
-    args: [outletId, SINGLE_USER_ID],
+    args: [outletId, userId],
   });
   if (outletR.rows.length === 0) return null;
   const baseUrl = String(outletR.rows[0]!.base_url ?? "").replace(/\/$/, "");
@@ -2120,10 +2184,11 @@ async function recoverWordPressEditLink(
 async function rememberRecoveredWordPressEditLink(
   draftId: string,
   editLink: string,
+  userId: string,
 ): Promise<void> {
   await db.execute({
     sql: `UPDATE drafts SET wp_edit_link = ? WHERE id = ? AND user_id = ? AND wp_edit_link IS NULL`,
-    args: [editLink, draftId, SINGLE_USER_ID],
+    args: [editLink, draftId, userId],
   });
   revalidatePath("/drafts");
 }
@@ -2147,6 +2212,7 @@ async function rememberRecoveredWordPressEditLink(
  */
 export async function publishDraftToWPAction(formData: FormData): Promise<{ editLink: string }> {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
@@ -2161,7 +2227,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     sql: `SELECT id, mode, outlet_id, cluster_id, headline, body, state,
                  wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
@@ -2170,9 +2236,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     // Notes are raw material, not a post. The editor view hides the
     // publish UI; this server-side check enforces the same invariant
     // against any caller that hand-crafts a request.
-    throw new Error(
-      "Notes are not publishable. Open the cluster in Drafter mode to write a post.",
-    );
+    throw new Error("Notes are not publishable. Open the cluster in Drafter mode to write a post.");
   }
 
   const existingPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
@@ -2181,13 +2245,14 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     // user where they expect, instead of clobbering wp-admin edits.
     const editLink = row.wp_edit_link
       ? String(row.wp_edit_link)
-      : await recoverWordPressEditLink(String(row.outlet_id ?? ""), existingPostId);
+      : await recoverWordPressEditLink(String(row.outlet_id ?? ""), existingPostId, session.userId);
     if (!editLink) {
       throw new Error(
         "This draft has already been sent to WordPress, but its edit link is missing.",
       );
     }
-    if (!row.wp_edit_link) await rememberRecoveredWordPressEditLink(draftId, editLink);
+    if (!row.wp_edit_link)
+      await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
     return { editLink };
   }
 
@@ -2228,13 +2293,13 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
       status === "publish" ? "published" : "in-wordpress",
       now,
       draftId,
-      SINGLE_USER_ID,
+      session.userId,
     ],
   });
 
   const clusterId = row.cluster_id ? String(row.cluster_id) : null;
   if (clusterId) {
-    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished);
+    await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished, session.userId);
   }
 
   // Deliberately do NOT revalidate /editor/[draftId] here. The client form
@@ -2260,6 +2325,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
  */
 export async function sendNotesToWPAction(formData: FormData): Promise<{ editLink: string }> {
   await ensureSchema();
+  const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) throw new Error("draftId required.");
 
@@ -2267,7 +2333,7 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
     sql: `SELECT id, mode, outlet_id, cluster_id, headline, notes,
                  wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (r.rows.length === 0) throw new Error("Draft not found.");
   const row = r.rows[0]!;
@@ -2280,13 +2346,18 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
   if (existingPostId || row.wp_edit_link) {
     const editLink = row.wp_edit_link
       ? String(row.wp_edit_link)
-      : await recoverWordPressEditLink(String(row.outlet_id ?? ""), Number(existingPostId));
+      : await recoverWordPressEditLink(
+          String(row.outlet_id ?? ""),
+          Number(existingPostId),
+          session.userId,
+        );
     if (!editLink) {
       throw new Error(
         "These notes have already been sent to WordPress, but the edit link is missing.",
       );
     }
-    if (!row.wp_edit_link) await rememberRecoveredWordPressEditLink(draftId, editLink);
+    if (!row.wp_edit_link)
+      await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
     return { editLink };
   }
 
@@ -2355,7 +2426,7 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
       "in-wordpress",
       now,
       draftId,
-      SINGLE_USER_ID,
+      session.userId,
     ],
   });
 
@@ -2468,16 +2539,16 @@ export async function runClusterPassAction(): Promise<{
   itemsClustered: number;
 }> {
   await ensureSchema();
-  await ensureSingleUser();
+  const session = await requireSession();
 
   // Snapshot counts before the pass so we can return a meaningful delta.
   const beforeClusters = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
   const beforeItems = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND cluster_id IS NOT NULL`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
   const firedBefore = Number(beforeClusters.rows[0]?.n ?? 0);
   const clusteredBefore = Number(beforeItems.rows[0]?.n ?? 0);
@@ -2492,7 +2563,7 @@ export async function runClusterPassAction(): Promise<{
           FROM items
           WHERE user_id = ? AND cluster_id IS NULL AND published_at >= ?
           ORDER BY published_at ASC`,
-    args: [SINGLE_USER_ID, cutoff],
+    args: [session.userId, cutoff],
   });
 
   try {
@@ -2504,7 +2575,7 @@ export async function runClusterPassAction(): Promise<{
           canonicalUrl: String(row.canonical_url),
           contentHash: String(row.content_hash),
         },
-        { userId: SINGLE_USER_ID, traceId: crypto.randomUUID() },
+        { userId: session.userId, traceId: crypto.randomUUID() },
       );
     }
   } catch {
@@ -2513,11 +2584,11 @@ export async function runClusterPassAction(): Promise<{
 
   const afterClusters = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM clusters WHERE user_id = ? AND state = 'fired'`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
   const afterItems = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ? AND cluster_id IS NOT NULL`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
 
   return {

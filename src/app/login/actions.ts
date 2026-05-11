@@ -4,13 +4,14 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   SESSION_COOKIE_NAME,
-  SESSION_TTL_SECONDS,
   createSessionCookie,
-  hasValidCredentials,
+  getSessionTtlSeconds,
   isAllowedMutationOrigin,
   requestOriginFromHeaders,
   safeRedirectPath,
 } from "@/lib/auth";
+import { placeholderHash, verifyPassword } from "@/lib/password";
+import { getUserByEmail } from "@/lib/users";
 
 export async function loginAction(formData: FormData) {
   const next = safeRedirectPath(formData.get("next"));
@@ -20,20 +21,27 @@ export async function loginAction(formData: FormData) {
     redirect(loginPath("origin", next));
   }
 
-  const username = String(formData.get("username") ?? "");
+  const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  if (!hasValidCredentials(username, password)) {
+
+  const user = await getUserByEmail(email);
+  const hashToVerify = user?.passwordHash ?? (await placeholderHash());
+  const ok = await verifyPassword(password, hashToVerify);
+  if (!user || !user.passwordHash || !ok || user.status !== "active") {
     redirect(loginPath("credentials", next));
   }
 
-  const session = await createSessionCookie();
+  const session = await createSessionCookie({
+    userId: user.id,
+    sessionVersion: user.sessionVersion,
+  });
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, session.value, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge: getSessionTtlSeconds(),
     expires: new Date(session.expiresAt),
   });
 

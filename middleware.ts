@@ -23,6 +23,13 @@ export async function middleware(req: NextRequest) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
+  // Local mode (macOS app, single-user dev): skip the session-cookie gate
+  // entirely. The action layer still calls requireSession() which resolves
+  // to a fixed bootstrap user via the same env var.
+  if (process.env.FLAVORPRESS_AUTH === "local") {
+    return NextResponse.next();
+  }
+
   const session = await verifySessionCookie(req.cookies.get(SESSION_COOKIE_NAME)?.value);
   if (session) return NextResponse.next();
 
@@ -40,8 +47,12 @@ export async function middleware(req: NextRequest) {
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  if (pathname === "/signup" || pathname.startsWith("/signup/")) return true;
+  if (pathname.startsWith("/verify-email/") || pathname === "/verify-email") return true;
+  if (pathname === "/reset-password" || pathname.startsWith("/reset-password/")) return true;
   if (pathname === "/api/cron/poll") return true;
   if (pathname === "/api/wp/callback") return true;
+  if (pathname.startsWith("/api/auth/wpcom")) return true;
   if (pathname === "/api/mcp") return true;
   if (pathname.startsWith("/_next/")) return true;
   if (PUBLIC_PATHS.has(pathname)) return true;

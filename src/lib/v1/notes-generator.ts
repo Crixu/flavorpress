@@ -115,7 +115,7 @@ export async function generateNotes(input: NotesInput): Promise<NotesOutput> {
   // Notes don't consume the cluster the way a drafter post does; the
   // user may still want to draft from it. Leave the cluster in 'fired'
   // state so it stays on Today. Trust still bumps because the user engaged.
-  await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated);
+  await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated, input.userId);
 
   await getBus().emit<DraftRenderedPayload>(
     "draft.rendered",
@@ -401,10 +401,7 @@ Return the notes JSON now.`;
   return { systemPrompt, userMessage };
 }
 
-async function runOnce(
-  prompt: Prompt,
-  log: ReturnType<typeof traceLogger>,
-): Promise<Notes> {
+async function runOnce(prompt: Prompt, log: ReturnType<typeof traceLogger>): Promise<Notes> {
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
     await log.warn("notes.generate.run", "no API key; using stub");

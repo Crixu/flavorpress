@@ -17,13 +17,29 @@
 
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { SINGLE_USER_ID } from "@/lib/db";
 import { getRegistry } from "@/lib/v1/capability-registry";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const PROTOCOL_VERSION = "2024-11-05"; // MCP draft we target in v1
 
+// Sub-spec 4 wires per-user MCP tokens. Until then, production serves 501.
+// Dev keeps the existing single-user shape using the legacy "default-user" id.
+function rejectIfProduction(): NextResponse | null {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { error: "Per-user MCP routing is implemented in sub-spec 4." },
+      { status: 501 },
+    );
+  }
+  return null;
+}
+
 export async function GET(req: Request) {
+  const prodBlock = rejectIfProduction();
+  if (prodBlock) return prodBlock;
   const authError = rejectInvalidPresentedAuth(req, null);
   if (authError) return authError;
 
@@ -58,6 +74,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const prodBlock = rejectIfProduction();
+  if (prodBlock) return prodBlock;
   const body = (await req.json().catch(() => null)) as {
     method?: string;
     params?: Record<string, unknown>;
@@ -166,7 +184,9 @@ function authenticateMcpRequest(
     return { ok: false, message: "unauthorized" };
   }
 
-  return { ok: true, userId: SINGLE_USER_ID };
+  // DEV-only compatibility: "default-user" is the legacy seeded user id.
+  // Sub-spec 4 replaces this with per-user token lookup.
+  return { ok: true, userId: "default-user" };
 }
 
 function tokenMatches(token: string, configuredToken: string): boolean {

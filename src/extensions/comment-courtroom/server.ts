@@ -18,7 +18,8 @@ import "server-only";
 import { createAnthropicClient } from "@/lib/anthropic";
 import { extractText, extractJson } from "@/lib/anthropic";
 import { getAnthropicDraftModel } from "@/lib/v1/settings";
-import { db, ensureSchema, SINGLE_USER_ID } from "@/lib/db";
+import { db, ensureSchema } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 import type { ServerExtensionEntry } from "../types";
 import {
   COMMENT_COURTROOM_ID,
@@ -83,11 +84,12 @@ Return JSON only.`;
 export async function runCommentCourtroom(
   draftId: string,
 ): Promise<{ comments: CourtroomComment[]; ranAt: number }> {
+  const session = await requireSession();
   await ensureSchema();
 
   const draftRow = await db.execute({
     sql: `SELECT id, headline, body FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (draftRow.rows.length === 0) throw new Error("Draft not found.");
   const headline = String(draftRow.rows[0]!.headline ?? "").trim();
@@ -236,7 +238,18 @@ function sanitizeBody(s: string): string {
 export async function loadCourtroomComments(
   draftId: string,
 ): Promise<{ comments: CourtroomComment[]; ranAt: number | null }> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before returning any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) {
+    return { comments: [], ranAt: null };
+  }
+
   const [r, runRow] = await Promise.all([
     db.execute({
       sql: `SELECT id, draft_id, parent_id, persona_key, depth, sort_order, body, created_at
@@ -265,7 +278,16 @@ export async function loadCourtroomComments(
 }
 
 export async function clearCommentCourtroom(draftId: string): Promise<void> {
+  const session = await requireSession();
   await ensureSchema();
+
+  // Verify the draft belongs to the session user before deleting any data.
+  const ownership = await db.execute({
+    sql: `SELECT id FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (ownership.rows.length === 0) throw new Error("Draft not found.");
+
   await db.execute({
     sql: `DELETE FROM comment_courtroom_comments WHERE draft_id = ?`,
     args: [draftId],

@@ -12,12 +12,7 @@
 
 import Link from "next/link";
 import { deleteDraftAction } from "@/lib/v1/actions";
-import type {
-  NoteFact,
-  NoteIdea,
-  Notes,
-  NoteQuote,
-} from "@/lib/v1/notes-generator";
+import type { NoteFact, NoteIdea, Notes, NoteQuote } from "@/lib/v1/notes-generator";
 import { SendNotesToWpForm } from "./SendNotesToWpForm";
 import {
   AddSourceForm,
@@ -124,9 +119,7 @@ export function NotebookView({
           Quotes
           <span className="fp-notebook-section-count">{notes.quotes.length}</span>
         </h2>
-        <p className="fp-notebook-section-desc">
-          Verbatim from the source. Lift with attribution.
-        </p>
+        <p className="fp-notebook-section-desc">Verbatim from the source. Lift with attribution.</p>
         {notes.quotes.length > 0 ? (
           <ul className="fp-notebook-quotes">
             {notes.quotes.map((q, i) => (
@@ -218,9 +211,7 @@ function IdeasItem({ idea }: { idea: NoteIdea }) {
   return (
     <li className="fp-notebook-angle">
       <div className="fp-notebook-angle-text">{idea.angle}</div>
-      {idea.rationale ? (
-        <div className="fp-notebook-angle-rationale">{idea.rationale}</div>
-      ) : null}
+      {idea.rationale ? <div className="fp-notebook-angle-rationale">{idea.rationale}</div> : null}
     </li>
   );
 }

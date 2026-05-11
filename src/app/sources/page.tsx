@@ -11,7 +11,9 @@
  */
 
 import Link from "next/link";
-import { ensureSchema, ensureSingleUser, SINGLE_USER_ID, db } from "@/lib/db";
+import { ensureSchema, db } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { listOutlets, resolveOutletSourceIds } from "@/lib/v1/outlets";
 import { FolderSidebar } from "./_components/FolderSidebar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
@@ -27,20 +29,26 @@ interface PageProps {
 
 export default async function SourcesPage({ searchParams }: PageProps) {
   await ensureSchema();
-  await ensureSingleUser();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
 
   const sp = await searchParams;
   const outletFilter = sp.outlet && sp.outlet !== "all" ? sp.outlet : null;
   const folderParam = sp.folder ?? null;
 
-  const outlets = await listOutlets(SINGLE_USER_ID);
+  const outlets = await listOutlets(session.userId);
 
   // If filtering by an outlet, resolve which source IDs are in scope.
   // Outlets with no explicit assignment fall back to all sources. Outlets
   // with explicit assignments still include unassigned default sources, so
   // a default source does not disappear behind an outlet filter.
   const inScopeIds: Set<string> | null = outletFilter
-    ? new Set(await resolveOutletSourceIds(SINGLE_USER_ID, outletFilter))
+    ? new Set(await resolveOutletSourceIds(session.userId, outletFilter))
     : null;
 
   const sourcesR = await db.execute({
@@ -49,7 +57,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             (SELECT COUNT(*) FROM items WHERE source_id = s.id AND fetched_at > ?) AS items_24h,
             (SELECT MAX(published_at) FROM items WHERE source_id = s.id) AS last_item_at
           FROM sources s WHERE s.user_id = ? ORDER BY s.created_at DESC`,
-    args: [Date.now() - 24 * 60 * 60 * 1000, SINGLE_USER_ID],
+    args: [Date.now() - 24 * 60 * 60 * 1000, session.userId],
   });
 
   const allRows = sourcesR.rows as unknown as SourceRow[];
@@ -61,7 +69,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const foldersR = await db.execute({
     sql: `SELECT id, name, sort_order, created_at FROM source_folders
           WHERE user_id = ? ORDER BY sort_order ASC, name ASC`,
-    args: [SINGLE_USER_ID],
+    args: [session.userId],
   });
   const folders = foldersR.rows as unknown as FolderRow[];
 
@@ -76,11 +84,11 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             (SELECT COUNT(*) FROM clusters WHERE user_id = ? AND state = 'fired') AS fired_clusters,
             (SELECT COUNT(*) FROM clusters WHERE user_id = ?) AS clusters_total`,
     args: [
-      SINGLE_USER_ID,
-      SINGLE_USER_ID,
+      session.userId,
+      session.userId,
       Date.now() - 24 * 60 * 60 * 1000,
-      SINGLE_USER_ID,
-      SINGLE_USER_ID,
+      session.userId,
+      session.userId,
     ],
   });
 

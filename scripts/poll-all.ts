@@ -3,19 +3,41 @@
  *
  * Safe to run on a live database. Does not delete anything; only invokes
  * the source-connector.rss capability for each source row.
+ *
+ * Usage:
+ *   npx tsx scripts/poll-all.ts                 # legacy default-user
+ *   npx tsx scripts/poll-all.ts --email <addr>  # a real account
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../src/lib/db";
+import { db, ensureSchema } from "../src/lib/db";
 import { ensureRegisteredCapabilities } from "../src/lib/v1/bootstrap";
 import { getRegistry } from "../src/lib/v1/capability-registry";
+import { getUserByEmail } from "../src/lib/users";
+
+async function resolveUserId(argv: string[]): Promise<string> {
+  const i = argv.indexOf("--email");
+  if (i !== -1) {
+    const email = argv[i + 1];
+    if (!email) throw new Error("--email requires a value");
+    const user = await getUserByEmail(email);
+    if (!user) throw new Error(`No user with email ${email}`);
+    return user.id;
+  }
+  const r = await db.execute("SELECT 1 FROM users WHERE id = 'default-user'");
+  if (r.rows.length === 0) {
+    throw new Error("No default-user row exists. Pass --email <addr> to target a real account.");
+  }
+  return "default-user";
+}
 
 async function main() {
   await ensureSchema();
   await ensureRegisteredCapabilities();
+  const userId = await resolveUserId(process.argv);
 
   const sources = await db.execute({
     sql: `SELECT id, kind, url, display_name FROM sources WHERE user_id = ? AND active = 1`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
 
   console.log(`== polling ${sources.rows.length} sources ==`);
@@ -37,7 +59,7 @@ async function main() {
         undefined,
         { sourceId: id },
         {
-          userId: SINGLE_USER_ID,
+          userId,
           requestId: crypto.randomUUID(),
           traceId: crypto.randomUUID(),
         },
@@ -57,11 +79,11 @@ async function main() {
 
   const itemsCount = await db.execute({
     sql: `SELECT COUNT(*) AS n FROM items WHERE user_id = ?`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   const clustersAll = await db.execute({
     sql: `SELECT id, state, source_count FROM clusters WHERE user_id = ? ORDER BY formed_at DESC`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
   const fired = clustersAll.rows.filter((r) => String(r.state) === "fired");
   console.log(`items in DB: ${itemsCount.rows[0]!.n}`);

@@ -18,8 +18,9 @@
  * → CLI shim) handles parallelism via the Agent SDK.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../src/lib/db";
+import { db, ensureSchema } from "../src/lib/db";
 import { extractItemEntities } from "../src/lib/v1/entity-extractor";
+import { getUserByEmail } from "../src/lib/users";
 
 const CONCURRENCY = 5;
 
@@ -30,14 +31,31 @@ interface ItemRow {
   contentHash: string;
 }
 
+async function resolveUserId(argv: string[]): Promise<string> {
+  const i = argv.indexOf("--email");
+  if (i !== -1) {
+    const email = argv[i + 1];
+    if (!email) throw new Error("--email requires a value");
+    const user = await getUserByEmail(email);
+    if (!user) throw new Error(`No user with email ${email}`);
+    return user.id;
+  }
+  const r = await db.execute("SELECT 1 FROM users WHERE id = 'default-user'");
+  if (r.rows.length === 0) {
+    throw new Error("No default-user row exists. Pass --email <addr> to target a real account.");
+  }
+  return "default-user";
+}
+
 async function main() {
   await ensureSchema();
+  const userId = await resolveUserId(process.argv);
 
   const r = await db.execute({
     sql: `SELECT id, title, lede, content_hash
           FROM items WHERE user_id = ?
           ORDER BY published_at ASC`,
-    args: [SINGLE_USER_ID],
+    args: [userId],
   });
 
   const items: ItemRow[] = r.rows.map((row) => ({

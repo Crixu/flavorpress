@@ -8,8 +8,9 @@
  */
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ensureSchema, SINGLE_USER_ID, db } from "@/lib/db";
+import { notFound, redirect } from "next/navigation";
+import { ensureSchema, db } from "@/lib/db";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { deleteDraftAction } from "@/lib/v1/actions";
 import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
@@ -34,11 +35,18 @@ interface PageProps {
 
 export default async function EditorPage({ params }: PageProps) {
   await ensureSchema();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) redirect("/login");
+    throw err;
+  }
   const { draftId } = await params;
 
   const r = await db.execute({
     sql: `SELECT * FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, SINGLE_USER_ID],
+    args: [draftId, session.userId],
   });
   if (r.rows.length === 0) notFound();
   const d = r.rows[0]!;
@@ -64,7 +72,7 @@ export default async function EditorPage({ params }: PageProps) {
     sql: `SELECT id FROM drafts
           WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = ?
           ORDER BY created_at DESC LIMIT 1`,
-    args: [String(d.cluster_id), String(d.outlet_id ?? ""), SINGLE_USER_ID, otherMode],
+    args: [String(d.cluster_id), String(d.outlet_id ?? ""), session.userId, otherMode],
   });
   const siblingDraftId = siblingR.rows.length > 0 ? String(siblingR.rows[0]!.id) : null;
   const sibling = (
@@ -84,7 +92,7 @@ export default async function EditorPage({ params }: PageProps) {
   if (mode === "drafter" && d.wp_post_id) {
     const wpEditLink = d.wp_edit_link
       ? String(d.wp_edit_link)
-      : await recoverWordPressEditLink(String(d.outlet_id), Number(d.wp_post_id));
+      : await recoverWordPressEditLink(String(d.outlet_id), Number(d.wp_post_id), session.userId);
     const receiptQuotes = d.quotes
       ? (JSON.parse(String(d.quotes)) as Array<{
           sourceId: string;
@@ -373,10 +381,14 @@ export default async function EditorPage({ params }: PageProps) {
   );
 }
 
-async function recoverWordPressEditLink(outletId: string, wpPostId: number): Promise<string> {
+async function recoverWordPressEditLink(
+  outletId: string,
+  wpPostId: number,
+  userId: string,
+): Promise<string> {
   const outletR = await db.execute({
     sql: `SELECT base_url FROM outlets WHERE id = ? AND user_id = ?`,
-    args: [outletId, SINGLE_USER_ID],
+    args: [outletId, userId],
   });
   const baseUrl = String(outletR.rows[0]?.base_url ?? "").replace(/\/$/, "");
   if (!baseUrl) return "#";

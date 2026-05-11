@@ -9,7 +9,7 @@
  * doesn't choose explicitly. There is at most one default per user.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../db";
+import { db, ensureSchema } from "../db";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
 import type { WPCredentials } from "../wordpress";
 
@@ -67,7 +67,7 @@ const OUTLET_COLS = `id, user_id, base_url, display_name, username,
   app_password_encrypted, kind, is_default, last_error,
   connected_at, created_at, last_used_at`;
 
-export async function listOutlets(userId = SINGLE_USER_ID): Promise<Outlet[]> {
+export async function listOutlets(userId: string): Promise<Outlet[]> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets WHERE user_id = ? ORDER BY is_default DESC, created_at ASC`,
@@ -76,7 +76,7 @@ export async function listOutlets(userId = SINGLE_USER_ID): Promise<Outlet[]> {
   return r.rows.map((row) => rowToOutlet(row as unknown as OutletRow));
 }
 
-export async function getOutlet(outletId: string, userId = SINGLE_USER_ID): Promise<Outlet | null> {
+export async function getOutlet(outletId: string, userId: string): Promise<Outlet | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets WHERE id = ? AND user_id = ?`,
@@ -86,7 +86,7 @@ export async function getOutlet(outletId: string, userId = SINGLE_USER_ID): Prom
   return rowToOutlet(r.rows[0] as unknown as OutletRow);
 }
 
-export async function getDefaultOutlet(userId = SINGLE_USER_ID): Promise<Outlet | null> {
+export async function getDefaultOutlet(userId: string): Promise<Outlet | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT ${OUTLET_COLS} FROM outlets
@@ -183,7 +183,7 @@ export async function recordOutletError(
   });
 }
 
-export async function setDefaultOutlet(outletId: string, userId = SINGLE_USER_ID): Promise<void> {
+export async function setDefaultOutlet(outletId: string, userId: string): Promise<void> {
   await ensureSchema();
   await db.batch(
     [
@@ -210,7 +210,7 @@ export async function setDefaultOutlet(outletId: string, userId = SINGLE_USER_ID
 export async function disconnectOutlet(
   outletId: string,
   opts: { purge?: boolean } = {},
-  userId = SINGLE_USER_ID,
+  userId: string,
 ): Promise<void> {
   await ensureSchema();
   if (opts.purge) {
@@ -337,12 +337,40 @@ export async function getOutletIdsForSource(sourceId: string): Promise<string[]>
 /**
  * Replace a source's outlet assignment with the given list. If `outletIds`
  * is empty, the source falls back to "All outlets (default)".
+ *
+ * Tenancy: caller must pass the session userId. The source AND every
+ * outlet in the list must belong to that user; otherwise the call throws
+ * without mutating anything. Prevents cross-user assignment writes via a
+ * known source/outlet id pair.
  */
-export async function setSourceOutlets(sourceId: string, outletIds: string[]): Promise<void> {
+export async function setSourceOutlets(
+  sourceId: string,
+  outletIds: string[],
+  userId: string,
+): Promise<void> {
   await ensureSchema();
+  const owner = await db.execute({
+    sql: `SELECT 1 FROM sources WHERE id = ? AND user_id = ?`,
+    args: [sourceId, userId],
+  });
+  if (owner.rows.length === 0) throw new Error("Source not found.");
+
+  if (outletIds.length > 0) {
+    const placeholders = outletIds.map(() => "?").join(",");
+    const ownedOutlets = await db.execute({
+      sql: `SELECT id FROM outlets WHERE user_id = ? AND id IN (${placeholders})`,
+      args: [userId, ...outletIds],
+    });
+    if (ownedOutlets.rows.length !== outletIds.length) {
+      throw new Error("Outlet not found.");
+    }
+  }
+
   await db.execute({
-    sql: `DELETE FROM outlet_sources WHERE source_id = ?`,
-    args: [sourceId],
+    sql: `DELETE FROM outlet_sources
+          WHERE source_id = ?
+            AND source_id IN (SELECT id FROM sources WHERE user_id = ?)`,
+    args: [sourceId, userId],
   });
   if (outletIds.length === 0) return;
   const now = Date.now();
