@@ -55,17 +55,17 @@ export interface DraftInput {
   format?: DraftFormat;
   /** Override capability version pin for in-flight workflows. */
   capabilityVersion?: string;
-  /** Curated research the writer pre-selected in researcher mode. When the
-   *  drafter is commissioned from a research view, these are the angles and
-   *  verbatim quotes the writer signaled they want to use. Threaded into
-   *  the prompt as a "PRE-CURATED RESEARCH" block; the model is told to
-   *  prefer these over scanning the raw sources fresh. Without this, the
-   *  drafter and researcher see the cluster independently and the writer's
-   *  curated picks get dropped on the floor. */
-  researchSeed?: ResearchSeed;
+  /** Curated notes the writer pre-selected in notes mode. When the
+   *  drafter is commissioned from a notebook view, these are the angles
+   *  and verbatim quotes the writer signaled they want to use. Threaded
+   *  into the prompt as a "PRE-CURATED NOTES" block; the model is told
+   *  to prefer these over scanning the raw sources fresh. Without this,
+   *  the drafter and notes generator see the cluster independently and
+   *  the writer's curated picks get dropped on the floor. */
+  notesSeed?: NotesSeed;
 }
 
-export interface ResearchSeed {
+export interface NotesSeed {
   topic: string;
   ideas: { angle: string; rationale: string }[];
   quotes: { text: string; speaker: string | null; sourceUrl: string }[];
@@ -128,7 +128,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
     format,
     bannedTerms: voiceProfile?.bannedTerms ?? [],
     description: voiceProfile?.description ?? null,
-    researchSeed: input.researchSeed,
+    notesSeed: input.notesSeed,
   });
 
   await log.info("draft.generate", "prompt assembled", {
@@ -189,7 +189,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       bannedTerms: voiceProfile?.bannedTerms ?? [],
       description: voiceProfile?.description ?? null,
       tighten: true,
-      researchSeed: input.researchSeed,
+      notesSeed: input.notesSeed,
     });
     result = await streamOnce({
       systemPrompt: tighterPrompt.systemPrompt,
@@ -460,7 +460,7 @@ function buildPrompt(opts: {
   bannedTerms: string[];
   description: string | null;
   tighten?: boolean;
-  researchSeed?: ResearchSeed;
+  notesSeed?: NotesSeed;
 }): PromptBundle {
   const wordTolerance = Math.max(30, Math.round(opts.wordCount * 0.1));
   const descriptionBlock = opts.description
@@ -501,19 +501,19 @@ LEDE: ${item.lede}
     : "";
 
   const formatGuidance = FORMAT_GUIDANCE[opts.format];
-  const researchSeed = opts.researchSeed;
-  const researchBlock =
-    researchSeed && (researchSeed.ideas.length > 0 || researchSeed.quotes.length > 0)
-      ? `PRE-CURATED RESEARCH (the writer already vetted these in researcher mode; prefer these over scanning the sources fresh):
+  const notesSeed = opts.notesSeed;
+  const notesBlock =
+    notesSeed && (notesSeed.ideas.length > 0 || notesSeed.quotes.length > 0)
+      ? `PRE-CURATED NOTES (the writer already vetted these in notes mode; prefer these over scanning the sources fresh):
 ${
-  researchSeed.ideas.length > 0
-    ? `Angles the writer is considering:\n${researchSeed.ideas
+  notesSeed.ideas.length > 0
+    ? `Angles the writer is considering:\n${notesSeed.ideas
         .map((i) => `- ${i.angle}${i.rationale ? ` (${i.rationale})` : ""}`)
         .join("\n")}`
     : ""
 }${
-          researchSeed.quotes.length > 0
-            ? `\nVerbatim quotes the writer pre-selected (USE THESE; do not invent new ones unless these are insufficient):\n${researchSeed.quotes
+          notesSeed.quotes.length > 0
+            ? `\nVerbatim quotes the writer pre-selected (USE THESE; do not invent new ones unless these are insufficient):\n${notesSeed.quotes
                 .map((q) => `- "${q.text}"${q.speaker ? `; ${q.speaker}` : ""} (${q.sourceUrl})`)
                 .join("\n")}`
             : ""
@@ -531,7 +531,7 @@ ${bannedBlock}
 
 ${angleGuidance}
 
-${researchBlock ? `${researchBlock}\n\n` : ""}FORMAT (${formatGuidance.label}):
+${notesBlock ? `${notesBlock}\n\n` : ""}FORMAT (${formatGuidance.label}):
 ${formatGuidance.shape}
 
 CONSTRAINTS:

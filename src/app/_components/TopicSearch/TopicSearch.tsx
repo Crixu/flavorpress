@@ -557,7 +557,7 @@ function ClusterCard({
           }}
           aria-disabled={isPending || !canDraft}
         >
-          {isPending ? "Researching" : canDraft ? "Research this" : "Connect an outlet to research"}
+          {isPending ? "Taking notes" : canDraft ? "Take notes" : "Connect an outlet to take notes"}
         </button>
       </form>
     </div>

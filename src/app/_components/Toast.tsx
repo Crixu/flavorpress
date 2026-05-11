@@ -293,7 +293,7 @@ export function PublishToastBridge() {
 
     const isResearcher = payload.mode === "researcher";
     show({
-      title: isResearcher ? "Research notes sent to WordPress" : "Sent to WordPress",
+      title: isResearcher ? "Notes sent to WordPress" : "Sent to WordPress",
       body: payload.headline ? truncate(payload.headline, 80) : undefined,
       primary: { label: "Open in WordPress ↗", href: payload.editLink, external: true },
       secondary: { label: "View receipt", href: `/editor/${payload.draftId}` },
