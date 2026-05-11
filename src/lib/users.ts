@@ -1,5 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
+import { type InValue } from "@libsql/client";
 import { db } from "./db";
 
 export interface User {
@@ -118,4 +119,63 @@ export async function bumpSessionVersion(userId: string): Promise<void> {
 export async function hasAdmin(): Promise<boolean> {
   const r = await db.execute("SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1");
   return r.rows.length > 0;
+}
+
+/**
+ * Tables that carry user_id and must be re-keyed when the default-user
+ * row is claimed by a real account. Add new tables here as the schema grows.
+ */
+export const USER_TENANCY_TABLES = [
+  "outlets",
+  "wp_authorize_states",
+  "source_folders",
+  "sources",
+  "items",
+  "clusters",
+  "drafts",
+  "voice_profiles",
+  "ranker_signals",
+  "ranker_corrections",
+  "event_log",
+  "trace_log",
+] as const;
+
+export interface MigrateDefaultUserOptions {
+  newId: string;
+  email: string;
+  passwordHash: string;
+  isAdmin?: boolean;
+}
+
+export interface MigrateDefaultUserResult {
+  migrated: boolean;
+}
+
+export async function migrateDefaultUser(
+  opts: MigrateDefaultUserOptions,
+): Promise<MigrateDefaultUserResult> {
+  const existing = await db.execute({
+    sql: "SELECT 1 FROM users WHERE id = 'default-user'",
+  });
+  if (existing.rows.length === 0) return { migrated: false };
+
+  const email = normalizeEmail(opts.email);
+  const stmts: { sql: string; args: InValue[] }[] = [];
+
+  for (const table of USER_TENANCY_TABLES) {
+    stmts.push({
+      sql: `UPDATE ${table} SET user_id = ? WHERE user_id = 'default-user'`,
+      args: [opts.newId],
+    });
+  }
+
+  stmts.push({
+    sql: `UPDATE users
+          SET id = ?, email = ?, password_hash = ?, is_admin = ?, status = 'active', session_version = 0, last_active_at = ?
+          WHERE id = 'default-user'`,
+    args: [opts.newId, email, opts.passwordHash, opts.isAdmin ? 1 : 0, Date.now()],
+  });
+
+  await db.batch(stmts);
+  return { migrated: true };
 }
