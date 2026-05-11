@@ -27,6 +27,13 @@ const dataDir = path.join(process.cwd(), ".data");
 const remoteUrl = process.env.LIBSQL_URL?.trim();
 const authToken = process.env.LIBSQL_AUTH_TOKEN;
 const onVercel = process.env.VERCEL === "1";
+// `next build` spawns several workers that all import this module. If each
+// worker opens the same embedded-replica file, libsql races on
+// wal_insert_begin and emits sync errors. The build itself does not need a
+// real DB connection (all routes are `dynamic = "force-dynamic"`), so during
+// the build phase we use the same remote-only path Vercel uses at runtime.
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+const useRemoteOnly = onVercel || isBuildPhase;
 const isRemote = Boolean(
   remoteUrl && (remoteUrl.startsWith("libsql://") || remoteUrl.startsWith("https://")),
 );
@@ -36,8 +43,8 @@ if (!isRemote && !fs.existsSync(dataDir)) {
 }
 
 function buildClient(): Client {
-  // Mode 3: remote-only on Vercel.
-  if (isRemote && onVercel) {
+  // Mode 3: remote-only (Vercel runtime, or local `next build`).
+  if (isRemote && useRemoteOnly) {
     return createClient({ url: remoteUrl!, authToken });
   }
   // Mode 2: embedded replica for local dev pointed at a remote URL.
