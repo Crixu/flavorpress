@@ -1,0 +1,243 @@
+/**
+ * Cross-user isolation audit for v1 server actions.
+ *
+ * Each test creates two users (A and B), seeds entity rows owned by A, then
+ * invokes an action while logged in as B using A's entity ids. The assertion
+ * is that A's rows are untouched after the call.
+ */
+
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { db } from "@/lib/db";
+import {
+  createTwoUserFixture,
+  seedOutletForUser,
+  seedSourceForUser,
+  seedClusterForUser,
+  seedDraftForUser,
+  seedFolderForUser,
+} from "@/lib/__tests__/__helpers__/two-user-fixture";
+import { createSessionCookie } from "@/lib/auth";
+
+let cookieJar: Map<string, string>;
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (n: string) => {
+      const v = cookieJar.get(n);
+      return v ? { value: v } : undefined;
+    },
+    set: (n: string, v: string) => {
+      cookieJar.set(n, v);
+    },
+  }),
+  headers: async () => ({
+    get: (n: string) => {
+      if (n === "origin") return "http://localhost:3000";
+      if (n === "x-forwarded-host") return "localhost:3000";
+      return null;
+    },
+  }),
+}));
+
+vi.mock("next/navigation", () => ({
+  redirect: (url: string) => {
+    throw new Error(`__REDIRECT__:${url}`);
+  },
+}));
+
+vi.mock("next/cache", () => ({
+  revalidatePath: () => {},
+}));
+
+const SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
+
+async function loginAs(userId: string): Promise<void> {
+  const cookie = await createSessionCookie({ userId, sessionVersion: 0, secret: SECRET });
+  cookieJar.set("flavorpress_session", cookie.value);
+}
+
+async function callAction(name: string, form: Record<string, string>): Promise<void> {
+  const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+    string,
+    (f: FormData) => Promise<unknown>
+  >;
+  const fn = mod[name];
+  if (!fn) throw new Error(`Action ${name} not found`);
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(form)) fd.set(k, v);
+  try {
+    await fn(fd);
+  } catch (err) {
+    // Redirects, AuthRequiredError, and "not found" errors are all acceptable
+    // rejection signals - they indicate the action refused to operate on the
+    // entity, which is the correct isolation behavior.
+    if (err instanceof Error && err.message.startsWith("__REDIRECT__:")) return;
+    if (err instanceof Error && err.name === "AuthRequiredError") return;
+    if (err instanceof Error && /not found/i.test(err.message)) return;
+    throw err;
+  }
+}
+
+beforeEach(async () => {
+  cookieJar = new Map();
+  process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
+  process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
+  delete process.env.FLAVORPRESS_AUTH;
+});
+
+// ---------------------------------------------------------------------------
+// disconnectOutletAction
+// ---------------------------------------------------------------------------
+
+describe("disconnectOutletAction - cross-user isolation", () => {
+  it("does not disconnect user A's outlet when called by user B", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+
+    // Seed a connected outlet for A with mock credentials.
+    const outletId = await seedOutletForUser(userA.id);
+    await db.execute({
+      sql: `UPDATE outlets SET username = 'alice', app_password_encrypted = 'fake', connected_at = ? WHERE id = ?`,
+      args: [Date.now(), outletId],
+    });
+
+    // Log in as B and attempt to disconnect A's outlet.
+    await loginAs(userB.id);
+    await callAction("disconnectOutletAction", { outletId, purge: "0" });
+
+    // A's outlet credentials must still be present.
+    const r = await db.execute({
+      sql: `SELECT username, app_password_encrypted FROM outlets WHERE id = ?`,
+      args: [outletId],
+    });
+    expect(r.rows.length).toBe(1);
+    expect(r.rows[0]!.username).toBe("alice");
+    expect(r.rows[0]!.app_password_encrypted).toBeTruthy();
+  });
+
+  it("does not purge user A's outlet when called with purge=1 by user B", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+
+    await loginAs(userB.id);
+    await callAction("disconnectOutletAction", { outletId, purge: "1" });
+
+    const r = await db.execute({
+      sql: `SELECT id FROM outlets WHERE id = ?`,
+      args: [outletId],
+    });
+    // The outlet row still exists because the purge was scoped to userB's userId.
+    expect(r.rows.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setDefaultOutletAction
+// ---------------------------------------------------------------------------
+
+describe("setDefaultOutletAction - cross-user isolation", () => {
+  it("does not mark user A's outlet as default when called by user B", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const outletA = await seedOutletForUser(userA.id);
+
+    // A's outlet starts as not-default (0).
+    const before = await db.execute({
+      sql: `SELECT is_default FROM outlets WHERE id = ?`,
+      args: [outletA],
+    });
+    expect(Number(before.rows[0]!.is_default)).toBe(0);
+
+    // Log in as B and try to promote A's outlet.
+    await loginAs(userB.id);
+    await callAction("setDefaultOutletAction", { outletId: outletA });
+
+    const after = await db.execute({
+      sql: `SELECT is_default FROM outlets WHERE id = ?`,
+      args: [outletA],
+    });
+    expect(Number(after.rows[0]!.is_default)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteDraftAction
+// ---------------------------------------------------------------------------
+
+describe("deleteDraftAction - cross-user isolation", () => {
+  it("does not delete user A's draft when called by user B", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+    const clusterId = await seedClusterForUser(userA.id);
+    const draftId = await seedDraftForUser(userA.id, { clusterId, outletId });
+
+    await loginAs(userB.id);
+    // deleteDraftAction throws "Draft not found" when userId doesn't match;
+    // callAction swallows all non-redirect/auth errors, so this must not delete.
+    await callAction("deleteDraftAction", { draftId });
+
+    const r = await db.execute({
+      sql: `SELECT id FROM drafts WHERE id = ?`,
+      args: [draftId],
+    });
+    expect(r.rows.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dismissClusterAction
+// ---------------------------------------------------------------------------
+
+describe("dismissClusterAction - cross-user isolation", () => {
+  it("does not dismiss user A's cluster when called by user B", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const clusterId = await seedClusterForUser(userA.id, { state: "fired" });
+
+    await loginAs(userB.id);
+    await callAction("dismissClusterAction", { clusterId });
+
+    const r = await db.execute({
+      sql: `SELECT state FROM clusters WHERE id = ?`,
+      args: [clusterId],
+    });
+    expect(String(r.rows[0]!.state)).toBe("fired");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteSourceAction
+// ---------------------------------------------------------------------------
+
+describe("deleteSourceAction - cross-user isolation", () => {
+  it("does not delete user A's source when called by user B", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const sourceId = await seedSourceForUser(userA.id);
+
+    await loginAs(userB.id);
+    await callAction("deleteSourceAction", { sourceId });
+
+    const r = await db.execute({
+      sql: `SELECT id FROM sources WHERE id = ?`,
+      args: [sourceId],
+    });
+    expect(r.rows.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renameFolderAction
+// ---------------------------------------------------------------------------
+
+describe("renameFolderAction - cross-user isolation", () => {
+  it("does not rename user A's folder when called by user B", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const folderId = await seedFolderForUser(userA.id, { name: "original-name" });
+
+    await loginAs(userB.id);
+    await callAction("renameFolderAction", { folderId, name: "attacker-rename" });
+
+    const r = await db.execute({
+      sql: `SELECT name FROM source_folders WHERE id = ?`,
+      args: [folderId],
+    });
+    expect(String(r.rows[0]!.name)).toBe("original-name");
+  });
+});
