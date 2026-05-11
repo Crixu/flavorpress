@@ -722,38 +722,38 @@ async function migrateLegacyTables(): Promise<void> {
   try {
     const pragma = await db.execute("PRAGMA table_info(users)");
     if (pragma.rows.length > 0) {
-      const cols = new Set(pragma.rows.map((r) => String(r.name)));
-      if (!cols.has("password_hash")) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("password_hash")) {
         console.info("[migrate] users: adding password_hash column");
         await db.execute("ALTER TABLE users ADD COLUMN password_hash TEXT");
       }
-      if (!cols.has("wpcom_id")) {
+      if (!cols.includes("wpcom_id")) {
         console.info("[migrate] users: adding wpcom_id column");
         await db.execute("ALTER TABLE users ADD COLUMN wpcom_id TEXT");
       }
-      if (!cols.has("wpcom_username")) {
+      if (!cols.includes("wpcom_username")) {
         console.info("[migrate] users: adding wpcom_username column");
         await db.execute("ALTER TABLE users ADD COLUMN wpcom_username TEXT");
       }
-      if (!cols.has("email_verified_at")) {
+      if (!cols.includes("email_verified_at")) {
         console.info("[migrate] users: adding email_verified_at column");
         await db.execute("ALTER TABLE users ADD COLUMN email_verified_at INTEGER");
       }
-      if (!cols.has("status")) {
+      if (!cols.includes("status")) {
         console.info("[migrate] users: adding status column");
         await db.execute("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
       }
-      if (!cols.has("is_admin")) {
+      if (!cols.includes("is_admin")) {
         console.info("[migrate] users: adding is_admin column");
         await db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
       }
-      if (!cols.has("session_version")) {
+      if (!cols.includes("session_version")) {
         console.info("[migrate] users: adding session_version column");
         await db.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
       }
     }
   } catch {
-    // Table doesn't exist; CREATE IF NOT EXISTS in ensureSchema handles it.
+    // Table will be created clean by CREATE IF NOT EXISTS.
   }
 }
 
