@@ -176,6 +176,30 @@ describe("WordPress authorize callback", () => {
     expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
   });
 
+  it("rejects a callback when the outlet in state does not belong to the state userId", async () => {
+    // State belongs to user A but getOutlet returns null, simulating an outlet
+    // owned by a different user (user B). The route must not commit credentials.
+    mocks.consumeWPAuthorizeState.mockResolvedValue({
+      ok: true,
+      value: { ...authorizeState, userId: "user-a", outletId: "outlet-of-user-b" },
+    });
+    mocks.getOutlet.mockResolvedValue(null); // getOutlet(outletId, userId) returns null for wrong owner
+
+    const response = await GET(
+      request({
+        outlet_id: "outlet-of-user-b",
+        state: "state-1",
+        site_url: "https://wp.example",
+        user_login: "author",
+        password: "secret",
+      }),
+    );
+
+    expect(mocks.getOutlet).toHaveBeenCalledWith("outlet-of-user-b", "user-a");
+    expect(locationOf(response)).toBe("https://app.example/voice?wp_error=unknown_outlet");
+    expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
+  });
+
   it("commits credentials for a valid callback", async () => {
     mocks.consumeWPAuthorizeState.mockResolvedValue({ ok: true, value: authorizeState });
     mocks.getOutlet.mockResolvedValue({ id: "outlet-1", baseUrl: "https://wp.example" });
