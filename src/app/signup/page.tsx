@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Card, Field, Button, Notice } from "@/components/wpds";
+import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
 import { readInvite } from "@/lib/invites";
 import { isLocalAuthMode } from "@/lib/session";
 import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
@@ -77,9 +77,12 @@ export default async function SignupPage({ searchParams }: PageProps) {
                 required
               />
             </Field>
-            <Button type="submit" style={{ width: "100%", justifyContent: "center" }}>
+            <SubmitButton
+              style={{ width: "100%", justifyContent: "center" }}
+              pendingLabel="Creating account…"
+            >
               Create account
-            </Button>
+            </SubmitButton>
           </form>
           {oauthEnabled ? (
             <div style={{ marginTop: 16, textAlign: "center" }}>

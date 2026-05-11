@@ -55,3 +55,9 @@
   color: var(--ink-primary);
   text-decoration: underline;
 }
+
+@keyframes wpds-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

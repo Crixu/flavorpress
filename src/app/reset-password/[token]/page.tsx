@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Card, Field, Button, Notice } from "@/components/wpds";
+import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
 import { isLocalAuthMode } from "@/lib/session";
 import { confirmPasswordResetAction } from "./actions";
 
@@ -63,9 +63,12 @@ export default async function ResetPasswordConfirmPage({ params, searchParams }:
                 autoFocus
               />
             </Field>
-            <Button type="submit" style={{ width: "100%", justifyContent: "center" }}>
+            <SubmitButton
+              style={{ width: "100%", justifyContent: "center" }}
+              pendingLabel="Setting new password…"
+            >
               Set new password
-            </Button>
+            </SubmitButton>
           </form>
         </Card>
       </div>

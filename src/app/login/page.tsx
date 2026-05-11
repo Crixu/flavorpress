@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Card, Field, Button, Notice } from "@/components/wpds";
+import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
 import { isLocalAuthMode } from "@/lib/session";
 import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { loginAction } from "./actions";
@@ -78,9 +78,12 @@ export default async function LoginPage({ searchParams }: PageProps) {
             <Field label="Password">
               <input name="password" type="password" autoComplete="current-password" required />
             </Field>
-            <Button type="submit" style={{ width: "100%", justifyContent: "center" }}>
+            <SubmitButton
+              style={{ width: "100%", justifyContent: "center" }}
+              pendingLabel="Signing in…"
+            >
               Sign in
-            </Button>
+            </SubmitButton>
           </form>
           {oauthEnabled ? (
             <div style={{ marginTop: 16, textAlign: "center" }}>

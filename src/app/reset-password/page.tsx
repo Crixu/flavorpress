@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Card, Field, Button, Notice } from "@/components/wpds";
+import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
 import { isLocalAuthMode } from "@/lib/session";
 import { requestPasswordResetAction } from "./actions";
 
@@ -59,9 +59,12 @@ export default async function ResetPasswordRequestPage({ searchParams }: PagePro
                 <Field label="Email">
                   <input name="email" type="email" autoComplete="email" required autoFocus />
                 </Field>
-                <Button type="submit" style={{ width: "100%", justifyContent: "center" }}>
+                <SubmitButton
+                  style={{ width: "100%", justifyContent: "center" }}
+                  pendingLabel="Sending reset link…"
+                >
                   Send reset link
-                </Button>
+                </SubmitButton>
               </form>
             </>
           )}
