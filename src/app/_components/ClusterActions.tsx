@@ -140,7 +140,7 @@ export function ClusterActions({
 
   if (draft) {
     const isPublished = mode === "drafter" && Boolean(draft.wpEditLink);
-    const openLabel = mode === "researcher" ? "Open notes →" : "Open draft →";
+    const openLabel = mode === "researcher" ? "Open notebook →" : "Open draft →";
     let openCopy: React.ReactNode = null;
     if (mode === "researcher") {
       openCopy = "ideas, quotes, leads";
@@ -188,7 +188,7 @@ export function ClusterActions({
     );
   }
 
-  const primaryLabel = mode === "researcher" ? "Research this →" : "Draft this →";
+  const primaryLabel = mode === "researcher" ? "Take notes →" : "Draft this →";
   const primaryCopy =
     mode === "researcher"
       ? "ideas, quotes, leads you can write from"
@@ -246,7 +246,7 @@ function ModePicker({
   const options: { id: Mode; label: string; hint: string }[] = [
     {
       id: "researcher",
-      label: "Researcher",
+      label: "Notes",
       hint: "ideas, quotes, facts only",
     },
     {
@@ -492,7 +492,7 @@ const STAGES: Stage[] = [
   },
 ];
 
-const RESEARCH_STAGES: Stage[] = [
+const NOTES_STAGES: Stage[] = [
   {
     label: "Reading sources",
     detail: "Pulling cluster items into a single timeline.",
@@ -515,13 +515,13 @@ const RESEARCH_STAGES: Stage[] = [
   },
   {
     label: "Polishing",
-    detail: "Persisting; opening the notes view.",
+    detail: "Persisting; opening the notebook.",
     ms: 99_999,
   },
 ];
 
 function Drafting({ variant, mode }: { variant: "drafting" | "regenerating"; mode: Mode }) {
-  const stages = mode === "researcher" ? RESEARCH_STAGES : STAGES;
+  const stages = mode === "researcher" ? NOTES_STAGES : STAGES;
   const [stageIdx, setStageIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0);
 
@@ -547,7 +547,7 @@ function Drafting({ variant, mode }: { variant: "drafting" | "regenerating"; mod
     mode === "researcher"
       ? variant === "regenerating"
         ? "Regenerating notes"
-        : "Pulling research"
+        : "Taking notes"
       : variant === "regenerating"
         ? "Regenerating draft"
         : "Drafting your story";

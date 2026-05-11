@@ -8,6 +8,13 @@ const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_MAX_REDIRECTS = 5;
 const DEFAULT_MAX_BODY_BYTES = 2_000_000;
 
+// Fetch spec forbids a body on these statuses; passing a stream to
+// `new Response()` with one of them throws synchronously. Conditional GETs
+// hit 304 routinely, so we drop the body and resume the source stream to
+// release the socket. (101, 103, 204, 205, 304 per
+// https://fetch.spec.whatwg.org/#null-body-status)
+const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
+
 const blockedIpv4Networks = new BlockList();
 const blockedIpv6Networks = new BlockList();
 
@@ -359,6 +366,36 @@ function stripSensitiveHeaders(init: RequestInit): RequestInit {
   return { ...init, headers };
 }
 
+/**
+ * Build a whatwg `Response` from a Node `IncomingMessage`. Exported under the
+ * `_` prefix for tests because the surrounding `fetchPinnedTarget` does real
+ * sockets and can't be unit-tested directly.
+ */
+export function _responseFromNodeIncoming(
+  res: Pick<http.IncomingMessage, "statusCode" | "statusMessage" | "headers"> &
+    NodeJS.ReadableStream,
+): Response {
+  const responseHeaders = new Headers();
+  for (const [name, value] of Object.entries(res.headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) responseHeaders.append(name, item);
+    } else if (value !== undefined) {
+      responseHeaders.set(name, value);
+    }
+  }
+  const status = res.statusCode ?? 0;
+  const nullBody = NULL_BODY_STATUSES.has(status);
+  if (nullBody) res.resume();
+  return new Response(
+    nullBody ? null : (Readable.toWeb(res as unknown as Readable) as ReadableStream<Uint8Array>),
+    {
+      status,
+      statusText: res.statusMessage,
+      headers: responseHeaders,
+    },
+  );
+}
+
 async function fetchPinnedTarget(target: SafeFetchTarget, init: RequestInit): Promise<Response> {
   const body = await requestBodyToBuffer(init.body);
   return new Promise<Response>((resolve, reject) => {
@@ -380,23 +417,7 @@ async function fetchPinnedTarget(target: SafeFetchTarget, init: RequestInit): Pr
         headers: Object.fromEntries(headers.entries()),
         servername: target.url.protocol === "https:" ? target.servername : undefined,
       },
-      (res) => {
-        const responseHeaders = new Headers();
-        for (const [name, value] of Object.entries(res.headers)) {
-          if (Array.isArray(value)) {
-            for (const item of value) responseHeaders.append(name, item);
-          } else if (value !== undefined) {
-            responseHeaders.set(name, value);
-          }
-        }
-        resolve(
-          new Response(Readable.toWeb(res) as ReadableStream<Uint8Array>, {
-            status: res.statusCode ?? 0,
-            statusText: res.statusMessage,
-            headers: responseHeaders,
-          }),
-        );
-      },
+      (res) => resolve(_responseFromNodeIncoming(res)),
     );
 
     const abort = () => {

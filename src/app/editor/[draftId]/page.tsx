@@ -16,14 +16,14 @@ import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
 import { getDisabledExtensionIds } from "@/lib/v1/settings";
-import type { ResearchNotes } from "@/lib/v1/researcher-generator";
+import type { Notes } from "@/lib/v1/notes-generator";
 import { AnglePicker } from "./AnglePicker";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { LengthPicker } from "./LengthPicker";
 import { ParagraphRewriter } from "./ParagraphRewriter";
 import { PublishToWpForm } from "./PublishToWpForm";
 import { ReceiptView } from "./ReceiptView";
-import { ResearcherView } from "./ResearcherView";
+import { NotebookView } from "./NotebookView";
 import { SiblingArtifactLink } from "./SiblingArtifactLink";
 import { EditorRail } from "./_components/EditorRail";
 
@@ -87,8 +87,8 @@ export default async function EditorPage({ params }: PageProps) {
 
   // Sent drafter drafts render a receipt, not the editor. The push is one-way:
   // editing happens in WordPress now, and this view is a record of what was
-  // sent. Researcher notes don't follow this branch; the notes themselves
-  // remain useful research material to mine while writing in WordPress.
+  // sent. Notes drafts don't follow this branch; the notes themselves
+  // remain useful raw material to mine while writing in WordPress.
   if (mode === "drafter" && d.wp_post_id) {
     const wpEditLink = d.wp_edit_link
       ? String(d.wp_edit_link)
@@ -123,25 +123,25 @@ export default async function EditorPage({ params }: PageProps) {
 
   if (mode === "researcher") {
     const notesRaw = d.notes ? String(d.notes) : null;
-    let notes: ResearchNotes = {
-      topic: String(d.headline ?? "Research notes"),
+    let notes: Notes = {
+      topic: String(d.headline ?? "Notes"),
       ideas: [],
       quotes: [],
       facts: [],
     };
     if (notesRaw) {
       try {
-        notes = JSON.parse(notesRaw) as ResearchNotes;
+        notes = JSON.parse(notesRaw) as Notes;
       } catch {
         // Persisted JSON malformed; fall back to empty notes so the page
         // still renders. The body HTML mirror is the user's escape hatch.
       }
     }
     return (
-      <ResearcherView
+      <NotebookView
         draftId={String(d.id)}
         clusterId={String(d.cluster_id)}
-        topic={notes.topic || String(d.headline ?? "Research notes")}
+        topic={notes.topic || String(d.headline ?? "Notes")}
         notes={notes}
         sources={itemsR.rows.map((row) => ({
           id: String(row.id),

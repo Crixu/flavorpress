@@ -4,7 +4,7 @@
  * In progress: active drafts (no wp_post_id, mode != researcher). Stale rows
  * (>24h since edit/creation) pinned to top with amber border via wpds-card-stale.
  *
- * Notes: researcher-mode drafts. Shown as emphasis Cards with an idea/quote/fact
+ * Notes: notes-mode drafts. Shown as emphasis Cards with an idea/quote/fact
  * stat summary in the eyebrow.
  *
  * Sent: compact two-line rows, no card frame. Title in serif, meta below.
@@ -283,7 +283,7 @@ function NotesSection({ notes }: { notes: NoteRow[] }) {
   if (notes.length === 0) {
     return (
       <p className="text-[12px]" style={{ color: "var(--fg-subtle)" }}>
-        No research notes yet.
+        No notes yet.
       </p>
     );
   }

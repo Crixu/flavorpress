@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Client-side triggers for the in-place mutations on a research view:
+ * Client-side triggers for the in-place mutations on a notebook view:
  * remix ideas, pull more quotes, add a one-off source, flag the cluster
  * as a mismatch. Each button wraps its server action in a transition so
  * the rest of the view stays interactive while the LLM call runs.
@@ -13,10 +13,10 @@
 
 import { useState, useTransition } from "react";
 import {
-  addMoreResearchQuotesAction,
+  addMoreNotesQuotesAction,
   addSourceToClusterAction,
   flagClusterMismatchAction,
-  remixResearchIdeasAction,
+  remixNotesIdeasAction,
 } from "@/lib/v1/actions";
 
 interface CommonProps {
@@ -32,7 +32,7 @@ export function RemixIdeasButton({ draftId }: { draftId: string }) {
       onClick={() => {
         const fd = new FormData();
         fd.set("draftId", draftId);
-        startTransition(() => remixResearchIdeasAction(fd));
+        startTransition(() => remixNotesIdeasAction(fd));
       }}
       disabled={pending}
       className="rounded-full px-2.5 py-1 text-[11px] transition"
@@ -62,7 +62,7 @@ export function MoreQuotesButton({ draftId, atCap }: { draftId: string; atCap: b
       onClick={() => {
         const fd = new FormData();
         fd.set("draftId", draftId);
-        startTransition(() => addMoreResearchQuotesAction(fd));
+        startTransition(() => addMoreNotesQuotesAction(fd));
       }}
       disabled={pending}
       className="rounded-full px-2.5 py-1 text-[11px] transition"

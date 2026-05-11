@@ -1,9 +1,13 @@
 /**
- * Researcher mode. Same input as the drafter (a fired cluster), but the
- * output is research material the user can write *from*: a handful of
- * angle ideas, verbatim quotes with attribution, and discrete factual
- * claims with source links. The user writes the prose; we never ghost-
- * write the body. This is the strongest expression of the no-slop rule.
+ * Notes mode. Same input as the drafter (a fired cluster), but the
+ * output is raw material the user can write *from*: a handful of angle
+ * ideas, verbatim quotes with attribution, and discrete factual claims
+ * with source links. The user writes the prose; we never ghost-write
+ * the body. This is the strongest expression of the no-slop rule.
+ *
+ * Internally the draft row's `mode` column still stores 'researcher'
+ * for backward compatibility with existing data; treat that string as
+ * the stable key for this feature.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -20,48 +24,48 @@ import type { DraftRenderedPayload, Item } from "./types";
 const CAPABILITY_VERSION = "1.0.0";
 const MAX_TOTAL_QUOTES = 12;
 
-export interface ResearchInput {
+export interface NotesInput {
   clusterId: string;
   userId: string;
   outletId: string;
   capabilityVersion?: string;
 }
 
-export interface ResearchIdea {
+export interface NoteIdea {
   angle: string;
   rationale: string;
 }
 
-export interface ResearchFact {
+export interface NoteFact {
   text: string;
   sourceUrl: string;
 }
 
-export interface ResearchQuote {
+export interface NoteQuote {
   text: string;
   speaker: string | null;
   sourceUrl: string;
 }
 
-export interface ResearchNotes {
+export interface Notes {
   topic: string;
-  ideas: ResearchIdea[];
-  quotes: ResearchQuote[];
-  facts: ResearchFact[];
+  ideas: NoteIdea[];
+  quotes: NoteQuote[];
+  facts: NoteFact[];
 }
 
-export interface ResearchOutput {
+export interface NotesOutput {
   draftId: string;
   topic: string;
-  notes: ResearchNotes;
+  notes: Notes;
   traceId: string;
 }
 
-export async function generateResearch(input: ResearchInput): Promise<ResearchOutput> {
+export async function generateNotes(input: NotesInput): Promise<NotesOutput> {
   await ensureSchema();
   const traceId = newTraceId();
   const log = traceLogger(traceId, input.userId);
-  await log.info("research.generate", "starting", { clusterId: input.clusterId });
+  await log.info("notes.generate", "starting", { clusterId: input.clusterId });
 
   const items = await getClusterItems(input.clusterId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
@@ -70,7 +74,7 @@ export async function generateResearch(input: ResearchInput): Promise<ResearchOu
   const rawNotes = await runOnce(prompt, log);
   const notes = groundNotes(rawNotes, items);
 
-  await log.info("research.generate", "complete", {
+  await log.info("notes.generate", "complete", {
     ideas: notes.ideas.length,
     quotes: notes.quotes.length,
     facts: notes.facts.length,
@@ -108,8 +112,8 @@ export async function generateResearch(input: ResearchInput): Promise<ResearchOu
     ],
   });
 
-  // Researcher notes don't consume the cluster the way a drafter post does;
-  // the user may still want to draft from it. Leave the cluster in 'fired'
+  // Notes don't consume the cluster the way a drafter post does; the
+  // user may still want to draft from it. Leave the cluster in 'fired'
   // state so it stays on Today. Trust still bumps because the user engaged.
   await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated, input.userId);
 
@@ -124,7 +128,7 @@ export async function generateResearch(input: ResearchInput): Promise<ResearchOu
     {
       userId: input.userId,
       traceId,
-      capabilityId: "researcher-notes-generator",
+      capabilityId: "notes-generator",
       capabilityVersion: CAPABILITY_VERSION,
       idempotencyKey: `draft.rendered:${draftId}`,
     },
@@ -134,26 +138,26 @@ export async function generateResearch(input: ResearchInput): Promise<ResearchOu
 }
 
 /**
- * Re-roll just the ideas section of an existing research notes blob.
- * Quotes and facts (the grounded, slop-sensitive part) stay untouched;
- * the model only re-imagines the angles. Used by the "Remix ideas"
- * button on the research view.
+ * Re-roll just the ideas section of an existing notes blob. Quotes
+ * and facts (the grounded, slop-sensitive part) stay untouched; the
+ * model only re-imagines the angles. Used by the "Remix ideas" button
+ * on the notebook view.
  */
-export async function remixResearchIdeas(input: {
+export async function remixIdeas(input: {
   clusterId: string;
   userId: string;
-  current: ResearchNotes;
-}): Promise<ResearchIdea[]> {
+  current: Notes;
+}): Promise<NoteIdea[]> {
   const traceId = newTraceId();
   const log = traceLogger(traceId, input.userId);
-  await log.info("research.remix-ideas", "starting", { clusterId: input.clusterId });
+  await log.info("notes.remix-ideas", "starting", { clusterId: input.clusterId });
 
   const items = await getClusterItems(input.clusterId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
-    await log.warn("research.remix-ideas", "no API key; returning current ideas");
+    await log.warn("notes.remix-ideas", "no API key; returning current ideas");
     return input.current.ideas;
   }
 
@@ -204,24 +208,24 @@ Return the new ideas JSON now.`;
     })
     .filter((i) => i.angle.length > 0);
 
-  await log.info("research.remix-ideas", "complete", { count: ideas.length });
+  await log.info("notes.remix-ideas", "complete", { count: ideas.length });
   return ideas.length > 0 ? ideas : input.current.ideas;
 }
 
 /**
  * Pull additional verbatim quotes the writer hasn't seen yet, leaving
  * the existing ideas / facts / quotes intact. Caps total quote count at
- * MAX_TOTAL_QUOTES so the notes view stays readable. Reuses groundNotes
+ * MAX_TOTAL_QUOTES so the notebook view stays readable. Reuses groundNotes
  * so new quotes still pass the verbatim-and-attributed check.
  */
-export async function extendResearchQuotes(input: {
+export async function extendQuotes(input: {
   clusterId: string;
   userId: string;
-  current: ResearchNotes;
-}): Promise<ResearchQuote[]> {
+  current: Notes;
+}): Promise<NoteQuote[]> {
   const traceId = newTraceId();
   const log = traceLogger(traceId, input.userId);
-  await log.info("research.more-quotes", "starting", { clusterId: input.clusterId });
+  await log.info("notes.more-quotes", "starting", { clusterId: input.clusterId });
 
   if (input.current.quotes.length >= MAX_TOTAL_QUOTES) {
     return input.current.quotes;
@@ -232,7 +236,7 @@ export async function extendResearchQuotes(input: {
 
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
-    await log.warn("research.more-quotes", "no API key; returning current quotes");
+    await log.warn("notes.more-quotes", "no API key; returning current quotes");
     return input.current.quotes;
   }
 
@@ -273,7 +277,7 @@ Return the new quotes JSON now.`;
   const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
   const parsed = parseLooseJson(text);
   const quotesRaw = Array.isArray(parsed.quotes) ? parsed.quotes : [];
-  const candidate: ResearchQuote[] = quotesRaw
+  const candidate: NoteQuote[] = quotesRaw
     .slice(0, remaining)
     .map((q) => {
       const obj = q as Record<string, unknown>;
@@ -292,7 +296,7 @@ Return the new quotes JSON now.`;
   // Ground new quotes against source bytes; skip duplicates of existing
   // quotes (text+url match). Existing quotes can come from earlier
   // generations and shouldn't shadow the verbatim check.
-  const merged: ResearchNotes = {
+  const merged: Notes = {
     ...input.current,
     quotes: candidate,
   };
@@ -300,7 +304,7 @@ Return the new quotes JSON now.`;
   const existingKeys = new Set(input.current.quotes.map((q) => `${q.sourceUrl}::${q.text}`));
   const additions = grounded.filter((q) => !existingKeys.has(`${q.sourceUrl}::${q.text}`));
 
-  await log.info("research.more-quotes", "complete", {
+  await log.info("notes.more-quotes", "complete", {
     requested: remaining,
     added: additions.length,
   });
@@ -324,7 +328,7 @@ Return the new quotes JSON now.`;
  * etc.) so the WordPress handoff sees the latest state. Mirrors the
  * format used at initial draft creation.
  */
-export function renderNotesBodyHtml(notes: ResearchNotes): string {
+export function renderNotesBodyHtml(notes: Notes): string {
   return sanitizeDraftHtml(renderNotesHtml(notes));
 }
 
@@ -392,7 +396,7 @@ OUTPUT JSON ENVELOPE (exact shape):
 
 ${sourceBlock}
 
-Return the research notes JSON now.`;
+Return the notes JSON now.`;
 
   return { systemPrompt, userMessage };
 }
@@ -400,10 +404,10 @@ Return the research notes JSON now.`;
 async function runOnce(
   prompt: Prompt,
   log: ReturnType<typeof traceLogger>,
-): Promise<ResearchNotes> {
+): Promise<Notes> {
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
-    await log.warn("research.generate.run", "no API key; using stub");
+    await log.warn("notes.generate.run", "no API key; using stub");
     return stubNotes();
   }
 
@@ -420,10 +424,10 @@ async function runOnce(
   return parseNotes(text);
 }
 
-function parseNotes(text: string): ResearchNotes {
+function parseNotes(text: string): Notes {
   const parsed = parseLooseJson(text);
 
-  const topic = String(parsed.topic ?? "Research notes");
+  const topic = String(parsed.topic ?? "Notes");
   const ideasRaw = Array.isArray(parsed.ideas) ? parsed.ideas : [];
   const ideas = ideasRaw
     .slice(0, 5)
@@ -485,13 +489,13 @@ function wordCount(text: string): number {
  * Drop any quote or fact that the model couldn't actually source from the
  * cluster's items. URLs must match a known source; quote text must appear
  * verbatim in *the cited source's* bytes (not just somewhere in the
- * cluster — checking against any source would let a quote from article A
+ * cluster, checking against any source would let a quote from article A
  * be misattributed to article B and still pass). Also caps quotes at one
- * per source URL so a single article can't fill the notes view with
+ * per source URL so a single article can't fill the notebook view with
  * verbatim text. Blocks fabricated quotes, hallucinated URLs, prompt-
  * injected sources, and accidental misattribution.
  */
-function groundNotes(notes: ResearchNotes, items: Item[]): ResearchNotes {
+function groundNotes(notes: Notes, items: Item[]): Notes {
   // Map every URL the model could have cited (raw + canonicalized) back
   // to the per-source normalized corpus. Same slice as buildPrompt so we
   // accept exactly what the model saw.
@@ -505,7 +509,7 @@ function groundNotes(notes: ResearchNotes, items: Item[]): ResearchNotes {
   }
 
   const seenSources = new Set<string>();
-  const quotes: ResearchQuote[] = [];
+  const quotes: NoteQuote[] = [];
   for (const q of notes.quotes) {
     const corpus = corpusByUrl.get(q.sourceUrl);
     if (!corpus) continue;
@@ -513,7 +517,7 @@ function groundNotes(notes: ResearchNotes, items: Item[]): ResearchNotes {
     if (needle.length === 0) continue;
     if (!corpus.includes(needle)) continue;
     // One quote per source URL keeps a single article from dominating the
-    // notes view and matches the drafter's per-source cap.
+    // notebook view and matches the drafter's per-source cap.
     if (seenSources.has(q.sourceUrl)) continue;
     seenSources.add(q.sourceUrl);
     quotes.push(q);
@@ -553,13 +557,13 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function renderNotesHtml(notes: ResearchNotes): string {
+function renderNotesHtml(notes: Notes): string {
   const parts: string[] = [];
   if (notes.ideas.length > 0) {
     parts.push("<h2>Ideas</h2><ul>");
     for (const idea of notes.ideas) {
       parts.push(
-        `<li><strong>${escapeHtml(idea.angle)}</strong> — ${escapeHtml(idea.rationale)}</li>`,
+        `<li><strong>${escapeHtml(idea.angle)}</strong> - ${escapeHtml(idea.rationale)}</li>`,
       );
     }
     parts.push("</ul>");
@@ -583,9 +587,9 @@ function renderNotesHtml(notes: ResearchNotes): string {
   return parts.join("\n");
 }
 
-function stubNotes(): ResearchNotes {
+function stubNotes(): Notes {
   return {
-    topic: "Research notes (no API key configured)",
+    topic: "Notes (no API key configured)",
     ideas: [
       {
         angle: "Set ANTHROPIC_API_KEY in /settings to see real ideas.",

@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { sendResearchToWPAction } from "@/lib/v1/actions";
+import { sendNotesToWPAction } from "@/lib/v1/actions";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 import { stashPublishToast } from "@/app/_components/Toast";
 
@@ -21,11 +21,11 @@ interface State {
 
 const HANDOFF_BEAT_MS = 800;
 
-export function SendResearchToWpForm({ draftId, topic, className, pendingLabel, children }: Props) {
+export function SendNotesToWpForm({ draftId, topic, className, pendingLabel, children }: Props) {
   const router = useRouter();
   const [sent, setSent] = useState(false);
   const [state, formAction] = useActionState<State | null, FormData>(async (_prev, formData) => {
-    const result = await sendResearchToWPAction(formData);
+    const result = await sendNotesToWPAction(formData);
     return { editLink: result.editLink, nonce: Date.now() };
   }, null);
 

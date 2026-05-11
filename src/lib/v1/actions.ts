@@ -18,12 +18,12 @@ import { WIZARD_LENGTHS, type WizardLength, type DraftWizardPrefs } from "./wiza
 import { rerollHeadlines } from "./headline-reroll";
 import { rewriteParagraph } from "./paragraph-rewrite";
 import {
-  extendResearchQuotes,
-  generateResearch,
-  remixResearchIdeas,
+  extendQuotes,
+  generateNotes,
+  remixIdeas,
   renderNotesBodyHtml,
-  type ResearchNotes,
-} from "./researcher-generator";
+  type Notes,
+} from "./notes-generator";
 import { extractFullArticle } from "./extract-article";
 import { canonicalize, hashContent } from "./source-connector";
 import { getRegistry } from "./capability-registry";
@@ -644,12 +644,12 @@ export async function dismissClusterAction(formData: FormData) {
 }
 
 /**
- * Negative quality signal for a research cluster: the items don't actually
- * belong together. Stronger than a passive dismiss, because the writer is
+ * Negative quality signal for a cluster: the items don't actually belong
+ * together. Stronger than a passive dismiss, because the writer is
  * telling us the clustering was wrong, not that they're skipping a real
  * story. We mark the cluster dismissed, apply a steeper trust hit on the
  * contributing sources (twice the dismiss penalty), and delete the
- * research draft so the bad output doesn't linger on /drafts.
+ * notes draft so the bad output doesn't linger on /drafts.
  */
 export async function flagClusterMismatchAction(formData: FormData) {
   await ensureSchema();
@@ -676,12 +676,12 @@ export async function flagClusterMismatchAction(formData: FormData) {
 }
 
 /**
- * Re-roll the ideas section of an existing research notes blob. Quotes
- * and facts (the grounded, slop-sensitive part) stay frozen; only the
- * angles change. Persisted notes JSON and the body HTML mirror are both
- * updated so the WordPress handoff sees the fresh ideas.
+ * Re-roll the ideas section of an existing notes blob. Quotes and facts
+ * (the grounded, slop-sensitive part) stay frozen; only the angles
+ * change. Persisted notes JSON and the body HTML mirror are both updated
+ * so the WordPress handoff sees the fresh ideas.
  */
-export async function remixResearchIdeasAction(formData: FormData) {
+export async function remixNotesIdeasAction(formData: FormData) {
   await ensureSchema();
   const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
@@ -692,23 +692,23 @@ export async function remixResearchIdeasAction(formData: FormData) {
           WHERE id = ? AND user_id = ? AND mode = 'researcher'`,
     args: [draftId, session.userId],
   });
-  if (r.rows.length === 0) throw new Error("research draft not found.");
+  if (r.rows.length === 0) throw new Error("notes draft not found.");
   const row = r.rows[0]!;
   const notesRaw = row.notes ? String(row.notes) : "";
-  if (!notesRaw) throw new Error("research notes missing.");
-  let notes: ResearchNotes;
+  if (!notesRaw) throw new Error("notes missing.");
+  let notes: Notes;
   try {
-    notes = JSON.parse(notesRaw) as ResearchNotes;
+    notes = JSON.parse(notesRaw) as Notes;
   } catch {
-    throw new Error("research notes malformed.");
+    throw new Error("notes malformed.");
   }
 
-  const ideas = await remixResearchIdeas({
+  const ideas = await remixIdeas({
     clusterId: String(row.cluster_id),
     userId: session.userId,
     current: notes,
   });
-  const updated: ResearchNotes = { ...notes, ideas };
+  const updated: Notes = { ...notes, ideas };
   const bodyHtml = renderNotesBodyHtml(updated);
   await db.execute({
     sql: `UPDATE drafts SET notes = ?, body = ? WHERE id = ? AND user_id = ?`,
@@ -718,12 +718,12 @@ export async function remixResearchIdeasAction(formData: FormData) {
 }
 
 /**
- * Pull additional verbatim quotes for an existing research draft. Existing
+ * Pull additional verbatim quotes for an existing notes draft. Existing
  * quotes are kept verbatim; new ones are appended up to the per-notes cap.
  * Same grounding rules as the initial generation (verbatim against source
  * bytes, one quote per source URL).
  */
-export async function addMoreResearchQuotesAction(formData: FormData) {
+export async function addMoreNotesQuotesAction(formData: FormData) {
   await ensureSchema();
   const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
@@ -734,23 +734,23 @@ export async function addMoreResearchQuotesAction(formData: FormData) {
           WHERE id = ? AND user_id = ? AND mode = 'researcher'`,
     args: [draftId, session.userId],
   });
-  if (r.rows.length === 0) throw new Error("research draft not found.");
+  if (r.rows.length === 0) throw new Error("notes draft not found.");
   const row = r.rows[0]!;
   const notesRaw = row.notes ? String(row.notes) : "";
-  if (!notesRaw) throw new Error("research notes missing.");
-  let notes: ResearchNotes;
+  if (!notesRaw) throw new Error("notes missing.");
+  let notes: Notes;
   try {
-    notes = JSON.parse(notesRaw) as ResearchNotes;
+    notes = JSON.parse(notesRaw) as Notes;
   } catch {
-    throw new Error("research notes malformed.");
+    throw new Error("notes malformed.");
   }
 
-  const quotes = await extendResearchQuotes({
+  const quotes = await extendQuotes({
     clusterId: String(row.cluster_id),
     userId: session.userId,
     current: notes,
   });
-  const updated: ResearchNotes = { ...notes, quotes };
+  const updated: Notes = { ...notes, quotes };
   const bodyHtml = renderNotesBodyHtml(updated);
   // The drafts.quotes column is a flat list used by the receipt + draft-
   // generator-as-seed paths; mirror the new pool there too.
@@ -773,7 +773,7 @@ export async function addMoreResearchQuotesAction(formData: FormData) {
 }
 
 /**
- * Pin a one-off article URL into an existing research cluster. Fetches
+ * Pin a one-off article URL into an existing notes cluster. Fetches
  * the page with the same Readability extractor used for teaser-recovery,
  * routes the item through a per-user "Manual additions" source so the
  * existing items table constraints (source_id, trust scoring) stay
@@ -781,7 +781,7 @@ export async function addMoreResearchQuotesAction(formData: FormData) {
  * "More quotes" / "Remix ideas" run will see the new item alongside the
  * originals.
  *
- * Does NOT re-run research generation; the writer asked to widen the
+ * Does NOT re-run notes generation; the writer asked to widen the
  * input, not to discard the curated state. The new sources rail entry
  * appears immediately; the writer triggers Remix or More quotes when
  * they want the new article to influence the notes.
@@ -879,7 +879,7 @@ async function recomputeClusterSourceCount(clusterId: string, userId: string): P
 
 /**
  * Find-or-create the per-user "Manual additions" source that backs items
- * pasted by hand into a research view. Real connectors (RSS, Reddit) own
+ * pasted by hand into a notebook view. Real connectors (RSS, Reddit) own
  * a real feed URL; manual items don't have one, but the items table
  * requires a source_id, so all manual items share a single virtual
  * source per user. Marked active=0 so the polling loop ignores it.
@@ -1895,7 +1895,7 @@ export async function generateDraftAction(formData: FormData) {
       : undefined;
 
   // Reuse: if a draft of the same mode already exists for this cluster +
-  // outlet, jump to it. Drafter and researcher runs are independent because
+  // outlet, jump to it. Drafter and notes runs are independent because
   // they produce different artifacts; one shouldn't shadow the other.
   const force = String(formData.get("force") ?? "") === "1";
   let previousFormat: DraftFormat | undefined;
@@ -1928,12 +1928,12 @@ export async function generateDraftAction(formData: FormData) {
     mode === "researcher" ? undefined : (submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT);
 
   if (mode === "researcher") {
-    const research = await generateResearch({
+    const notesResult = await generateNotes({
       clusterId,
       userId: session.userId,
       outletId,
     });
-    redirect(`/editor/${research.draftId}`);
+    redirect(`/editor/${notesResult.draftId}`);
   }
 
   // Drafter mode: persist the wizard's chosen format + length so the next
@@ -1943,13 +1943,13 @@ export async function generateDraftAction(formData: FormData) {
     await setDraftWizardPrefs({ format, length: wordCount as WizardLength });
   }
 
-  // If commissioned from a research view, the writer's already vetted some
+  // If commissioned from a notebook view, the writer's already vetted some
   // angles and pulled some quotes. Pass those into the drafter as a seed
   // so the curated picks survive the handoff. Without this the drafter
-  // re-scans the cluster fresh and the writer's research evaporates.
+  // re-scans the cluster fresh and the writer's notes evaporate.
   const seedFromDraftId = String(formData.get("seedFromDraftId") ?? "");
-  const researchSeed = seedFromDraftId
-    ? await loadResearchSeed(seedFromDraftId, clusterId, outletId, session.userId)
+  const notesSeed = seedFromDraftId
+    ? await loadNotesSeed(seedFromDraftId, clusterId, outletId, session.userId)
     : undefined;
 
   const draft = await generateDraft({
@@ -1960,12 +1960,12 @@ export async function generateDraftAction(formData: FormData) {
     format,
     angleHint,
     customAngle,
-    researchSeed,
+    notesSeed,
   });
   redirect(`/editor/${draft.draftId}`);
 }
 
-async function loadResearchSeed(
+async function loadNotesSeed(
   seedDraftId: string,
   clusterId: string,
   outletId: string,
@@ -1986,7 +1986,7 @@ async function loadResearchSeed(
   if (r.rows.length === 0) return undefined;
   const row = r.rows[0]!;
   if (String(row.mode ?? "") !== "researcher") return undefined;
-  // Tenancy guard: only seed from a research draft attached to the same
+  // Tenancy guard: only seed from a notes draft attached to the same
   // cluster + outlet the drafter is being commissioned for. A swapped id
   // shouldn't bleed quotes from one story into another.
   if (String(row.cluster_id ?? "") !== clusterId) return undefined;
@@ -1994,7 +1994,7 @@ async function loadResearchSeed(
   const notesRaw = row.notes ? String(row.notes) : null;
   if (!notesRaw) return undefined;
   try {
-    const parsed = JSON.parse(notesRaw) as ResearchNotes;
+    const parsed = JSON.parse(notesRaw) as Notes;
     return {
       topic: parsed.topic,
       ideas: parsed.ideas ?? [],
@@ -2077,7 +2077,7 @@ export async function regenerateDraftAction(formData: FormData) {
     throw new Error("This draft has been sent to WordPress and can no longer be regenerated.");
   }
   if (String(row.mode ?? "drafter") !== "drafter") {
-    throw new Error("Only drafter drafts can be regenerated; research notes don't take an angle.");
+    throw new Error("Only drafter drafts can be regenerated; notes don't take an angle.");
   }
 
   const submittedAngle = String(formData.get("angleHint") ?? "");
@@ -2215,11 +2215,11 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
   const row = r.rows[0]!;
 
   if (String(row.mode ?? "drafter") === "researcher") {
-    // Researcher notes are research material, not a post. The editor view
-    // hides the publish UI; this server-side check enforces the same
-    // invariant against any caller that hand-crafts a request.
+    // Notes are raw material, not a post. The editor view hides the
+    // publish UI; this server-side check enforces the same invariant
+    // against any caller that hand-crafts a request.
     throw new Error(
-      "Research notes are not publishable. Open the cluster in Drafter mode to write a post.",
+      "Notes are not publishable. Open the cluster in Drafter mode to write a post.",
     );
   }
 
@@ -2298,7 +2298,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
 }
 
 /**
- * Send a researcher-mode draft to WordPress as a starting-point post body.
+ * Send a notes-mode draft to WordPress as a starting-point post body.
  * The editor writes the actual prose in WordPress; FlavorPress hands over the
  * angles, verbatim quotes, leads, and the source list as a structured scaffold
  * the editor can mine and overwrite.
@@ -2306,7 +2306,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
  * One-shot: subsequent calls reopen the existing WP edit link instead of
  * creating a duplicate, since drafting now lives in WordPress.
  */
-export async function sendResearchToWPAction(formData: FormData): Promise<{ editLink: string }> {
+export async function sendNotesToWPAction(formData: FormData): Promise<{ editLink: string }> {
   await ensureSchema();
   const session = await requireSession();
   const draftId = String(formData.get("draftId") ?? "");
@@ -2322,7 +2322,7 @@ export async function sendResearchToWPAction(formData: FormData): Promise<{ edit
   const row = r.rows[0]!;
 
   if (String(row.mode ?? "drafter") !== "researcher") {
-    throw new Error("This action is only for researcher notes.");
+    throw new Error("This action is only for notes drafts.");
   }
 
   const existingPostId = row.wp_post_id ? Number(row.wp_post_id) : null;
@@ -2355,9 +2355,9 @@ export async function sendResearchToWPAction(formData: FormData): Promise<{ edit
     args: [String(row.cluster_id ?? "")],
   });
 
-  const fallbackTopic = String(row.headline ?? "Research notes");
+  const fallbackTopic = String(row.headline ?? "Notes");
   const notesRaw = row.notes ? String(row.notes) : null;
-  let notes: ResearchNotes = {
+  let notes: Notes = {
     topic: fallbackTopic,
     ideas: [],
     quotes: [],
@@ -2365,7 +2365,7 @@ export async function sendResearchToWPAction(formData: FormData): Promise<{ edit
   };
   if (notesRaw) {
     try {
-      notes = JSON.parse(notesRaw) as ResearchNotes;
+      notes = JSON.parse(notesRaw) as Notes;
     } catch {
       // Persisted JSON malformed; fall back to empty notes. The editor still
       // gets the source list and can write from scratch in WP.
@@ -2377,7 +2377,7 @@ export async function sendResearchToWPAction(formData: FormData): Promise<{ edit
     canonicalUrl: String(s.canonical_url ?? s.source_url),
     displayName: s.display_name === null ? null : String(s.display_name),
   }));
-  const handoffHtml = renderResearchHandoffHtml(notes, sources);
+  const handoffHtml = renderNotesHandoffHtml(notes, sources);
   const headline = notes.topic || fallbackTopic;
 
   const result = await publishToWordPress({
@@ -2422,7 +2422,7 @@ interface HandoffSource {
   displayName: string | null;
 }
 
-function renderResearchHandoffHtml(notes: ResearchNotes, sources: HandoffSource[]): string {
+function renderNotesHandoffHtml(notes: Notes, sources: HandoffSource[]): string {
   const parts: string[] = [];
   parts.push(
     `<p><em>Source notes from FlavorPress. Replace this paragraph with your draft and lift quotes, leads, and links from the sections below.</em></p>`,
