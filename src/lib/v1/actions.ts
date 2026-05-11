@@ -26,6 +26,8 @@ import {
 import { extractFullArticle } from "./extract-article";
 import { canonicalize, hashContent } from "./source-connector";
 import { getRegistry } from "./capability-registry";
+import { getPollQueue } from "./run-queue";
+import { registrableDomain } from "./polite-fetch";
 import { extractStyleSheet } from "./style-sheet";
 import {
   blocksToHtml,
@@ -1140,10 +1142,13 @@ export async function pollAllSourcesAction(): Promise<{ sourceCount: number }> {
 }
 
 /**
- * Run RSS polling for a batch of sources off the request path. Called from
- * `after()` so the user's click returns instantly; revalidates the routes
- * the writer is most likely watching once the batch settles, so the next
- * `router.refresh()` from the client lands on fresh data.
+ * Run polling for a batch of sources off the request path. Called from
+ * `after()` so the user's click returns instantly. Tasks go through the
+ * process-wide poll queue so a "Poll all" doesn't stampede 50 feeds in
+ * parallel (which used to roll into Reddit's per-IP cap and Anthropic's
+ * 50 req/min org cap). Per-host keying keeps two polls of the same host
+ * from racing. Revalidates the routes the writer is most likely watching
+ * once the batch settles.
  */
 async function runBackgroundPolls(sourceIds: string[], label: string): Promise<void> {
   if (sourceIds.length === 0) {
@@ -1151,37 +1156,56 @@ async function runBackgroundPolls(sourceIds: string[], label: string): Promise<v
     revalidatePath("/");
     return;
   }
-  const registry = getRegistry();
   const placeholders = sourceIds.map(() => "?").join(",");
-  const kindRows = await db.execute({
-    sql: `SELECT id, kind FROM sources WHERE id IN (${placeholders})`,
+  const rows = await db.execute({
+    sql: `SELECT id, kind, url FROM sources WHERE id IN (${placeholders})`,
     args: sourceIds,
   });
-  const kindBySourceId = new Map(
-    kindRows.rows.map((row) => [String(row.id), String(row.kind ?? "rss")]),
+  const meta = new Map<string, { kind: string; url: string }>(
+    rows.rows.map((row) => [
+      String(row.id),
+      { kind: String(row.kind ?? "rss"), url: String(row.url ?? "") },
+    ]),
   );
+
+  const queue = getPollQueue();
   await Promise.all(
-    sourceIds.map(async (sourceId) => {
-      const kind = kindBySourceId.get(sourceId) ?? "rss";
-      const capabilityId = kind === "reddit" ? "source-connector.reddit" : "source-connector.rss";
-      try {
-        await registry.invoke(
-          capabilityId,
-          undefined,
-          { sourceId },
-          {
-            userId: SINGLE_USER_ID,
-            requestId: crypto.randomUUID(),
-            traceId: crypto.randomUUID(),
-          },
-        );
-      } catch (err) {
+    sourceIds.map((sourceId) => {
+      const info = meta.get(sourceId);
+      if (!info) return Promise.resolve();
+      const host = hostKey(info.url);
+      const task = queue.addUnique(sourceId, host, () => invokePoll(sourceId, info.kind));
+      if (!task) return Promise.resolve();
+      return task.catch((err) => {
         console.warn(`${label} source ${sourceId}: ${err}`);
-      }
+      });
     }),
   );
   revalidatePath("/sources");
   revalidatePath("/");
+}
+
+async function invokePoll(sourceId: string, kind: string): Promise<void> {
+  const registry = getRegistry();
+  const capabilityId = kind === "reddit" ? "source-connector.reddit" : "source-connector.rss";
+  await registry.invoke(
+    capabilityId,
+    undefined,
+    { sourceId },
+    {
+      userId: SINGLE_USER_ID,
+      requestId: crypto.randomUUID(),
+      traceId: crypto.randomUUID(),
+    },
+  );
+}
+
+function hostKey(url: string): string {
+  try {
+    return registrableDomain(new URL(url).hostname);
+  } catch {
+    return "unknown";
+  }
 }
 
 /**
