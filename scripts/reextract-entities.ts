@@ -18,7 +18,9 @@
  * → CLI shim) handles parallelism via the Agent SDK.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../src/lib/db";
+import { db, ensureSchema } from "../src/lib/db";
+
+const SINGLE_USER_ID = "default-user";
 import { extractItemEntities } from "../src/lib/v1/entity-extractor";
 
 const CONCURRENCY = 5;

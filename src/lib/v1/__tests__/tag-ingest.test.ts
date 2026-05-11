@@ -5,13 +5,22 @@ vi.mock("@/lib/v1/tagger", () => ({
 }));
 
 import { extractItemTags } from "@/lib/v1/tagger";
-import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
+import { ensureSchema, db } from "@/lib/db";
+import { createUser } from "@/lib/users";
+import { hashPassword } from "@/lib/password";
 import { tagItem } from "@/lib/v1/tag-ingest";
+
+let userId: string;
 
 describe("tagItem", () => {
   beforeEach(async () => {
     await ensureSchema();
-    await ensureSingleUser();
+    await db.execute("DELETE FROM users");
+    const u = await createUser({
+      email: "test@example.com",
+      passwordHash: await hashPassword("correct horse battery staple"),
+    });
+    userId = u.id;
     vi.mocked(extractItemTags).mockReset();
   });
 
@@ -27,14 +36,14 @@ describe("tagItem", () => {
     await db.execute({
       sql: `INSERT INTO sources (id, user_id, kind, url, active, created_at)
             VALUES (?, ?, 'rss', 'https://example.com/feed', 1, ?)`,
-      args: [sourceId, SINGLE_USER_ID, Date.now()],
+      args: [sourceId, userId, Date.now()],
     });
     await db.execute({
       sql: `INSERT INTO items (id, user_id, source_id, canonical_url, content_hash, title, lede, body, published_at, fetched_at)
             VALUES (?, ?, ?, ?, ?, 'Slow espresso', 'Lede about coffee', 'Body about coffee', ?, ?)`,
       args: [
         itemId,
-        SINGLE_USER_ID,
+        userId,
         sourceId,
         `https://example.com/${itemId}`,
         `hash-${itemId}`,
@@ -60,14 +69,14 @@ describe("tagItem", () => {
     await db.execute({
       sql: `INSERT INTO sources (id, user_id, kind, url, active, created_at)
             VALUES (?, ?, 'rss', 'https://example.com/feed', 1, ?)`,
-      args: [sourceId, SINGLE_USER_ID, Date.now()],
+      args: [sourceId, userId, Date.now()],
     });
     await db.execute({
       sql: `INSERT INTO items (id, user_id, source_id, canonical_url, content_hash, title, lede, body, published_at, fetched_at)
             VALUES (?, ?, ?, ?, ?, 'x', 'lede-x', 'y', ?, ?)`,
       args: [
         itemId,
-        SINGLE_USER_ID,
+        userId,
         sourceId,
         `https://example.com/${itemId}`,
         `hash-${itemId}`,

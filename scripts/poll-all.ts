@@ -5,7 +5,9 @@
  * the source-connector.rss capability for each source row.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../src/lib/db";
+import { db, ensureSchema } from "../src/lib/db";
+
+const SINGLE_USER_ID = "default-user";
 import { ensureRegisteredCapabilities } from "../src/lib/v1/bootstrap";
 import { getRegistry } from "../src/lib/v1/capability-registry";
 

@@ -8,7 +8,6 @@ const { executeMock, ensureSchemaMock } = vi.hoisted(() => ({
 vi.mock("../../db", () => ({
   db: { execute: executeMock },
   ensureSchema: ensureSchemaMock,
-  SINGLE_USER_ID: "default-user",
 }));
 
 import { buildExportEnvelope } from "../export";

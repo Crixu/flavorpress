@@ -11,7 +11,9 @@
  * IDs would lose their reference, but at this stage no drafts exist.
  */
 
-import { db, ensureSchema, SINGLE_USER_ID } from "../src/lib/db";
+import { db, ensureSchema } from "../src/lib/db";
+
+const SINGLE_USER_ID = "default-user";
 import { handleItemIngested } from "../src/lib/v1/cluster-engine";
 
 async function main() {

@@ -756,18 +756,3 @@ async function migrateLegacyTables(): Promise<void> {
     // Table will be created clean by CREATE IF NOT EXISTS.
   }
 }
-
-// ===== single-user helper for v1 alpha =====
-//
-// Auth is deferred (Supabase Auth wiring is Epic 1.2, owned by Matthias).
-// Until that lands, the OSS app runs single-user under a fixed user id so
-// sources, voice profile, drafts all attach correctly.
-export const SINGLE_USER_ID = "default-user";
-
-export async function ensureSingleUser(email = "you@flavorpress.local"): Promise<void> {
-  await ensureSchema();
-  await db.execute({
-    sql: `INSERT OR IGNORE INTO users (id, email, created_at) VALUES (?, ?, ?)`,
-    args: [SINGLE_USER_ID, email, Date.now()],
-  });
-}

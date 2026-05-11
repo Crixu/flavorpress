@@ -19,13 +19,70 @@ vi.mock("@/lib/v1/event-bus", () => ({
   getBus: () => ({ emit: vi.fn().mockResolvedValue({}) }),
 }));
 
+// next/headers is not available outside a real request scope; mock it so
+// requireSession can read the cookie jar we populate per test.
+let cookieJar: Map<string, string>;
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => {
+      const v = cookieJar.get(name);
+      return v ? { value: v } : undefined;
+    },
+    set: (name: string, value: string) => {
+      cookieJar.set(name, value);
+    },
+  }),
+  headers: async () => ({
+    get: (name: string) => {
+      if (name === "origin") return "http://localhost:3000";
+      if (name === "x-forwarded-host") return "localhost:3000";
+      return null;
+    },
+  }),
+}));
+
+vi.mock("next/navigation", () => ({
+  redirect: (url: string) => {
+    throw new Error(`__REDIRECT__:${url}`);
+  },
+}));
+
 import { runClusterPassAction } from "@/lib/v1/actions";
-import { ensureSchema, ensureSingleUser, db, SINGLE_USER_ID } from "@/lib/db";
+import { ensureSchema, db } from "@/lib/db";
+import { createUser } from "@/lib/users";
+import { hashPassword } from "@/lib/password";
+import { loginAction } from "@/app/login/actions";
+
+let userId: string;
+
+async function seedAndLogin(): Promise<void> {
+  await db.execute("DELETE FROM users");
+  cookieJar = new Map();
+  const u = await createUser({
+    email: "test@example.com",
+    passwordHash: await hashPassword("correct horse battery staple"),
+  });
+  userId = u.id;
+  // Log in so the session cookie is present for requireSession().
+  const formData = new FormData();
+  formData.set("email", "test@example.com");
+  formData.set("password", "correct horse battery staple");
+  try {
+    await loginAction(formData);
+  } catch (err) {
+    // loginAction redirects on success via next/navigation; swallow it.
+    if (!(err instanceof Error && err.message.startsWith("__REDIRECT__:"))) {
+      throw err;
+    }
+  }
+}
 
 describe("runClusterPassAction", () => {
   beforeEach(async () => {
+    process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
+    process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
     await ensureSchema();
-    await ensureSingleUser();
+    await seedAndLogin();
     handleItemIngestedMock.mockReset().mockResolvedValue({ clusterId: null, layer: null });
   });
 
@@ -50,14 +107,14 @@ describe("runClusterPassAction", () => {
     await db.execute({
       sql: `INSERT INTO sources (id, user_id, kind, url, active, trust_score, created_at)
             VALUES (?, ?, 'rss', ?, 1, 0.9, ?)`,
-      args: [sourceId, SINGLE_USER_ID, `https://techblog-${suffix}.example.com/feed`, now],
+      args: [sourceId, userId, `https://techblog-${suffix}.example.com/feed`, now],
     });
     await db.execute({
       sql: `INSERT INTO items (id, user_id, source_id, canonical_url, content_hash, title, lede, body, published_at, fetched_at)
             VALUES (?, ?, ?, ?, ?, 'Item A', 'lede A', 'body', ?, ?)`,
       args: [
         itemIdA,
-        SINGLE_USER_ID,
+        userId,
         sourceId,
         `https://techblog-${suffix}.example.com/${itemIdA}`,
         `hash-${itemIdA}`,
@@ -70,7 +127,7 @@ describe("runClusterPassAction", () => {
             VALUES (?, ?, ?, ?, ?, 'Item B', 'lede B', 'body', ?, ?)`,
       args: [
         itemIdB,
-        SINGLE_USER_ID,
+        userId,
         sourceId,
         `https://techblog-${suffix}.example.com/${itemIdB}`,
         `hash-${itemIdB}`,
@@ -91,7 +148,7 @@ describe("runClusterPassAction", () => {
         await db.execute({
           sql: `INSERT INTO clusters (id, user_id, primary_entities, formed_at, fired_at, source_count, state)
                 VALUES (?, ?, '[]', ?, ?, 1, 'fired')`,
-          args: [clusterId, SINGLE_USER_ID, now, now],
+          args: [clusterId, userId, now, now],
         });
         await db.execute({
           sql: `UPDATE items SET cluster_id = ? WHERE id IN (?, ?)`,
