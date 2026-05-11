@@ -5,15 +5,27 @@
  * `buildExportEnvelope`.
  */
 
-import { ensureSchema, ensureSingleUser } from "@/lib/db";
+import { ensureSchema } from "@/lib/db";
+import { AuthRequiredError, requireSession } from "@/lib/session";
 import { buildExportEnvelope, exportFilename } from "@/lib/v1/export";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  let session;
+  try {
+    session = await requireSession();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    throw err;
+  }
   await ensureSchema();
-  await ensureSingleUser();
-  const envelope = await buildExportEnvelope();
+  const envelope = await buildExportEnvelope(session.userId);
   const body = JSON.stringify(envelope, null, 2);
   return new Response(body, {
     headers: {

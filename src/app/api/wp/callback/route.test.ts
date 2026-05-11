@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ensureSchema: vi.fn(),
-  ensureSingleUser: vi.fn(),
   getOrigin: vi.fn(),
   consumeWPAuthorizeState: vi.fn(),
   getOutlet: vi.fn(),
@@ -13,7 +12,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   ensureSchema: mocks.ensureSchema,
-  ensureSingleUser: mocks.ensureSingleUser,
 }));
 
 vi.mock("@/lib/v1/origin", () => ({
@@ -71,7 +69,6 @@ describe("WordPress authorize callback", () => {
     for (const mock of Object.values(mocks)) mock.mockReset();
     mocks.getOrigin.mockResolvedValue("https://app.example");
     mocks.ensureSchema.mockResolvedValue(undefined);
-    mocks.ensureSingleUser.mockResolvedValue(undefined);
     mocks.recordOutletError.mockResolvedValue(undefined);
     mocks.commitOutletCredentials.mockResolvedValue(undefined);
   });
