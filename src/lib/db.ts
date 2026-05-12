@@ -67,9 +67,27 @@ function buildClient(): Client {
 
 export const db: Client = buildClient();
 
+// Bumped whenever the schema or migration sequence changes. The sentinel
+// short-circuit in ensureSchema() compares the value stored in
+// app_settings.schema_version against this constant; a mismatch (or missing
+// row) drives the slow path that runs migrateLegacyTables and the full
+// CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
+// Vercel cold start.
+const SCHEMA_VERSION = "2026-05-12.v1";
+
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
   if (initialized) return;
+
+  // Fast path: a previous cold start (potentially in another lambda instance)
+  // wrote a matching SCHEMA_VERSION sentinel, so the schema is already
+  // current and we can skip migrateLegacyTables, the CREATE-IF-NOT-EXISTS
+  // batch, and the encryption-key audit. Costs one SELECT instead of dozens
+  // of round trips.
+  if (await schemaSentinelMatches()) {
+    initialized = true;
+    return;
+  }
 
   // === migration: bring older schemas up to v1.1 (1:N outlets) ===
   // Use IF NOT EXISTS for greenfield, then a targeted migration pass.
@@ -198,7 +216,11 @@ export async function ensureSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_items_user_fetched ON items(user_id, fetched_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_source_fetched ON items(source_id, fetched_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_source_published ON items(source_id, published_at DESC)`,
-      `CREATE INDEX IF NOT EXISTS idx_items_cluster ON items(cluster_id)`,
+      // idx_items_cluster(cluster_id) was redundant with the (cluster_id,
+      // published_at DESC) index below, which serves any cluster_id-only
+      // lookup as a prefix. Dropping it removes a redundant write target on
+      // every items insert/update.
+      `DROP INDEX IF EXISTS idx_items_cluster`,
       `CREATE INDEX IF NOT EXISTS idx_items_cluster_published ON items(cluster_id, published_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_items_marked ON items(user_id, marked_at) WHERE marked_at IS NOT NULL`,
       `CREATE INDEX IF NOT EXISTS idx_items_reader_queue ON items(user_id, published_at DESC)
@@ -333,6 +355,7 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_drafts_user_cluster ON drafts(user_id, cluster_id)`,
       `CREATE INDEX IF NOT EXISTS idx_drafts_outlet ON drafts(outlet_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_drafts_user_created ON drafts(user_id, created_at DESC)`,
 
       // Voice profile is per-outlet (not per-user). Each outlet's archive
       // produces a distinct stylometric fingerprint.
@@ -580,7 +603,31 @@ export async function ensureSchema(): Promise<void> {
   );
 
   await assertEncryptionKeyForExistingSecrets();
+  await writeSchemaSentinel();
   initialized = true;
+}
+
+async function schemaSentinelMatches(): Promise<boolean> {
+  try {
+    const r = await db.execute({
+      sql: `SELECT value FROM app_settings WHERE key = 'schema_version'`,
+    });
+    return r.rows.length > 0 && String(r.rows[0]!.value) === SCHEMA_VERSION;
+  } catch {
+    // app_settings table does not exist yet (first deploy on a fresh DB).
+    return false;
+  }
+}
+
+async function writeSchemaSentinel(): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO app_settings (key, value, updated_at)
+          VALUES ('schema_version', ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at`,
+    args: [SCHEMA_VERSION, Date.now()],
+  });
 }
 
 async function assertEncryptionKeyForExistingSecrets(): Promise<void> {

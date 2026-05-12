@@ -10,7 +10,7 @@ import { redirect } from "next/navigation";
 import { ensureSchema } from "@/lib/db";
 import { AuthRequiredError, requireSession } from "@/lib/session";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
-import { listReaderFolderOptions, loadReaderQueue } from "@/lib/v1/reader";
+import { loadReaderPage } from "@/lib/v1/reader";
 import { ReaderClient } from "./_components/ReaderClient";
 
 export const dynamic = "force-dynamic";
@@ -31,15 +31,15 @@ export default async function ReaderPage({ searchParams }: PageProps) {
   await ensureRegisteredCapabilities();
 
   const sp = await searchParams;
-  const { folders, totalCount } = await listReaderFolderOptions(session.userId);
-  const requestedFolder = sp.folder ?? null;
-  // If the requested folder no longer exists (renamed, deleted, has no
-  // sources), fall back to All rather than 404'ing the page.
-  const activeFolder = requestedFolder
-    ? (folders.find((f) => f.id === requestedFolder)?.id ?? null)
-    : null;
-
-  const queue = await loadReaderQueue(session.userId, activeFolder);
+  // One round trip for folder chips + queue + marked count. The helper
+  // validates the requested folder against the user's folders and falls
+  // back to All if the URL is stale.
+  const {
+    folders,
+    totalCount,
+    queue,
+    activeFolderId: activeFolder,
+  } = await loadReaderPage(session.userId, sp.folder ?? null);
 
   return (
     <div className="space-y-6">

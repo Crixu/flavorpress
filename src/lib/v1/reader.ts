@@ -52,6 +52,166 @@ export interface ReaderQueue {
   thresholdReached: boolean;
 }
 
+export interface ReaderFolderOption {
+  id: string;
+  name: string;
+  queueCount: number;
+}
+
+export interface ReaderPage {
+  folders: ReaderFolderOption[];
+  totalCount: number;
+  queue: ReaderQueue;
+  // Either the requested folder (when valid) or null when the request did
+  // not include one OR the requested folder is stale. The page renders the
+  // chip bar in the same "All folders" state in both null cases.
+  activeFolderId: string | null;
+}
+
+/**
+ * Single entry point for the /reader page. Combines the folder chip bar,
+ * the queue, and the marked-count threshold into one db.batch so the page
+ * loads in one Vercel <-> Turso round trip instead of two. Falls back to
+ * a second round trip only when the URL carries a folder id that no longer
+ * exists, which happens after a folder rename or delete.
+ */
+export async function loadReaderPage(
+  userId: string,
+  requestedFolderId: string | null,
+): Promise<ReaderPage> {
+  await ensureSchema();
+
+  const queueFolderClause = requestedFolderId ? "AND s.folder_id = ?" : "";
+  const queueArgs: (string | number)[] = requestedFolderId
+    ? [userId, requestedFolderId, READER_QUEUE_LIMIT]
+    : [userId, READER_QUEUE_LIMIT];
+
+  const [folderOptionsR, queueR, markedR] = await db.batch(
+    [
+      {
+        sql: `WITH queue_counts AS (
+                SELECT s.folder_id, COUNT(*) AS queue_count
+                FROM items i
+                JOIN sources s ON s.id = i.source_id
+                WHERE i.user_id = ?
+                  AND i.cluster_id IS NULL
+                  AND i.marked_at IS NULL
+                  AND i.dismissed_at IS NULL
+                  AND s.folder_id IS NOT NULL
+                GROUP BY s.folder_id
+              )
+              SELECT f.id AS id, f.name AS name,
+                     COALESCE(queue_counts.queue_count, 0) AS queue_count
+              FROM source_folders f
+              LEFT JOIN queue_counts ON queue_counts.folder_id = f.id
+              WHERE f.user_id = ?
+                AND EXISTS (SELECT 1 FROM sources s WHERE s.folder_id = f.id)
+              ORDER BY f.sort_order ASC, f.name ASC`,
+        args: [userId, userId],
+      },
+      {
+        sql: `SELECT i.id, i.title, i.lede, i.published_at, i.canonical_url,
+                     i.score, i.comment_count,
+                     s.id AS source_id, s.display_name AS source_name, s.kind AS source_kind,
+                     f.id AS folder_id, f.name AS folder_name
+              FROM items i
+              JOIN sources s ON s.id = i.source_id
+              LEFT JOIN source_folders f ON f.id = s.folder_id
+              WHERE i.user_id = ?
+                AND i.cluster_id IS NULL
+                AND i.marked_at IS NULL
+                AND i.dismissed_at IS NULL
+                AND s.folder_id IS NOT NULL
+                ${queueFolderClause}
+              ORDER BY i.published_at DESC
+              LIMIT ?`,
+        args: queueArgs,
+      },
+      {
+        sql: `SELECT COUNT(*) AS n FROM items
+              JOIN sources s ON s.id = items.source_id
+              WHERE items.user_id = ?
+                AND items.marked_at IS NOT NULL
+                AND items.cluster_id IS NULL
+                AND s.folder_id IS NOT NULL`,
+        args: [userId],
+      },
+    ],
+    "read",
+  );
+
+  const folders: ReaderFolderOption[] = folderOptionsR.rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    queueCount: Number(row.queue_count ?? 0),
+  }));
+  const totalCount = folders.reduce((sum, f) => sum + f.queueCount, 0);
+
+  let activeFolderId: string | null = null;
+  let queueRows = queueR.rows;
+  if (requestedFolderId) {
+    if (folders.some((f) => f.id === requestedFolderId)) {
+      activeFolderId = requestedFolderId;
+    } else {
+      // Folder was renamed or removed since the URL was shared. Refetch
+      // the queue without the folder filter so the page degrades to All.
+      const fallbackR = await db.execute({
+        sql: `SELECT i.id, i.title, i.lede, i.published_at, i.canonical_url,
+                     i.score, i.comment_count,
+                     s.id AS source_id, s.display_name AS source_name, s.kind AS source_kind,
+                     f.id AS folder_id, f.name AS folder_name
+              FROM items i
+              JOIN sources s ON s.id = i.source_id
+              LEFT JOIN source_folders f ON f.id = s.folder_id
+              WHERE i.user_id = ?
+                AND i.cluster_id IS NULL
+                AND i.marked_at IS NULL
+                AND i.dismissed_at IS NULL
+                AND s.folder_id IS NOT NULL
+              ORDER BY i.published_at DESC
+              LIMIT ?`,
+        args: [userId, READER_QUEUE_LIMIT],
+      });
+      queueRows = fallbackR.rows;
+    }
+  }
+
+  const baseItems = queueRows.map((row) => ({
+    id: String(row.id),
+    title: String(row.title),
+    lede: String(row.lede),
+    publishedAt: Number(row.published_at),
+    canonicalUrl: String(row.canonical_url),
+    sourceId: String(row.source_id),
+    sourceName: String(row.source_name ?? ""),
+    sourceKind: String(row.source_kind ?? ""),
+    folderId: row.folder_id ? String(row.folder_id) : null,
+    folderName: row.folder_name ? String(row.folder_name) : null,
+    score: row.score === null || row.score === undefined ? null : Number(row.score),
+    commentCount:
+      row.comment_count === null || row.comment_count === undefined
+        ? null
+        : Number(row.comment_count),
+  }));
+  const alsoCoveredMap = await computeAlsoCoveredBy(userId, baseItems);
+  const items: ReaderItem[] = baseItems.map((it) => ({
+    ...it,
+    alsoCoveredBy: alsoCoveredMap.get(it.id) ?? [],
+  }));
+  const markedCount = Number(markedR.rows[0]!.n ?? 0);
+
+  return {
+    folders,
+    totalCount,
+    queue: {
+      items,
+      markedCount,
+      thresholdReached: markedCount >= READER_CLUSTER_THRESHOLD,
+    },
+    activeFolderId,
+  };
+}
+
 /**
  * Items waiting in the deck. Excludes anything dismissed, marked, or
  * already in a cluster. Most-recent first; capped so the page doesn't
@@ -131,12 +291,6 @@ export async function loadReaderQueue(
     markedCount,
     thresholdReached: markedCount >= READER_CLUSTER_THRESHOLD,
   };
-}
-
-export interface ReaderFolderOption {
-  id: string;
-  name: string;
-  queueCount: number;
 }
 
 /**
