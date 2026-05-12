@@ -2092,6 +2092,7 @@ export async function generateDraftAction(formData: FormData) {
     customAngle,
     notesSeed,
   });
+  await clearTodayForUser(session.userId);
   redirect(`/editor/${draft.draftId}`);
 }
 
@@ -2244,6 +2245,7 @@ export async function regenerateDraftAction(formData: FormData) {
     await deleteDraftRows(draftId, { adjustTrust: true, userId: session.userId });
   }
 
+  await clearTodayForUser(session.userId);
   redirect(`/editor/${draft.draftId}`);
 }
 
@@ -2365,6 +2367,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     }
     if (!row.wp_edit_link)
       await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
+    await consumeClusterForUser(row.cluster_id ? String(row.cluster_id) : null, session.userId);
     return { editLink };
   }
 
@@ -2411,6 +2414,10 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
 
   const clusterId = row.cluster_id ? String(row.cluster_id) : null;
   if (clusterId) {
+    await db.execute({
+      sql: `UPDATE clusters SET state = 'drafted' WHERE id = ? AND user_id = ?`,
+      args: [clusterId, session.userId],
+    });
     await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished, session.userId);
   }
   await recordWordPressPushed(
@@ -2435,6 +2442,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
   // will see fresh data anyway.
   revalidatePath("/drafts");
   revalidatePath("/sources");
+  await clearTodayForUser(session.userId);
   return { editLink: result.editLink };
 }
 
@@ -2482,6 +2490,7 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
     }
     if (!row.wp_edit_link)
       await rememberRecoveredWordPressEditLink(draftId, editLink, session.userId);
+    await consumeClusterForUser(row.cluster_id ? String(row.cluster_id) : null, session.userId);
     return { editLink };
   }
 
@@ -2570,6 +2579,7 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
   // during the action so the form's post-success "Sent" beat survives until
   // the client redirect fires. Force-dynamic guarantees fresh data on the
   // next navigation back to the editor.
+  await consumeClusterForUser(row.cluster_id ? String(row.cluster_id) : null, session.userId);
   revalidatePath("/drafts");
   return { editLink: result.editLink };
 }
@@ -2770,4 +2780,21 @@ async function invalidateTodayForUser(userId: string): Promise<void> {
   const { invalidateTodayCache } = await import("./today-view");
   await invalidateTodayCache(userId);
   revalidatePath("/");
+}
+
+async function clearTodayForUser(userId: string): Promise<void> {
+  const { deleteTodayCache, invalidateTodayCache } = await import("./today-view");
+  await invalidateTodayCache(userId);
+  await deleteTodayCache(userId);
+  revalidatePath("/");
+}
+
+async function consumeClusterForUser(clusterId: string | null, userId: string): Promise<void> {
+  if (clusterId) {
+    await db.execute({
+      sql: `UPDATE clusters SET state = 'drafted' WHERE id = ? AND user_id = ?`,
+      args: [clusterId, userId],
+    });
+  }
+  await clearTodayForUser(userId);
 }

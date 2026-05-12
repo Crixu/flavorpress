@@ -243,8 +243,8 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   });
 
   await db.execute({
-    sql: `UPDATE clusters SET state = 'drafted' WHERE id = ?`,
-    args: [input.clusterId],
+    sql: `UPDATE clusters SET state = 'drafted' WHERE id = ? AND user_id = ?`,
+    args: [input.clusterId, input.userId],
   });
 
   await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated, input.userId);
