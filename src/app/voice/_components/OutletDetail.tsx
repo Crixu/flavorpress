@@ -195,10 +195,7 @@ export function OutletDetail({ outlet, profile, isThinArchive, archivePostCount 
           Removes this Outlet and its voice profile from FlavorPress. Existing WordPress drafts and
           posts stay untouched.
         </p>
-        <DeleteOutletButton
-          outletId={outletId}
-          outletName={outlet.displayName ?? outlet.baseUrl}
-        />
+        <DeleteOutletButton outletId={outletId} outletName={outlet.displayName ?? outlet.baseUrl} />
       </section>
     </div>
   );
