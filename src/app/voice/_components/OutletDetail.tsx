@@ -9,16 +9,23 @@
 import { HelpTrigger } from "@/components/Help";
 import { PendingMessage, SubmitButton } from "@/app/_components/SubmitButton";
 import {
+  addCustomOutletFormatAction,
+  addPresetOutletFormatAction,
   addVoiceTermAction,
-  removeVoiceTermAction,
   buildVoiceProfileAction,
   saveBlogDescriptionAction,
   deriveBlogDescriptionAction,
+  removeOutletFormatAction,
+  removeVoiceTermAction,
+  updateOutletFormatAction,
 } from "@/lib/v1/actions";
+import { DRAFT_FORMAT_PRESETS, DRAFT_FORMATS, type DraftFormatOption } from "@/lib/v1/draft-format";
+import { MAX_OUTLET_FORMATS } from "@/lib/v1/outlet-formats";
 import { VoiceSetupPicker } from "@/app/voice/[outletId]/_components/VoiceSetupPicker";
 import { MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import type { Outlet } from "@/lib/v1/outlets";
 import { DeleteOutletButton } from "./DeleteOutletButton";
+import { RestoreFormatsButton } from "./RestoreFormatsButton";
 
 interface ProfileData {
   archiveSize: number;
@@ -38,11 +45,12 @@ interface ProfileData {
 interface Props {
   outlet: Outlet;
   profile: ProfileData | null;
+  formats: DraftFormatOption[];
   isThinArchive: boolean;
   archivePostCount: number | null;
 }
 
-export function OutletDetail({ outlet, profile, isThinArchive, archivePostCount }: Props) {
+export function OutletDetail({ outlet, profile, formats, isThinArchive, archivePostCount }: Props) {
   const outletId = outlet.id;
 
   return (
@@ -189,6 +197,8 @@ export function OutletDetail({ outlet, profile, isThinArchive, archivePostCount 
 
       {profile ? <RedoVoiceSetup outletId={outletId} /> : null}
 
+      <OutletFormatEditor outletId={outletId} formats={formats} />
+
       <section className="fp-danger-zone">
         <div className="fp-danger-zone-h">Delete Outlet</div>
         <p className="mb-3 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
@@ -198,6 +208,146 @@ export function OutletDetail({ outlet, profile, isThinArchive, archivePostCount 
         <DeleteOutletButton outletId={outletId} outletName={outlet.displayName ?? outlet.baseUrl} />
       </section>
     </div>
+  );
+}
+
+function OutletFormatEditor({
+  outletId,
+  formats,
+}: {
+  outletId: string;
+  formats: DraftFormatOption[];
+}) {
+  const enabledPresetIds = new Set(formats.map((format) => format.presetId).filter(Boolean));
+  const availablePresets = DRAFT_FORMATS.filter((format) => !enabledPresetIds.has(format));
+  const canAdd = formats.length < MAX_OUTLET_FORMATS;
+  const hasCustomizations = formats.some((format) => {
+    if (!format.presetId) return true;
+    const preset = DRAFT_FORMAT_PRESETS[format.presetId];
+    return format.name !== preset.name || format.instructions !== preset.instructions;
+  });
+
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Draft formats</h2>
+          <p
+            className="mt-1 max-w-2xl text-[13px] leading-relaxed"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            Pick the shapes this outlet can draft in. Each format becomes a choice in the draft
+            wizard for this WordPress site.
+          </p>
+        </div>
+        <RestoreFormatsButton outletId={outletId} hasCustomizations={hasCustomizations} />
+      </div>
+
+      <div className="space-y-3">
+        {formats.map((format, index) => (
+          <div key={format.key} className="fp-card p-4">
+            <form action={updateOutletFormatAction} className="space-y-3">
+              <input type="hidden" name="outletId" value={outletId} />
+              <input type="hidden" name="formatKey" value={format.key} />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  name="name"
+                  defaultValue={format.name}
+                  maxLength={64}
+                  className="fp-input min-w-[220px] flex-1"
+                  aria-label={`Format ${index + 1} name`}
+                />
+                {format.presetId ? (
+                  <span className="fp-chip">{DRAFT_FORMAT_PRESETS[format.presetId].name}</span>
+                ) : (
+                  <span className="fp-chip fp-chip-emerald">Custom</span>
+                )}
+              </div>
+              <textarea
+                name="instructions"
+                defaultValue={format.instructions}
+                rows={4}
+                maxLength={1200}
+                className="fp-input w-full"
+                style={{ fontSize: "13px", lineHeight: "1.5" }}
+                aria-label={`${format.name} instructions`}
+              />
+              <div>
+                <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Saving">
+                  Save format
+                </SubmitButton>
+              </div>
+            </form>
+            <form action={removeOutletFormatAction} className="mt-2">
+              <input type="hidden" name="outletId" value={outletId} />
+              <input type="hidden" name="formatKey" value={format.key} />
+              <SubmitButton
+                className="fp-btn fp-btn-ghost"
+                pendingLabel="Removing"
+                disabled={formats.length <= 1}
+              >
+                Remove
+              </SubmitButton>
+            </form>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <form action={addPresetOutletFormatAction} className="fp-card p-4">
+          <input type="hidden" name="outletId" value={outletId} />
+          <div className="text-sm font-semibold">Add preset</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <select name="preset" className="fp-input min-w-[180px] flex-1" disabled={!canAdd}>
+              {availablePresets.map((preset) => (
+                <option key={preset} value={preset}>
+                  {DRAFT_FORMAT_PRESETS[preset].name}
+                </option>
+              ))}
+            </select>
+            <SubmitButton
+              className="fp-btn fp-btn-ghost"
+              pendingLabel="Adding"
+              disabled={!canAdd || availablePresets.length === 0}
+            >
+              Add preset
+            </SubmitButton>
+          </div>
+        </form>
+
+        <form action={addCustomOutletFormatAction} className="fp-card p-4">
+          <input type="hidden" name="outletId" value={outletId} />
+          <div className="text-sm font-semibold">Add custom</div>
+          <div className="mt-3 space-y-2">
+            <input
+              name="name"
+              maxLength={64}
+              placeholder="e.g. Reporter's notebook"
+              className="fp-input w-full"
+              disabled={!canAdd}
+            />
+            <textarea
+              name="instructions"
+              rows={3}
+              maxLength={1200}
+              placeholder="Describe structure, headings, intro, close, and any outlet-specific rules."
+              className="fp-input w-full"
+              style={{ fontSize: "13px", lineHeight: "1.5" }}
+              disabled={!canAdd}
+            />
+            <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Adding" disabled={!canAdd}>
+              Add custom
+            </SubmitButton>
+          </div>
+        </form>
+      </div>
+
+      {!canAdd ? (
+        <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>
+          This outlet already has {MAX_OUTLET_FORMATS} formats. Remove one before adding another.
+        </p>
+      ) : null}
+    </section>
   );
 }
 

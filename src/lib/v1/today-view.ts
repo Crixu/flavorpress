@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import type { ResultSet } from "@libsql/client";
 import { db, ensureSchema } from "@/lib/db";
 import { loadSignatureTermsByOutlet, pickPreferredOutletForCluster } from "./ranker";
+import { defaultDraftFormatOptions } from "./draft-format";
+import { listOutletFormatsForUser } from "./outlet-formats";
 import type {
   OutletOption,
   TodayClusterPreview,
@@ -89,7 +91,7 @@ export async function loadTodayFrame(userId: string): Promise<TodayFrame> {
   const now = Date.now();
   const [outletsR, sourceCountR, voiceR, newItemsR, draftsInProgressR, sentThisMonthR] =
     await loadTodayFrameRows(userId, now);
-  return buildTodayFrame(userId, now, {
+  const frame = buildTodayFrame(userId, now, {
     outletsR,
     sourceCountR,
     voiceR,
@@ -97,6 +99,7 @@ export async function loadTodayFrame(userId: string): Promise<TodayFrame> {
     draftsInProgressR,
     sentThisMonthR,
   });
+  return attachOutletFormats(frame, userId);
 }
 
 export async function loadTodayPageState(
@@ -115,8 +118,19 @@ export async function loadTodayPageState(
     sentThisMonthR,
   });
   return {
-    frame,
+    frame: await attachOutletFormats(frame, userId),
     cache: cacheStateFromRows(cacheR.rows, "", false),
+  };
+}
+
+async function attachOutletFormats(frame: TodayFrame, userId: string): Promise<TodayFrame> {
+  const formatsByOutlet = await listOutletFormatsForUser(userId);
+  return {
+    ...frame,
+    outletOptions: frame.outletOptions.map((outlet) => ({
+      ...outlet,
+      formats: formatsByOutlet.get(outlet.id) ?? defaultDraftFormatOptions(),
+    })),
   };
 }
 

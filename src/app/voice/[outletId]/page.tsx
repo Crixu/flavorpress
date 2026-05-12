@@ -9,6 +9,7 @@ import { notFound, redirect } from "next/navigation";
 import { ensureSchema, db } from "@/lib/db";
 import { AuthRequiredError, requireSession } from "@/lib/session";
 import { getOutlet, getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
+import { listOutletFormats } from "@/lib/v1/outlet-formats";
 import { getOutletPostCount, MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import { canUseAuthorizeFlow } from "@/lib/v1/origin";
 import { Notice } from "@/components/wpds";
@@ -42,10 +43,13 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
 
   if (!outlet || outlet.userId !== session.userId) notFound();
 
-  const r = await db.execute({
-    sql: `SELECT * FROM voice_profiles WHERE outlet_id = ?`,
-    args: [outletId],
-  });
+  const [r, formats] = await Promise.all([
+    db.execute({
+      sql: `SELECT * FROM voice_profiles WHERE outlet_id = ?`,
+      args: [outletId],
+    }),
+    listOutletFormats(outletId, session.userId),
+  ]);
   const row = r.rows[0] ?? null;
 
   let profileData = null;
@@ -96,6 +100,7 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
         <OutletDetail
           outlet={outlet}
           profile={profileData}
+          formats={formats}
           isThinArchive={isThinArchive}
           archivePostCount={archivePostCount}
         />

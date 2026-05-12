@@ -12,7 +12,15 @@ import { assertCanCreateFolders, assertCanCreateSources } from "../plans";
 import { requireSession } from "../session";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
-import { isDraftFormat, DEFAULT_DRAFT_FORMAT, type DraftFormat } from "./draft-format";
+import { DEFAULT_DRAFT_FORMAT } from "./draft-format";
+import {
+  addCustomOutletFormat,
+  addPresetOutletFormat,
+  removeOutletFormat,
+  resolveOutletDraftFormat,
+  restoreDefaultOutletFormats,
+  updateOutletFormat,
+} from "./outlet-formats";
 import { generateAngleSuggestions, type AngleSuggestion } from "./angle-generator";
 import { getDraftWizardPrefs, setDraftWizardPrefs } from "./wizard-prefs";
 import { WIZARD_LENGTHS, type WizardLength, type DraftWizardPrefs } from "./wizard-prefs-shared";
@@ -186,6 +194,75 @@ export async function setDefaultOutletAction(formData: FormData) {
   if (!outletId) throw new Error("outletId required.");
   await setDefaultOutlet(outletId, session.userId);
   revalidatePath("/voice");
+  revalidatePath("/");
+}
+
+export async function updateOutletFormatAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+  await updateOutletFormat({
+    outletId,
+    userId: session.userId,
+    formatKey: formData.get("formatKey"),
+    name: formData.get("name"),
+    instructions: formData.get("instructions"),
+  });
+  revalidatePath(`/voice/${outletId}`);
+  revalidatePath("/");
+}
+
+export async function addPresetOutletFormatAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+  await addPresetOutletFormat({
+    outletId,
+    userId: session.userId,
+    preset: formData.get("preset"),
+  });
+  revalidatePath(`/voice/${outletId}`);
+  revalidatePath("/");
+}
+
+export async function addCustomOutletFormatAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+  await addCustomOutletFormat({
+    outletId,
+    userId: session.userId,
+    name: formData.get("name"),
+    instructions: formData.get("instructions"),
+  });
+  revalidatePath(`/voice/${outletId}`);
+  revalidatePath("/");
+}
+
+export async function removeOutletFormatAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+  await removeOutletFormat({
+    outletId,
+    userId: session.userId,
+    formatKey: formData.get("formatKey"),
+  });
+  revalidatePath(`/voice/${outletId}`);
+  revalidatePath("/");
+}
+
+export async function restoreDefaultOutletFormatsAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+  await restoreDefaultOutletFormats({ outletId, userId: session.userId });
+  revalidatePath(`/voice/${outletId}`);
   revalidatePath("/");
 }
 
@@ -2011,7 +2088,8 @@ export async function generateDraftAction(formData: FormData) {
 
   const mode = parseMode(formData.get("mode"));
   const wordCount = mode === "researcher" ? undefined : parseWordCount(formData.get("wordCount"));
-  const submittedFormat = mode === "researcher" ? undefined : parseFormat(formData.get("format"));
+  const submittedFormat =
+    mode === "researcher" ? undefined : parseFormatKey(formData.get("format"));
   const customAngle =
     mode === "researcher"
       ? undefined
@@ -2028,7 +2106,7 @@ export async function generateDraftAction(formData: FormData) {
   // outlet, jump to it. Drafter and notes runs are independent because
   // they produce different artifacts; one shouldn't shadow the other.
   const force = String(formData.get("force") ?? "") === "1";
-  let previousFormat: DraftFormat | undefined;
+  let previousFormat: string | undefined;
   if (!force) {
     const existing = await db.execute({
       sql: `SELECT id FROM drafts
@@ -2050,8 +2128,7 @@ export async function generateDraftAction(formData: FormData) {
       args: [clusterId, outletId, session.userId],
     });
     if (existing.rows.length > 0) {
-      const value = existing.rows[0]!.format;
-      if (isDraftFormat(value)) previousFormat = value as DraftFormat;
+      previousFormat = String(existing.rows[0]!.format ?? "").trim() || undefined;
     }
   }
   const format =
@@ -2156,7 +2233,11 @@ export async function generateDraftAnglesAction(
     throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
   }
 
-  const format = parseFormat(formData.get("format")) ?? DEFAULT_DRAFT_FORMAT;
+  const format = await resolveOutletDraftFormat({
+    outletId,
+    userId: session.userId,
+    formatKey: parseFormatKey(formData.get("format")) ?? DEFAULT_DRAFT_FORMAT,
+  });
   const wordCount = parseWordCount(formData.get("wordCount")) ?? 1000;
 
   const angles = await generateAngleSuggestions({
@@ -2224,8 +2305,8 @@ export async function regenerateDraftAction(formData: FormData) {
     throw new Error("Custom angle text required when picking the custom angle.");
   }
   const wordCount = parseWordCount(formData.get("wordCount"));
-  const submittedFormat = parseFormat(formData.get("format"));
-  const previousFormat = isDraftFormat(row.format) ? (row.format as DraftFormat) : undefined;
+  const submittedFormat = parseFormatKey(formData.get("format"));
+  const previousFormat = String(row.format ?? "").trim() || undefined;
   const format = submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT;
 
   const draft = await generateDraft({
@@ -2265,10 +2346,9 @@ function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
   return Math.round(n);
 }
 
-function parseFormat(raw: FormDataEntryValue | null): DraftFormat | undefined {
+function parseFormatKey(raw: FormDataEntryValue | null): string | undefined {
   if (raw === null || raw === "") return undefined;
-  const value = String(raw);
-  return isDraftFormat(value) ? (value as DraftFormat) : undefined;
+  return String(raw).trim().slice(0, 120) || undefined;
 }
 
 function draftBodyHash(bodyHtml: string): string {
@@ -2609,7 +2689,9 @@ function renderNotesHandoffHtml(notes: Notes, sources: HandoffSource[]): string 
       const cite = q.speaker ? `${escapeHandoffHtml(q.speaker)}, ` : "";
       const url = escapeHandoffHtml(q.sourceUrl);
       parts.push(
-        `<blockquote><p>&ldquo;${escapeHandoffHtml(q.text)}&rdquo; ${cite}<a href="${url}">source</a></p></blockquote>`,
+        `<blockquote><p>&ldquo;${escapeHandoffHtml(
+          q.text,
+        )}&rdquo; ${cite}<a href="${url}">source</a></p></blockquote>`,
       );
     }
   }
@@ -2617,7 +2699,9 @@ function renderNotesHandoffHtml(notes: Notes, sources: HandoffSource[]): string 
     parts.push(`<p><strong>Leads to verify</strong></p>`);
     for (const f of notes.facts) {
       parts.push(
-        `<p>${escapeHandoffHtml(f.text)} <a href="${escapeHandoffHtml(f.sourceUrl)}">verify</a></p>`,
+        `<p>${escapeHandoffHtml(f.text)} <a href="${escapeHandoffHtml(
+          f.sourceUrl,
+        )}">verify</a></p>`,
       );
     }
   }
@@ -2626,7 +2710,9 @@ function renderNotesHandoffHtml(notes: Notes, sources: HandoffSource[]): string 
     for (const s of sources) {
       const label = s.displayName ?? hostFromUrl(s.canonicalUrl);
       parts.push(
-        `<p>${escapeHandoffHtml(label)}: <a href="${escapeHandoffHtml(s.canonicalUrl)}">${escapeHandoffHtml(s.title)}</a></p>`,
+        `<p>${escapeHandoffHtml(label)}: <a href="${escapeHandoffHtml(
+          s.canonicalUrl,
+        )}">${escapeHandoffHtml(s.title)}</a></p>`,
       );
     }
   }

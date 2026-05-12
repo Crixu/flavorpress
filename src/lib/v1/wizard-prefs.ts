@@ -9,7 +9,6 @@ import "server-only";
  */
 
 import { getSetting, setSetting } from "./settings";
-import { DRAFT_FORMATS, type DraftFormat } from "./draft-format";
 import {
   DEFAULT_WIZARD_PREFS,
   WIZARD_LENGTHS,
@@ -32,9 +31,10 @@ export async function getDraftWizardPrefs(): Promise<DraftWizardPrefs> {
   if (!raw) return DEFAULT_WIZARD_PREFS;
   try {
     const parsed = JSON.parse(raw) as { format?: unknown; length?: unknown };
-    const format = (DRAFT_FORMATS as readonly string[]).includes(String(parsed.format ?? ""))
-      ? (parsed.format as DraftFormat)
-      : DEFAULT_WIZARD_PREFS.format;
+    const format =
+      String(parsed.format ?? "")
+        .trim()
+        .slice(0, 120) || DEFAULT_WIZARD_PREFS.format;
     const lengthNum = Number(parsed.length);
     const length = (WIZARD_LENGTHS as readonly number[]).includes(lengthNum)
       ? (lengthNum as WizardLength)

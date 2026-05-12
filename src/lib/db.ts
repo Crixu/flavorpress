@@ -73,7 +73,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-12.v2";
+const SCHEMA_VERSION = "2026-05-12.v3";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -188,6 +188,20 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_outlet_sources_outlet ON outlet_sources(outlet_id)`,
       `CREATE INDEX IF NOT EXISTS idx_outlet_sources_source ON outlet_sources(source_id)`,
+
+      `CREATE TABLE IF NOT EXISTS outlet_formats (
+        outlet_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        format_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        instructions TEXT NOT NULL,
+        preset_id TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (outlet_id, format_key)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_outlet_formats_user ON outlet_formats(user_id, outlet_id)`,
 
       `CREATE TABLE IF NOT EXISTS items (
         id TEXT PRIMARY KEY,
