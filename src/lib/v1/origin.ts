@@ -8,7 +8,8 @@
  *   1. FLAVORPRESS_ORIGIN env (explicit override; macOS app launcher uses
  *      this to pin the random port).
  *   2. Incoming request headers, only for safe localhost development.
- *   3. http://localhost:3000 (last-resort non-production fallback).
+ *   3. Vercel HTTPS request headers, when running on Vercel.
+ *   4. http://localhost:3000 (last-resort non-production fallback).
  */
 
 import { headers } from "next/headers";
@@ -22,11 +23,12 @@ export async function getOrigin(): Promise<string> {
 
   try {
     const h = await headers();
-    const host = h.get("host");
+    const host = h.get("x-forwarded-host") ?? h.get("host");
     if (host) {
       const proto = h.get("x-forwarded-proto") ?? "http";
       const candidate = originFromRequestHeaders(proto, host);
       if (candidate && isSafeDevOrigin(candidate)) return candidate;
+      if (candidate && process.env.VERCEL === "1" && isHttpsOrigin(candidate)) return candidate;
     }
   } catch {
     // headers() throws outside a request scope; fall through.
@@ -60,6 +62,14 @@ function isSafeDevOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
     return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isHttpsOrigin(origin: string): boolean {
+  try {
+    return new URL(origin).protocol === "https:";
   } catch {
     return false;
   }
