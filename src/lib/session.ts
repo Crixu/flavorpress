@@ -33,6 +33,20 @@ export function isLocalAuthMode(env: EnvLike = process.env): boolean {
   return env.FLAVORPRESS_AUTH === "local";
 }
 
+export function isLocalAdminDebugMode(env: EnvLike = process.env): boolean {
+  const value = (env.FLAVORPRESS_DEBUG_ADMIN ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+export function shouldShowAdminControls(
+  session: Pick<Session, "isAdmin">,
+  env: EnvLike = process.env,
+): boolean {
+  if (!session.isAdmin) return false;
+  if (!isLocalAuthMode(env)) return true;
+  return isLocalAdminDebugMode(env);
+}
+
 function localBootstrapEmail(env: EnvLike = process.env): string {
   return (env.FLAVORPRESS_LOCAL_EMAIL ?? "local@flavorpress.app").trim().toLowerCase();
 }

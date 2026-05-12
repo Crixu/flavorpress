@@ -4,13 +4,17 @@ import { useEffect, useState } from "react";
 
 export function AccountMenuClient() {
   const [email, setEmail] = useState<string | null>(null);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/account/me", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
-      .then((body: { email?: string } | null) => {
-        if (!cancelled && body?.email) setEmail(body.email);
+      .then((body: { email?: string; showAdmin?: boolean } | null) => {
+        if (!cancelled && body?.email) {
+          setEmail(body.email);
+          setShowAdmin(body.showAdmin === true);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -31,6 +35,11 @@ export function AccountMenuClient() {
           <span className="fp-account-label">Signed in as</span>
           <span className="fp-account-email">{email}</span>
         </div>
+        {showAdmin ? (
+          <a href="/settings/admin" className="fp-account-menu-item">
+            Admin
+          </a>
+        ) : null}
         <form action="/logout" method="post">
           <button type="submit" className="fp-account-menu-item">
             Log out

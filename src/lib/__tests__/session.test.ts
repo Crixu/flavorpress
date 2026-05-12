@@ -21,7 +21,9 @@ import {
   loadSession,
   AuthRequiredError,
   isLocalAuthMode,
+  isLocalAdminDebugMode,
   hasSessionCookieForShell,
+  shouldShowAdminControls,
 } from "@/lib/session";
 
 const SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
@@ -33,11 +35,13 @@ beforeEach(async () => {
   process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
   delete process.env.FLAVORPRESS_AUTH;
   delete process.env.FLAVORPRESS_LOCAL_EMAIL;
+  delete process.env.FLAVORPRESS_DEBUG_ADMIN;
 });
 
 afterEach(() => {
   delete process.env.FLAVORPRESS_AUTH;
   delete process.env.FLAVORPRESS_LOCAL_EMAIL;
+  delete process.env.FLAVORPRESS_DEBUG_ADMIN;
 });
 
 async function makeUser(email: string) {
@@ -119,6 +123,28 @@ describe("local auth mode", () => {
     expect(isLocalAuthMode({ FLAVORPRESS_AUTH: "local" })).toBe(true);
     expect(isLocalAuthMode({ FLAVORPRESS_AUTH: "off" })).toBe(false);
     expect(isLocalAuthMode({})).toBe(false);
+  });
+
+  it("shows admin controls in local mode only when the debug flag is set", () => {
+    const admin = { isAdmin: true };
+    const writer = { isAdmin: false };
+    expect(isLocalAdminDebugMode({ FLAVORPRESS_DEBUG_ADMIN: "1" })).toBe(true);
+    expect(isLocalAdminDebugMode({ FLAVORPRESS_DEBUG_ADMIN: "true" })).toBe(true);
+    expect(isLocalAdminDebugMode({ FLAVORPRESS_DEBUG_ADMIN: "0" })).toBe(false);
+    expect(shouldShowAdminControls(admin, { FLAVORPRESS_AUTH: "local" })).toBe(false);
+    expect(
+      shouldShowAdminControls(admin, {
+        FLAVORPRESS_AUTH: "local",
+        FLAVORPRESS_DEBUG_ADMIN: "1",
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowAdminControls(writer, {
+        FLAVORPRESS_AUTH: "local",
+        FLAVORPRESS_DEBUG_ADMIN: "1",
+      }),
+    ).toBe(false);
+    expect(shouldShowAdminControls(admin, {})).toBe(true);
   });
 
   it("returns the bootstrap session even with no cookie", async () => {

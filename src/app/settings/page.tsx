@@ -15,7 +15,7 @@ import {
 import { resolveAnthropicAuth, type AuthMode } from "@/lib/anthropic";
 import { db, ensureSchema } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { AuthRequiredError, requireSession } from "@/lib/session";
+import { AuthRequiredError, requireSession, shouldShowAdminControls } from "@/lib/session";
 import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
@@ -73,7 +73,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
 
   return (
     <div className="fp-settings-shell">
-      <SettingsSidebar active={section} />
+      <SettingsSidebar active={section} showAdmin={shouldShowAdminControls(session)} />
       <div className="fp-settings-detail">
         {sp.saved ? <Banner kind="success">Saved {labelFor(sp.saved)}.</Banner> : null}
         {sp.cleared ? (

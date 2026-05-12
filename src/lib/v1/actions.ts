@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db, ensureSchema } from "../db";
+import { assertCanCreateFolders, assertCanCreateSources } from "../plans";
 import { requireSession } from "../session";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
@@ -203,6 +204,18 @@ export async function addSourceAction(formData: FormData) {
         .filter(Boolean),
     ),
   );
+  // Drop URLs the user already has so the plan-cap check counts only the
+  // rows we'd actually insert. The insert loop also swallows UNIQUE failures,
+  // but pre-filtering avoids rejecting a paste that's mostly duplicates.
+  const existing = await db.execute({
+    sql: `SELECT url FROM sources WHERE user_id = ?`,
+    args: [session.userId],
+  });
+  const existingUrls = new Set(
+    (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
+  );
+  const freshInputs = inputs.filter((input) => !existingUrls.has(input));
+  await assertCanCreateSources(session.userId, freshInputs.length);
 
   // Source extensions get first crack at each input. A disabled extension
   // that *would* have claimed an input is treated as an error so we don't
@@ -400,6 +413,15 @@ export async function importOpmlSelectionAction(formData: FormData) {
       `Pick at most ${OPML_IMPORT_CAP} feeds per import. Run another pass after these settle in.`,
     );
   }
+  const existing = await db.execute({
+    sql: `SELECT url FROM sources WHERE user_id = ?`,
+    args: [session.userId],
+  });
+  const existingUrls = new Set(
+    (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
+  );
+  const freshUrlCount = urls.filter((url) => !existingUrls.has(url)).length;
+  await assertCanCreateSources(session.userId, freshUrlCount);
 
   const folderId = await resolveFolderIdField(formData, session.userId);
   const titleJobs: { id: string; url: string }[] = [];
@@ -535,6 +557,7 @@ async function ensureFolderByName(name: string, userId: string): Promise<string>
     args: [userId, name],
   });
   if (existing.rows.length > 0) return String(existing.rows[0]!.id);
+  await assertCanCreateFolders(userId);
   const id = crypto.randomUUID();
   await db.execute({
     sql: `INSERT INTO source_folders (id, user_id, name, sort_order, created_at)

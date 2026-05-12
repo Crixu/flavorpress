@@ -1,0 +1,246 @@
+import "server-only";
+import { db, ensureSchema } from "./db";
+import { limitsForPlan, type PlanKey, type PlanLimits } from "./plans";
+
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  status: "active" | "suspended";
+  isAdmin: boolean;
+  createdAt: number;
+  lastActiveAt: number | null;
+  outletCount: number;
+  sourceCount: number;
+  folderCount: number;
+  plan: PlanKey;
+  limits: PlanLimits;
+}
+
+export interface AdminInviteRow {
+  token: string;
+  createdByEmail: string | null;
+  usedByEmail: string | null;
+  createdAt: number;
+  expiresAt: number | null;
+  usedAt: number | null;
+}
+
+export interface AdminSourceRow {
+  id: string;
+  userId: string;
+  userEmail: string;
+  kind: string;
+  url: string;
+  displayName: string | null;
+  folderName: string | null;
+  active: boolean;
+  pausedUntil: number | null;
+  lastError: string | null;
+  createdAt: number;
+}
+
+export interface AdminOutletRow {
+  id: string;
+  baseUrl: string;
+  displayName: string | null;
+  kind: string | null;
+  connected: boolean;
+  isDefault: boolean;
+  lastError: string | null;
+  createdAt: number;
+}
+
+export interface AdminFolderRow {
+  id: string;
+  name: string;
+  sourceCount: number;
+  createdAt: number;
+}
+
+export interface AdminSnapshot {
+  users: AdminUserRow[];
+  invites: AdminInviteRow[];
+  now: number;
+}
+
+export interface AdminUserDetailSnapshot {
+  user: AdminUserRow;
+  outlets: AdminOutletRow[];
+  folders: AdminFolderRow[];
+  sources: AdminSourceRow[];
+  now: number;
+}
+
+function normalizePlanKey(value: unknown): PlanKey {
+  return value === "pro" || value === "custom" ? value : "trial";
+}
+
+function mapAdminUserRow(row: Record<string, unknown>): AdminUserRow {
+  const id = String(row.id);
+  const plan = normalizePlanKey(row.plan);
+  const limits = limitsForPlan(plan, {
+    outlets: row.custom_outlet_limit,
+    sources: row.custom_source_limit,
+    folders: row.custom_folder_limit,
+  });
+  return {
+    id,
+    email: String(row.email),
+    status: String(row.status) === "suspended" ? "suspended" : "active",
+    isAdmin: Number(row.is_admin) === 1,
+    createdAt: Number(row.created_at),
+    lastActiveAt: row.last_active_at == null ? null : Number(row.last_active_at),
+    outletCount: Number(row.outlet_count ?? 0),
+    sourceCount: Number(row.source_count ?? 0),
+    folderCount: Number(row.folder_count ?? 0),
+    plan,
+    limits,
+  };
+}
+
+export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
+  await ensureSchema();
+  const [usersR, invitesR] = await db.batch(
+    [
+      {
+        sql: `SELECT u.id, u.email, u.status, u.is_admin, u.created_at, u.last_active_at,
+                     COUNT(DISTINCT o.id) AS outlet_count,
+                     COUNT(DISTINCT s.id) AS source_count,
+                     COUNT(DISTINCT f.id) AS folder_count,
+                     p.plan AS plan,
+                     p.custom_outlet_limit AS custom_outlet_limit,
+                     p.custom_source_limit AS custom_source_limit,
+                     p.custom_folder_limit AS custom_folder_limit
+              FROM users u
+              LEFT JOIN outlets o ON o.user_id = u.id
+              LEFT JOIN sources s ON s.user_id = u.id
+              LEFT JOIN source_folders f ON f.user_id = u.id
+              LEFT JOIN user_plans p ON p.user_id = u.id
+              GROUP BY u.id
+              ORDER BY u.created_at DESC`,
+        args: [],
+      },
+      {
+        sql: `SELECT i.token, i.created_at, i.expires_at, i.used_at,
+                     creator.email AS created_by_email,
+                     used.email AS used_by_email
+              FROM invites i
+              LEFT JOIN users creator ON creator.id = i.created_by_user_id
+              LEFT JOIN users used ON used.id = i.used_by_user_id
+              ORDER BY i.created_at DESC
+              LIMIT 20`,
+        args: [],
+      },
+    ],
+    "read",
+  );
+
+  const users = (usersR.rows as Record<string, unknown>[]).map(mapAdminUserRow);
+
+  const invites = (invitesR.rows as Record<string, unknown>[]).map((row) => ({
+    token: String(row.token),
+    createdByEmail: row.created_by_email == null ? null : String(row.created_by_email),
+    usedByEmail: row.used_by_email == null ? null : String(row.used_by_email),
+    createdAt: Number(row.created_at),
+    expiresAt: row.expires_at == null ? null : Number(row.expires_at),
+    usedAt: row.used_at == null ? null : Number(row.used_at),
+  }));
+
+  return { users, invites, now: Date.now() };
+}
+
+export async function loadAdminUserDetailSnapshot(
+  userId: string,
+): Promise<AdminUserDetailSnapshot | null> {
+  await ensureSchema();
+
+  const [userR, outletsR, foldersR, sourcesR] = await db.batch(
+    [
+      {
+        sql: `SELECT u.id, u.email, u.status, u.is_admin, u.created_at, u.last_active_at,
+                     COUNT(DISTINCT o.id) AS outlet_count,
+                     COUNT(DISTINCT s.id) AS source_count,
+                     COUNT(DISTINCT f.id) AS folder_count,
+                     p.plan AS plan,
+                     p.custom_outlet_limit AS custom_outlet_limit,
+                     p.custom_source_limit AS custom_source_limit,
+                     p.custom_folder_limit AS custom_folder_limit
+              FROM users u
+              LEFT JOIN outlets o ON o.user_id = u.id
+              LEFT JOIN sources s ON s.user_id = u.id
+              LEFT JOIN source_folders f ON f.user_id = u.id
+              LEFT JOIN user_plans p ON p.user_id = u.id
+              WHERE u.id = ?
+              GROUP BY u.id`,
+        args: [userId],
+      },
+      {
+        sql: `SELECT id, base_url, display_name, kind, app_password_encrypted,
+                     is_default, last_error, created_at
+              FROM outlets
+              WHERE user_id = ?
+              ORDER BY is_default DESC, created_at DESC`,
+        args: [userId],
+      },
+      {
+        sql: `SELECT f.id, f.name, f.created_at, COUNT(s.id) AS source_count
+              FROM source_folders f
+              LEFT JOIN sources s ON s.folder_id = f.id AND s.user_id = f.user_id
+              WHERE f.user_id = ?
+              GROUP BY f.id
+              ORDER BY f.sort_order ASC, f.name ASC`,
+        args: [userId],
+      },
+      {
+        sql: `SELECT s.id, s.user_id, u.email AS user_email, s.kind, s.url,
+                     s.display_name, f.name AS folder_name, s.active,
+                     s.paused_until, s.last_error, s.created_at
+              FROM sources s
+              JOIN users u ON u.id = s.user_id
+              LEFT JOIN source_folders f ON f.id = s.folder_id
+              WHERE s.user_id = ?
+              ORDER BY f.name IS NULL ASC, f.name ASC, s.created_at DESC`,
+        args: [userId],
+      },
+    ],
+    "read",
+  );
+
+  const userRow = (userR.rows as Record<string, unknown>[])[0];
+  if (!userRow) return null;
+  const user = mapAdminUserRow(userRow);
+
+  const outlets = (outletsR.rows as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    baseUrl: String(row.base_url),
+    displayName: row.display_name == null ? null : String(row.display_name),
+    kind: row.kind == null ? null : String(row.kind),
+    connected: row.app_password_encrypted != null,
+    isDefault: Number(row.is_default ?? 0) === 1,
+    lastError: row.last_error == null ? null : String(row.last_error),
+    createdAt: Number(row.created_at),
+  }));
+
+  const folders = (foldersR.rows as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    sourceCount: Number(row.source_count ?? 0),
+    createdAt: Number(row.created_at),
+  }));
+
+  const sources = (sourcesR.rows as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    userId: String(row.user_id),
+    userEmail: String(row.user_email),
+    kind: String(row.kind),
+    url: String(row.url),
+    displayName: row.display_name == null ? null : String(row.display_name),
+    folderName: row.folder_name == null ? null : String(row.folder_name),
+    active: Number(row.active ?? 0) === 1,
+    pausedUntil: row.paused_until == null ? null : Number(row.paused_until),
+    lastError: row.last_error == null ? null : String(row.last_error),
+    createdAt: Number(row.created_at),
+  }));
+
+  return { user, outlets, folders, sources, now: Date.now() };
+}
