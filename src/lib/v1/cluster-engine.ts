@@ -28,6 +28,7 @@ import { traceLogger } from "./trace";
 import type { ClusterThresholdCrossedPayload, ItemIngestedPayload, Item } from "./types";
 import { rowToItem, type ItemRow } from "./source-connector";
 import { askMergeOracle } from "./merge-oracle";
+import { recordClusterFormed } from "./analytics";
 
 export const CLUSTER_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -242,8 +243,11 @@ async function formCluster(
           VALUES (?, ?, ?, ?, 0, 'forming')`,
     args: [id, userId, JSON.stringify(entities), Date.now()],
   });
+  await recordClusterFormed(
+    { clusterId: id, initialItemIds, primaryEntities: entities },
+    { userId },
+  );
   // Caller assigns items via assignToCluster.
-  void initialItemIds;
   return id;
 }
 

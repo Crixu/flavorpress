@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AuthRequiredError, requireSession, shouldShowAdminControls } from "@/lib/session";
 import { loadAdminSnapshot, type AdminUserRow } from "@/lib/admin";
+import type { ReadingToWritingMetrics } from "@/lib/v1/analytics";
 import { PLAN_LIMITS } from "@/lib/plans";
 import { getOrigin } from "@/lib/v1/origin";
 import { PendingMessage, SubmitButton } from "../../_components/SubmitButton";
@@ -76,6 +77,7 @@ export default async function AdminPage({ searchParams }: PageProps) {
           ) : null}
 
           <PlanCards />
+          <ReadingToWritingSection metrics={snapshot.readingToWriting} />
           <UsersSection users={snapshot.users} currentUserId={session.userId} />
           <InvitesSection invites={snapshot.invites} now={snapshot.now} origin={origin} />
         </div>
@@ -151,6 +153,35 @@ function Limit({ label, value }: { label: string; value: number }) {
       <dt className="fp-eyebrow">{label}</dt>
       <dd className="mt-1 text-xl font-semibold tabular">{value}</dd>
     </div>
+  );
+}
+
+function ReadingToWritingSection({ metrics }: { metrics: ReadingToWritingMetrics }) {
+  const cards = [
+    { label: "Sources added", value: metrics.sourcesAdded },
+    { label: "Clusters created", value: metrics.clustersCreated },
+    { label: "Clusters surfaced", value: metrics.clustersSurfaced },
+    { label: "Drafts rendered", value: metrics.draftsRendered },
+    { label: "WP pushes", value: metrics.wordpressPushes },
+  ];
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Reading to writing</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          First-party event counts for the source to WordPress path. Counts start when tracking
+          landed.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {cards.map((card) => (
+          <div key={card.label} className="fp-card p-5">
+            <div className="fp-eyebrow">{card.label}</div>
+            <div className="mt-2 text-3xl font-semibold tabular tracking-tight">{card.value}</div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

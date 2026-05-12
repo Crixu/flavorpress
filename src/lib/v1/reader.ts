@@ -18,6 +18,7 @@ import { db, ensureSchema } from "../db";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
 import { rankCluster } from "./ranker";
 import type { Cluster } from "./types";
+import { recordClusterFormed } from "./analytics";
 
 export const READER_CLUSTER_THRESHOLD = 5;
 
@@ -570,6 +571,10 @@ export async function clusterMarkedItems(userId: string): Promise<FormedCluster[
             VALUES (?, ?, ?, ?, ?, 0, 'fired')`,
       args: [clusterId, userId, JSON.stringify(entities), now, now],
     });
+    await recordClusterFormed(
+      { clusterId, initialItemIds: validIds, primaryEntities: entities },
+      { userId },
+    );
     for (const id of validIds) {
       await db.execute({
         sql: `UPDATE items SET cluster_id = ?, marked_at = NULL WHERE id = ?`,

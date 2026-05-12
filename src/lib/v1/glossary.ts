@@ -367,7 +367,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     short:
       "Internal pub/sub. Capabilities subscribe to events; every event persists for audit before fanout.",
     body: [
-      "Event types include item.ingested, cluster.formed, cluster.threshold_crossed, draft.rendered, draft.fact_checked, post.published, signal.downweighted. Every event writes to event_log before any handler runs, so we can replay or audit a trace.",
+      "Event types include source.added, item.ingested, cluster.formed, cluster.threshold_crossed, draft.rendered, draft.fact_checked, wordpress.pushed, post.published, signal.downweighted. Every event writes to event_log before any handler runs, so we can replay or audit a trace.",
       "v1 alpha runs in-memory inside a Vercel function. v1.1 swaps to Upstash Redis pub/sub for cross-region. Same interface; capabilities don't care about the transport.",
     ],
     related: ["capability", "trace"],

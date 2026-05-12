@@ -155,6 +155,7 @@ export const RANKER_WEIGHTS = {
 // ===== Events =====
 
 export type EventType =
+  | "source.added"
   | "item.ingested"
   | "cluster.formed"
   | "cluster.threshold_crossed"
@@ -163,6 +164,7 @@ export type EventType =
   | "draft.originality_scored"
   | "draft.edited"
   | "post.published"
+  | "wordpress.pushed"
   | "signal.downweighted"
   | "source.poll_due";
 
@@ -180,11 +182,25 @@ export interface Event<T = unknown> {
 
 // Concrete payload shapes for type-safety at the bus interface.
 
+export interface SourceAddedPayload {
+  sourceId: string;
+  kind: string;
+  url: string;
+  displayName: string | null;
+  folderId: string | null;
+}
+
 export interface ItemIngestedPayload {
   itemId: string;
   sourceId: string;
   canonicalUrl: string;
   contentHash: string;
+}
+
+export interface ClusterFormedPayload {
+  clusterId: string;
+  initialItemIds: string[];
+  primaryEntities: string[];
 }
 
 export interface ClusterThresholdCrossedPayload {
@@ -204,6 +220,16 @@ export interface PostPublishedPayload {
   draftId: string;
   wpPostId: number;
   url: string;
+}
+
+export interface WordPressPushedPayload {
+  draftId: string;
+  clusterId: string | null;
+  outletId: string;
+  mode: "drafter" | "researcher";
+  wpPostId: number;
+  editLink: string;
+  status: "draft" | "publish" | "future";
 }
 
 export interface SignalDownweightedPayload {
