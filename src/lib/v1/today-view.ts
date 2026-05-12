@@ -279,17 +279,9 @@ export async function scheduleTodayCacheRefresh(userId: string, state?: TodayCac
   const now = Date.now();
   if (current.refreshStartedAt && now - current.refreshStartedAt < REFRESH_LOCK_MS) return;
 
-  await db.execute({
-    sql: `INSERT INTO view_cache
-            (user_id, view_key, payload_version, input_hash, refresh_started_at, error)
-          VALUES (?, ?, ?, ?, ?, NULL)
-          ON CONFLICT(user_id, view_key) DO UPDATE SET
-            payload_version = excluded.payload_version,
-            refresh_started_at = excluded.refresh_started_at,
-            error = NULL`,
-    args: [userId, TODAY_VIEW_KEY, TODAY_VIEW_VERSION, current.inputHash, now],
-  });
-
+  // refreshTodayCacheForUser owns the refresh_started_at marker and the
+  // error reset. Writing those here would be re-read by that function's
+  // own lock check and cause the scheduled work to bail immediately.
   after(async () => {
     await refreshTodayCacheForUser(userId);
   });
@@ -325,9 +317,14 @@ export async function refreshTodayCacheForUser(userId: string): Promise<TodayPag
       args: [userId, TODAY_VIEW_KEY, TODAY_VIEW_VERSION, startedAt],
     });
 
+    // Capture the version before any data fetch so a concurrent bump
+    // (invalidateTodayCache / markTodayCacheStale) during the build is
+    // not silently overwritten as "fresh". The bump will leave
+    // user_cache_versions.today_version higher than this captured value,
+    // so the next reader sees status="stale" and triggers a re-refresh.
+    const version = await getTodayCacheVersion(userId);
     const frame = await loadTodayFrame(userId);
     if (needsTodayOnboarding(frame)) {
-      const version = await getTodayCacheVersion(userId);
       await db.execute({
         sql: `UPDATE view_cache
               SET payload = NULL, input_hash = ?, computed_at = ?, refresh_started_at = NULL, error = NULL
@@ -340,7 +337,6 @@ export async function refreshTodayCacheForUser(userId: string): Promise<TodayPag
 
     const ready = await buildTodayReadyPayload(frame);
     const payload: TodayPagePayload = { frame, ready };
-    const version = await getTodayCacheVersion(userId);
     await db.execute({
       sql: `UPDATE view_cache
             SET payload = ?, payload_version = ?, input_hash = ?, computed_at = ?,
