@@ -34,6 +34,12 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+vi.mock("next/server", () => ({
+  after: (fn: () => unknown) => {
+    void fn();
+  },
+}));
+
 const emailSendCalls: { to: string; subject: string }[] = [];
 vi.mock("@/lib/email", async () => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports

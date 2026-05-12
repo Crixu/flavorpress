@@ -19,6 +19,16 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
+vi.mock("next/server", async () => {
+  const actual = await vi.importActual<typeof import("next/server")>("next/server");
+  return {
+    ...actual,
+    after: (fn: () => unknown) => {
+      void fn();
+    },
+  };
+});
+
 const fetchMock = vi.fn();
 
 function mockWpcomFlow(wpcomUser: { ID: number; username: string; email: string }) {
