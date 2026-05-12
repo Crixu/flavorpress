@@ -23,6 +23,11 @@ import { AddFeedButton } from "./_components/AddFeedButton";
 
 export const dynamic = "force-dynamic";
 
+// Defensive cap on the explorer query. Typical users sit at tens to low
+// hundreds of sources; at SaaS scale the cap protects against pathological
+// rows-from-Turso costs without affecting normal use.
+const SOURCES_PAGE_LIMIT = 5000;
+
 interface PageProps {
   searchParams: Promise<{ folder?: string; outlet?: string }>;
 }
@@ -72,8 +77,9 @@ export default async function SourcesPage({ searchParams }: PageProps) {
               FROM sources s
               LEFT JOIN item_stats ON item_stats.source_id = s.id
               WHERE s.user_id = ?
-              ORDER BY s.created_at DESC`,
-        args: [last24h, session.userId, session.userId],
+              ORDER BY s.created_at DESC
+              LIMIT ?`,
+        args: [last24h, session.userId, session.userId, SOURCES_PAGE_LIMIT],
       },
       {
         sql: `SELECT id, name, sort_order, created_at FROM source_folders

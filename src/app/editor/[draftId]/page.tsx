@@ -29,6 +29,11 @@ import { EditorRail } from "./_components/EditorRail";
 
 export const dynamic = "force-dynamic";
 
+// Defensive cap on the cluster-items rail; clusters today hold tens of items,
+// but the query has no upstream bound so a runaway cluster would otherwise
+// stream the whole table back to the editor.
+const EDITOR_CLUSTER_ITEMS_LIMIT = 200;
+
 interface PageProps {
   params: Promise<{ draftId: string }>;
 }
@@ -44,33 +49,60 @@ export default async function EditorPage({ params }: PageProps) {
   }
   const { draftId } = await params;
 
-  const r = await db.execute({
-    sql: `SELECT * FROM drafts WHERE id = ? AND user_id = ?`,
-    args: [draftId, session.userId],
-  });
-  if (r.rows.length === 0) notFound();
-  const d = r.rows[0]!;
+  // One round-trip via db.batch. Queries 2-4 derive cluster_id/outlet_id/mode
+  // from the drafts row via PK-indexed subqueries; if the draft does not exist
+  // those subqueries return NULL and the joined results are empty, which the
+  // notFound() check below handles before we read them.
+  const [draftR, clusterR, itemsR, siblingR] = await db.batch(
+    [
+      {
+        sql: `SELECT id, mode, cluster_id, outlet_id, wp_post_id, wp_edit_link,
+                     quotes, wp_synced_at, edited_at, created_at, body, headline,
+                     notes, headline_alternates, angle_archive, angle_gap,
+                     angle_hint, custom_angle
+              FROM drafts WHERE id = ? AND user_id = ?`,
+        args: [draftId, session.userId],
+      },
+      {
+        sql: `SELECT source_count FROM clusters
+              WHERE id = (SELECT cluster_id FROM drafts WHERE id = ? AND user_id = ?)`,
+        args: [draftId, session.userId],
+      },
+      {
+        sql: `SELECT i.id, i.title, i.canonical_url, i.published_at,
+                     s.display_name, s.url AS source_url
+              FROM items i JOIN sources s ON s.id = i.source_id
+              WHERE i.cluster_id = (SELECT cluster_id FROM drafts WHERE id = ? AND user_id = ?)
+              ORDER BY i.published_at DESC
+              LIMIT ?`,
+        args: [draftId, session.userId, EDITOR_CLUSTER_ITEMS_LIMIT],
+      },
+      {
+        sql: `SELECT id FROM drafts
+              WHERE cluster_id = (SELECT cluster_id FROM drafts WHERE id = ? AND user_id = ?)
+                AND outlet_id = (SELECT outlet_id FROM drafts WHERE id = ? AND user_id = ?)
+                AND user_id = ?
+                AND mode = CASE
+                  WHEN (SELECT mode FROM drafts WHERE id = ? AND user_id = ?) = 'researcher'
+                  THEN 'drafter' ELSE 'researcher' END
+              ORDER BY created_at DESC LIMIT 1`,
+        args: [
+          draftId,
+          session.userId,
+          draftId,
+          session.userId,
+          session.userId,
+          draftId,
+          session.userId,
+        ],
+      },
+    ],
+    "read",
+  );
+  if (draftR.rows.length === 0) notFound();
+  const d = draftR.rows[0]!;
 
   const mode = String(d.mode ?? "drafter") === "researcher" ? "researcher" : "drafter";
-  const otherMode = mode === "drafter" ? "researcher" : "drafter";
-  const [clusterR, itemsR, siblingR] = await Promise.all([
-    db.execute({
-      sql: `SELECT * FROM clusters WHERE id = ?`,
-      args: [String(d.cluster_id)],
-    }),
-    db.execute({
-      sql: `SELECT i.*, s.display_name, s.url AS source_url
-            FROM items i JOIN sources s ON s.id = i.source_id
-            WHERE i.cluster_id = ? ORDER BY i.published_at DESC`,
-      args: [String(d.cluster_id)],
-    }),
-    db.execute({
-      sql: `SELECT id FROM drafts
-            WHERE cluster_id = ? AND outlet_id = ? AND user_id = ? AND mode = ?
-            ORDER BY created_at DESC LIMIT 1`,
-      args: [String(d.cluster_id), String(d.outlet_id ?? ""), session.userId, otherMode],
-    }),
-  ]);
   const sourceCount = clusterR.rows[0] ? Number(clusterR.rows[0].source_count) : 0;
 
   // Lookup the sibling artifact (same cluster + outlet, opposite mode).

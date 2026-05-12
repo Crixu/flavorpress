@@ -26,6 +26,12 @@ export const dynamic = "force-dynamic";
 // A draft is "stale" once it stops being a same-day artifact.
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+// Defensive cap on the drafts list. Typical users sit well below this; a
+// power user (SaaS scale) hitting the cap drops the oldest sent drafts
+// from the list first because the query orders by created_at DESC. Keeps
+// the page from streaming an unbounded result set across the wire.
+const DRAFTS_LIMIT = 1000;
+
 interface DraftRow {
   id: string;
   headline: string;
@@ -81,22 +87,69 @@ export default async function DraftsPage({ searchParams }: PageProps) {
   const rawBucket = sp.bucket;
   const bucket: Bucket = rawBucket === "notes" || rawBucket === "sent" ? rawBucket : "in-progress";
 
-  const r = await db.execute({
-    sql: `SELECT d.id, d.mode, d.headline, d.cluster_id, d.outlet_id,
-                 d.voice_match_score, d.notes, d.created_at, d.edited_at,
-                 d.wp_post_id, d.wp_edit_link, d.wp_synced_at,
-                 c.source_count AS source_count,
-                 o.display_name AS outlet_display_name,
-                 o.base_url AS outlet_base_url
-          FROM drafts d
-          LEFT JOIN clusters c ON c.id = d.cluster_id
-          LEFT JOIN outlets o ON o.id = d.outlet_id
-          WHERE d.user_id = ?
-          ORDER BY d.created_at DESC`,
-    args: [session.userId],
-  });
-  const clusterIds = Array.from(new Set(r.rows.map((row) => String(row.cluster_id))));
-  const tagMap = await loadTopTagsByCluster(clusterIds);
+  // One round trip for the drafts list + top tags by cluster. The tag query
+  // pulls its cluster_id set straight from the drafts table via a subquery
+  // so it stays in lockstep with what the list query returns (same user, same
+  // LIMIT, same ORDER BY), and we avoid the round trip we used to pay
+  // shuttling cluster ids back from app code to issue a second query.
+  const [r, tagsR] = await db.batch(
+    [
+      {
+        sql: `SELECT d.id, d.mode, d.headline, d.cluster_id, d.outlet_id,
+                     d.voice_match_score, d.notes, d.created_at, d.edited_at,
+                     d.wp_post_id, d.wp_edit_link, d.wp_synced_at,
+                     c.source_count AS source_count,
+                     o.display_name AS outlet_display_name,
+                     o.base_url AS outlet_base_url
+              FROM drafts d
+              LEFT JOIN clusters c ON c.id = d.cluster_id
+              LEFT JOIN outlets o ON o.id = d.outlet_id
+              WHERE d.user_id = ?
+              ORDER BY d.created_at DESC
+              LIMIT ?`,
+        args: [session.userId, DRAFTS_LIMIT],
+      },
+      {
+        sql: `WITH visible_drafts AS (
+                SELECT cluster_id FROM drafts
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+              ),
+              tag_scores AS (
+                SELECT i.cluster_id, it.tag, MAX(it.confidence) AS confidence
+                FROM items i
+                JOIN item_tags it ON it.item_id = i.id
+                WHERE i.cluster_id IN (SELECT cluster_id FROM visible_drafts)
+                GROUP BY i.cluster_id, it.tag
+              ),
+              ranked AS (
+                SELECT cluster_id, tag,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY cluster_id
+                         ORDER BY confidence DESC, tag ASC
+                       ) AS rn
+                FROM tag_scores
+              )
+              SELECT cluster_id, GROUP_CONCAT(tag, ',') AS top_tags
+              FROM ranked
+              WHERE rn <= 3
+              GROUP BY cluster_id`,
+        args: [session.userId, DRAFTS_LIMIT],
+      },
+    ],
+    "read",
+  );
+  const tagMap = new Map<string, string[]>();
+  for (const row of tagsR.rows) {
+    tagMap.set(
+      String(row.cluster_id),
+      String(row.top_tags ?? "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    );
+  }
 
   const drafts: DraftRow[] = [];
   const sent: SentRow[] = [];
@@ -442,45 +495,6 @@ function VoiceChip({ score }: { score: number }) {
       voice {score}
     </span>
   );
-}
-
-async function loadTopTagsByCluster(clusterIds: string[]): Promise<Map<string, string[]>> {
-  const uniqueIds = Array.from(new Set(clusterIds.filter(Boolean)));
-  const out = new Map<string, string[]>();
-  if (uniqueIds.length === 0) return out;
-  const placeholders = uniqueIds.map(() => "?").join(",");
-  const r = await db.execute({
-    sql: `WITH tag_scores AS (
-            SELECT i.cluster_id, it.tag, MAX(it.confidence) AS confidence
-            FROM items i
-            JOIN item_tags it ON it.item_id = i.id
-            WHERE i.cluster_id IN (${placeholders})
-            GROUP BY i.cluster_id, it.tag
-          ),
-          ranked AS (
-            SELECT cluster_id, tag,
-                   ROW_NUMBER() OVER (
-                     PARTITION BY cluster_id
-                     ORDER BY confidence DESC, tag ASC
-                   ) AS rn
-            FROM tag_scores
-          )
-          SELECT cluster_id, GROUP_CONCAT(tag, ',') AS top_tags
-          FROM ranked
-          WHERE rn <= 3
-          GROUP BY cluster_id`,
-    args: uniqueIds,
-  });
-  for (const row of r.rows) {
-    out.set(
-      String(row.cluster_id),
-      String(row.top_tags ?? "")
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-    );
-  }
-  return out;
 }
 
 function parseNoteCounts(raw: string | null): {
