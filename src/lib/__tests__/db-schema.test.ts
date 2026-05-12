@@ -73,6 +73,17 @@ describe("auth-foundation schema", () => {
     expect(cols.has("updated_at")).toBe(true);
   });
 
+  it("creates outlet_formats table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("outlet_formats");
+    expect(cols.has("outlet_id")).toBe(true);
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("format_key")).toBe(true);
+    expect(cols.has("name")).toBe(true);
+    expect(cols.has("instructions")).toBe(true);
+    expect(cols.has("preset_id")).toBe(true);
+  });
+
   it("enforces wpcom_id uniqueness via partial index", async () => {
     await ensureSchema();
     const r = await db.execute(

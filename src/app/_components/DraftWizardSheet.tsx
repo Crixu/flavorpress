@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { generateDraftAction, generateDraftAnglesAction } from "@/lib/v1/actions";
-import { DRAFT_FORMATS, type DraftFormat } from "@/lib/v1/draft-format";
+import { defaultDraftFormatOptions, type DraftFormatOption } from "@/lib/v1/draft-format";
 import {
   WIZARD_LENGTHS,
   type DraftWizardPrefs,
@@ -36,6 +36,7 @@ interface Props {
   clusterId: string;
   outletId: string;
   outletDisplayName: string;
+  formats: DraftFormatOption[];
   clusterTitle: string;
   prefs: DraftWizardPrefs;
   onClose: () => void;
@@ -55,12 +56,17 @@ export function DraftWizardSheet({
   clusterId,
   outletId,
   outletDisplayName,
+  formats,
   clusterTitle,
   prefs,
   onClose,
 }: Props) {
+  const availableFormats = formats.length > 0 ? formats : defaultDraftFormatOptions();
+  const initialFormat = availableFormats.some((item) => item.key === prefs.format)
+    ? prefs.format
+    : availableFormats[0]!.key;
   const [step, setStep] = useState<Step>(1);
-  const [format, setFormat] = useState<DraftFormat>(prefs.format);
+  const [format, setFormat] = useState<string>(initialFormat);
   const [length, setLength] = useState<WizardLength>(prefs.length);
   const [angles, setAngles] = useState<AngleSuggestion[] | null>(null);
   const [angleError, setAngleError] = useState<string | null>(null);
@@ -183,14 +189,14 @@ export function DraftWizardSheet({
         <div>
           <div className="wpds-wiz-label">Pick the format</div>
           <div className="wpds-wiz-pills">
-            {DRAFT_FORMATS.map((f) => (
+            {availableFormats.map((f) => (
               <button
-                key={f}
+                key={f.key}
                 type="button"
-                className={`wpds-wiz-pill ${format === f ? "on" : ""}`}
-                onClick={() => setFormat(f)}
+                className={`wpds-wiz-pill ${format === f.key ? "on" : ""}`}
+                onClick={() => setFormat(f.key)}
               >
-                {f}
+                {f.name}
               </button>
             ))}
           </div>
@@ -243,7 +249,9 @@ export function DraftWizardSheet({
           <div
             role="button"
             tabIndex={0}
-            className={`wpds-wiz-angle wpds-wiz-angle-custom ${pickedKind === "custom" ? "on" : ""}`}
+            className={`wpds-wiz-angle wpds-wiz-angle-custom ${
+              pickedKind === "custom" ? "on" : ""
+            }`}
             onClick={() => setPickedKind("custom")}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {

@@ -18,7 +18,7 @@ import { createAnthropicClient, extractJson, extractText, MODEL } from "../anthr
 import { db } from "../db";
 import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
-import type { DraftFormat } from "./draft-generator";
+import type { DraftFormat, DraftFormatOption } from "./draft-format";
 
 export interface AngleSuggestion {
   kind: "archive" | "gap" | "fresh";
@@ -31,7 +31,7 @@ export interface AngleSuggestionsInput {
   clusterId: string;
   userId: string;
   outletId: string;
-  format: DraftFormat;
+  format: DraftFormatOption;
   wordCount: number;
 }
 
@@ -102,9 +102,9 @@ LEDE: ${item.lede}
 
 ${descriptionBlock}
 
-TARGET FORMAT: ${input.format}
+TARGET FORMAT: ${input.format.name}
 TARGET LENGTH: ${input.wordCount} words
-TITLE HINT FOR THIS FORMAT: ${FORMAT_TITLE_HINT[input.format]}
+TITLE HINT FOR THIS FORMAT: ${titleHintForFormat(input.format)}
 
 ARCHETYPES (you must produce one angle per archetype, in order):
 ${archetypeBlock}
@@ -145,7 +145,7 @@ RULES:
   return normalizeAngles(parsed.angles, input.format);
 }
 
-function normalizeAngles(raw: unknown, format: DraftFormat): AngleSuggestion[] {
+function normalizeAngles(raw: unknown, format: DraftFormatOption): AngleSuggestion[] {
   const list = Array.isArray(raw) ? raw : [];
   const byKind = new Map<AngleSuggestion["kind"], AngleSuggestion>();
   for (const entry of list) {
@@ -184,7 +184,7 @@ function normalizeAngles(raw: unknown, format: DraftFormat): AngleSuggestion[] {
   );
 }
 
-function stubAngles(format: DraftFormat): AngleSuggestion[] {
+function stubAngles(format: DraftFormatOption): AngleSuggestion[] {
   return ARCHETYPES.map((a) => ({
     kind: a.kind,
     label: a.label,
@@ -193,16 +193,21 @@ function stubAngles(format: DraftFormat): AngleSuggestion[] {
   }));
 }
 
-function stubTitle(kind: AngleSuggestion["kind"], format: DraftFormat): string {
+function stubTitle(kind: AngleSuggestion["kind"], format: DraftFormatOption): string {
   const base =
     kind === "archive"
       ? "What this changes about the story you've already told"
       : kind === "gap"
         ? "The detail most outlets are skipping"
         : "A starting point for readers new to this beat";
-  if (format === "qa") return `${base}?`;
-  if (format === "listicle") return `5 ways: ${base.toLowerCase()}`;
+  if (format.presetId === "qa") return `${base}?`;
+  if (format.presetId === "listicle") return `5 ways: ${base.toLowerCase()}`;
   return base;
+}
+
+function titleHintForFormat(format: DraftFormatOption): string {
+  if (format.presetId) return FORMAT_TITLE_HINT[format.presetId];
+  return `Custom format. Use this outlet's instructions for headline shape: ${format.instructions}`;
 }
 
 async function loadOutletDescription(outletId: string, userId: string): Promise<string | null> {

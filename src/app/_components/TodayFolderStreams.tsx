@@ -12,6 +12,7 @@ import { Card } from "@/components/wpds";
 import { ClusterActions } from "./ClusterActions";
 import { useToast } from "./Toast";
 import { useBackgroundPolling } from "./useBackgroundPolling";
+import type { DraftFormatOption } from "@/lib/v1/draft-format";
 
 export interface TodayClusterPreview {
   cluster: {
@@ -50,6 +51,7 @@ export interface TodayClusterPreview {
 export interface OutletOption {
   id: string;
   displayName: string;
+  formats?: DraftFormatOption[];
 }
 
 export interface TodayFolderStream {

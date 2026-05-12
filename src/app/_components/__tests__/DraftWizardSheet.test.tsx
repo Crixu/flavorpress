@@ -14,13 +14,15 @@ vi.mock("@/lib/v1/actions", () => ({
 }));
 
 import { DraftWizardSheet } from "../DraftWizardSheet";
+import { defaultDraftFormatOptions } from "@/lib/v1/draft-format";
 
 const baseProps = {
   clusterId: "c1",
   outletId: "o1",
   outletDisplayName: "lucas.media",
+  formats: defaultDraftFormatOptions(),
   clusterTitle: "Test cluster",
-  prefs: { format: "narrative" as const, length: 1000 as const },
+  prefs: { format: "narrative", length: 1000 as const },
   onClose: vi.fn(),
 };
 
@@ -74,8 +76,8 @@ describe("DraftWizardSheet", () => {
 
   it("shows format pills on step 1", () => {
     render(<DraftWizardSheet {...baseProps} />);
-    expect(screen.getByRole("button", { name: "narrative" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "listicle" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Narrative essay" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Listicle" })).toBeInTheDocument();
   });
 
   it("shows length pills on step 2", async () => {

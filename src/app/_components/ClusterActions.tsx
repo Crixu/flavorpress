@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { generateDraftAction, getDraftWizardPrefsAction } from "@/lib/v1/actions";
 import { DEFAULT_WIZARD_PREFS, type DraftWizardPrefs } from "@/lib/v1/wizard-prefs-shared";
+import { defaultDraftFormatOptions, type DraftFormatOption } from "@/lib/v1/draft-format";
 import { DraftWizardSheet } from "./DraftWizardSheet";
 
 interface DraftRef {
@@ -28,6 +29,7 @@ type DraftsByMode = Record<Mode, DraftRef | null>;
 interface OutletOption {
   id: string;
   displayName: string;
+  formats?: DraftFormatOption[];
 }
 
 interface Props {
@@ -225,6 +227,7 @@ export function ClusterActions({
           clusterId={clusterId}
           outletId={selectedOutletId}
           outletDisplayName={selectedOutlet.displayName}
+          formats={selectedOutlet.formats ?? defaultDraftFormatOptions()}
           clusterTitle={clusterTitle}
           prefs={wizardPrefs}
           onClose={() => setWizardOpen(false)}
