@@ -9,6 +9,7 @@ import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
 
 const ANTHROPIC_KEY_PATTERN = /^sk-ant-[a-zA-Z0-9_-]{10,}$/;
+const SETTINGS_SECTIONS = new Set(["authentication", "models", "extensions", "library"]);
 
 type Validator = (value: string) => string | null;
 
@@ -36,6 +37,19 @@ function getValidator(key: string): Validator | null {
   return field?.validate ?? null;
 }
 
+function settingsRedirectUrl(
+  formData: FormData,
+  params: Record<string, string>,
+): `/settings?${string}` {
+  const search = new URLSearchParams();
+  const section = String(formData.get("section") ?? "");
+  if (SETTINGS_SECTIONS.has(section)) search.set("section", section);
+  for (const [key, value] of Object.entries(params)) {
+    search.set(key, value);
+  }
+  return `/settings?${search.toString()}`;
+}
+
 /**
  * Save (or clear) a single setting. The form must include a `key` field
  * that names which setting is being edited; an empty `value` clears the
@@ -43,41 +57,41 @@ function getValidator(key: string): Validator | null {
  */
 export async function saveSettingAction(formData: FormData): Promise<void> {
   const session = await requireSession();
-  if (!session.isAdmin) redirect("/settings?error=forbidden");
+  if (!session.isAdmin) redirect(settingsRedirectUrl(formData, { error: "forbidden" }));
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
-    redirect("/settings?error=invalid_key");
+    redirect(settingsRedirectUrl(formData, { error: "invalid_key" }));
   }
   const value = String(formData.get("value") ?? "").trim();
 
   if (value === "") {
     await setSetting(key, null);
     revalidatePath("/settings");
-    redirect(`/settings?cleared=${encodeURIComponent(key)}`);
+    redirect(settingsRedirectUrl(formData, { cleared: key }));
   }
 
   const validator = getValidator(key);
   const error = validator ? validator(value) : null;
   if (error) {
     revalidatePath("/settings");
-    redirect(`/settings?error=${encodeURIComponent(error)}`);
+    redirect(settingsRedirectUrl(formData, { error }));
   }
 
   await setSetting(key, value);
   revalidatePath("/settings");
-  redirect(`/settings?saved=${encodeURIComponent(key)}`);
+  redirect(settingsRedirectUrl(formData, { saved: key }));
 }
 
 export async function clearSettingAction(formData: FormData): Promise<void> {
   const session = await requireSession();
-  if (!session.isAdmin) redirect("/settings?error=forbidden");
+  if (!session.isAdmin) redirect(settingsRedirectUrl(formData, { error: "forbidden" }));
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
-    redirect("/settings?error=invalid_key");
+    redirect(settingsRedirectUrl(formData, { error: "invalid_key" }));
   }
   await setSetting(key, null);
   revalidatePath("/settings");
-  redirect(`/settings?cleared=${encodeURIComponent(key)}`);
+  redirect(settingsRedirectUrl(formData, { cleared: key }));
 }
 
 /**
@@ -89,16 +103,20 @@ export async function clearSettingAction(formData: FormData): Promise<void> {
  */
 export async function toggleExtensionAction(formData: FormData): Promise<void> {
   const session = await requireSession();
-  if (!session.isAdmin) redirect("/settings?error=forbidden");
+  if (!session.isAdmin) redirect(settingsRedirectUrl(formData, { error: "forbidden" }));
   const extensionId = String(formData.get("extensionId") ?? "");
   if (!findExtensionMetadata(extensionId)) {
-    redirect("/settings?error=invalid_extension");
+    redirect(settingsRedirectUrl(formData, { error: "invalid_extension" }));
   }
   const enabled = String(formData.get("enabled") ?? "") === "1";
   await setExtensionEnabled(extensionId, enabled);
   revalidatePath("/settings");
   revalidatePath("/editor", "layout");
   redirect(
-    `/settings?extension=${encodeURIComponent(extensionId)}&state=${enabled ? "enabled" : "disabled"}`,
+    settingsRedirectUrl(formData, {
+      section: "extensions",
+      extension: extensionId,
+      state: enabled ? "enabled" : "disabled",
+    }),
   );
 }
