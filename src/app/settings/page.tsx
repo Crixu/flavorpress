@@ -15,7 +15,12 @@ import {
 import { resolveAnthropicAuth, type AuthMode } from "@/lib/anthropic";
 import { db, ensureSchema } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { AuthRequiredError, requireSession, shouldShowAdminControls } from "@/lib/session";
+import {
+  AuthRequiredError,
+  canAccessSettings,
+  requireSession,
+  shouldShowAdminControls,
+} from "@/lib/session";
 import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
@@ -53,6 +58,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
     if (err instanceof AuthRequiredError) redirect("/login");
     throw err;
   }
+  if (!canAccessSettings(session)) redirect("/");
   const sp = await searchParams;
   const section = sp.section ?? "authentication";
 
