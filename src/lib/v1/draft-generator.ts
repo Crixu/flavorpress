@@ -14,6 +14,7 @@
 
 import { db, ensureSchema } from "../db";
 import { createAnthropicClient, LocalClaudeError } from "../anthropic";
+import { notifyFirstDraftCreated } from "../notifications";
 import { getBus } from "./event-bus";
 import { newTraceId, traceLogger } from "./trace";
 import { fingerprintText, voiceMatchScore } from "./style-sheet";
@@ -254,6 +255,21 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   });
 
   await adjustClusterSourceTrust(input.clusterId, TRUST_DELTA.draftCreated, input.userId);
+
+  const draftCount = await db.execute({
+    sql: `SELECT COUNT(*) AS count FROM drafts WHERE user_id = ? AND mode = 'drafter'`,
+    args: [input.userId],
+  });
+  if (Number(draftCount.rows[0]?.count ?? 0) === 1) {
+    await notifyFirstDraftCreated({
+      userId: input.userId,
+      draftId,
+      clusterId: input.clusterId,
+      outletId: input.outletId,
+      headline: result.headline,
+      voiceMatchScore: finalScore,
+    });
+  }
 
   await getBus().emit<DraftRenderedPayload>(
     "draft.rendered",

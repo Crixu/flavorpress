@@ -10,6 +10,7 @@
  */
 
 import { db, ensureSchema } from "../db";
+import { notifyFirstSiteConnected } from "../notifications";
 import { assertCanCreateOutlets } from "../plans";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
 import type { WPCredentials } from "../wordpress";
@@ -156,11 +157,15 @@ export async function commitOutletCredentials(
 
   // First-connected becomes default.
   const outletRow = await db.execute({
-    sql: `SELECT user_id FROM outlets WHERE id = ?`,
+    sql: `SELECT o.user_id, o.base_url, o.display_name,
+                 (SELECT COUNT(*) FROM outlets
+                  WHERE user_id = o.user_id AND app_password_encrypted IS NOT NULL) AS connected_count
+          FROM outlets o WHERE o.id = ?`,
     args: [outletId],
   });
   if (outletRow.rows.length === 0) return;
   const userId = String(outletRow.rows[0]!.user_id);
+  const connectedCount = Number(outletRow.rows[0]!.connected_count ?? 0);
   const defaultRow = await db.execute({
     sql: `SELECT id FROM outlets WHERE user_id = ? AND is_default = 1`,
     args: [userId],
@@ -169,6 +174,16 @@ export async function commitOutletCredentials(
     await db.execute({
       sql: `UPDATE outlets SET is_default = 1 WHERE id = ?`,
       args: [outletId],
+    });
+  }
+  if (connectedCount === 1) {
+    await notifyFirstSiteConnected({
+      userId,
+      outletId,
+      baseUrl: String(outletRow.rows[0]!.base_url ?? ""),
+      displayName:
+        outletRow.rows[0]!.display_name == null ? null : String(outletRow.rows[0]!.display_name),
+      kind,
     });
   }
 }

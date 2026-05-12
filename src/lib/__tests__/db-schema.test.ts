@@ -54,6 +54,18 @@ describe("auth-foundation schema", () => {
     expect(cols.has("custom_folder_limit")).toBe(true);
   });
 
+  it("creates notification_webhook_deliveries table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("notification_webhook_deliveries");
+    expect(cols.has("event_key")).toBe(true);
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("event_type")).toBe(true);
+    expect(cols.has("payload")).toBe(true);
+    expect(cols.has("status")).toBe(true);
+    expect(cols.has("error")).toBe(true);
+    expect(cols.has("delivered_at")).toBe(true);
+  });
+
   it("creates view_cache table", async () => {
     await ensureSchema();
     const cols = await tableInfo("view_cache");

@@ -3,6 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import {
   SESSION_COOKIE_NAME,
   createSessionCookie,
@@ -17,6 +18,7 @@ import { createUser, getUserByEmail, hasAdmin, migrateDefaultUser } from "@/lib/
 import { issueVerificationToken } from "@/lib/email-tokens";
 import { sendEmail } from "@/lib/email";
 import { verificationEmail } from "@/lib/email-templates";
+import { notifySignupWithEmail } from "@/lib/notifications";
 
 function signupErrorPath(invite: string, error: string): string {
   const params = new URLSearchParams();
@@ -125,6 +127,8 @@ export async function signupAction(formData: FormData) {
   } catch {
     // best-effort
   }
+
+  after(() => notifySignupWithEmail({ userId, email, method: "email" }));
 
   redirect("/");
 }

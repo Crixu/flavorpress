@@ -481,6 +481,19 @@ export async function ensureSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_event_log_type ON event_log(type, occurred_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_event_log_trace ON event_log(trace_id)`,
 
+      `CREATE TABLE IF NOT EXISTS notification_webhook_deliveries (
+        event_key TEXT PRIMARY KEY,
+        user_id TEXT,
+        event_type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        status INTEGER,
+        error TEXT,
+        delivered_at INTEGER,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_notification_webhook_deliveries_user
+        ON notification_webhook_deliveries(user_id, created_at DESC)`,
+
       `CREATE TABLE IF NOT EXISTS trace_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         trace_id TEXT NOT NULL,

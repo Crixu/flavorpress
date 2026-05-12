@@ -137,6 +137,7 @@ export const USER_TENANCY_TABLES = [
   "ranker_signals",
   "ranker_corrections",
   "event_log",
+  "notification_webhook_deliveries",
   "trace_log",
   "user_plans",
 ] as const;
