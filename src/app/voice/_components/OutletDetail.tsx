@@ -18,6 +18,7 @@ import {
 import { VoiceSetupPicker } from "@/app/voice/[outletId]/_components/VoiceSetupPicker";
 import { MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import type { Outlet } from "@/lib/v1/outlets";
+import { DeleteOutletButton } from "./DeleteOutletButton";
 
 interface ProfileData {
   archiveSize: number;
@@ -187,6 +188,15 @@ export function OutletDetail({ outlet, profile, isThinArchive, archivePostCount 
       )}
 
       {profile ? <RedoVoiceSetup outletId={outletId} /> : null}
+
+      <section className="fp-danger-zone">
+        <div className="fp-danger-zone-h">Delete Outlet</div>
+        <p className="mb-3 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+          Removes this Outlet and its voice profile from FlavorPress. Existing WordPress drafts and
+          posts stay untouched.
+        </p>
+        <DeleteOutletButton outletId={outletId} outletName={outlet.displayName ?? outlet.baseUrl} />
+      </section>
     </div>
   );
 }

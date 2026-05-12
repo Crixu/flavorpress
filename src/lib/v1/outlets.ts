@@ -214,11 +214,26 @@ export async function disconnectOutlet(
 ): Promise<void> {
   await ensureSchema();
   if (opts.purge) {
+    const outlet = await db.execute({
+      sql: `SELECT is_default FROM outlets WHERE id = ? AND user_id = ?`,
+      args: [outletId, userId],
+    });
+    if (outlet.rows.length === 0) return;
+    const wasDefault = Number(outlet.rows[0]!.is_default ?? 0) === 1;
+
     await db.batch(
       [
         {
-          sql: `DELETE FROM voice_profiles WHERE outlet_id = ?`,
+          sql: `DELETE FROM wp_authorize_states WHERE outlet_id = ? AND user_id = ?`,
+          args: [outletId, userId],
+        },
+        {
+          sql: `DELETE FROM outlet_sources WHERE outlet_id = ?`,
           args: [outletId],
+        },
+        {
+          sql: `DELETE FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+          args: [outletId, userId],
         },
         {
           sql: `DELETE FROM outlets WHERE id = ? AND user_id = ?`,
@@ -227,6 +242,23 @@ export async function disconnectOutlet(
       ],
       "write",
     );
+
+    if (wasDefault) {
+      const next = await db.execute({
+        sql: `SELECT id FROM outlets
+              WHERE user_id = ?
+              ORDER BY app_password_encrypted IS NULL ASC, created_at ASC
+              LIMIT 1`,
+        args: [userId],
+      });
+      const nextId = next.rows[0]?.id ? String(next.rows[0].id) : "";
+      if (nextId) {
+        await db.execute({
+          sql: `UPDATE outlets SET is_default = 1 WHERE id = ? AND user_id = ?`,
+          args: [nextId, userId],
+        });
+      }
+    }
     return;
   }
   await db.execute({

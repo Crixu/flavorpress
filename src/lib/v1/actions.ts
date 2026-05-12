@@ -173,6 +173,8 @@ export async function disconnectOutletAction(formData: FormData) {
   await disconnectOutlet(outletId, { purge }, session.userId);
   revalidatePath("/voice");
   revalidatePath("/");
+  const redirectTo = String(formData.get("redirectTo") ?? "");
+  if (purge && redirectTo === "/voice") redirect("/voice");
 }
 
 export async function setDefaultOutletAction(formData: FormData) {
