@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { SESSION_COOKIE_NAME, createSessionCookie, getSessionTtlSeconds } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { consumeInvite, InviteError } from "@/lib/invites";
+import { notifySignupWithEmail } from "@/lib/notifications";
 import { consumeWpcomState, exchangeCodeForUser, isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { createUser, getUserByEmail, hasAdmin } from "@/lib/users";
 
@@ -117,5 +118,6 @@ export async function GET(req: Request) {
   }
 
   await setSessionCookie(userId, 0);
+  after(() => notifySignupWithEmail({ userId, email: wp.email, method: "wpcom" }));
   return NextResponse.redirect(new URL("/", origin()), 302);
 }

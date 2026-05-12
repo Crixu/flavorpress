@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db, ensureSchema } from "../db";
+import { notifyFirstPostPushed, notifyFirstSourceConnected } from "../notifications";
 import { assertCanCreateFolders, assertCanCreateSources } from "../plans";
 import { requireSession } from "../session";
 import { ensureRegisteredCapabilities } from "./bootstrap";
@@ -292,6 +293,7 @@ export async function addSourceAction(formData: FormData) {
   const existingUrls = new Set(
     (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
   );
+  const hadSourcesBefore = existing.rows.length > 0;
   const freshInputs = inputs.filter((input) => !existingUrls.has(input));
   await assertCanCreateSources(session.userId, freshInputs.length);
 
@@ -397,6 +399,14 @@ export async function addSourceAction(formData: FormData) {
       ),
     ),
   );
+  if (!hadSourcesBefore && addedSources.length > 0) {
+    await notifyFirstSourceConnected({
+      userId: session.userId,
+      ...addedSources[0]!,
+      sourceId: addedSources[0]!.id,
+      addedCount: addedSources.length,
+    });
+  }
   revalidatePath("/sources");
   revalidatePath("/");
 }
@@ -520,6 +530,7 @@ export async function importOpmlSelectionAction(formData: FormData) {
   const existingUrls = new Set(
     (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
   );
+  const hadSourcesBefore = existing.rows.length > 0;
   const freshUrlCount = urls.filter((url) => !existingUrls.has(url)).length;
   await assertCanCreateSources(session.userId, freshUrlCount);
 
@@ -589,6 +600,14 @@ export async function importOpmlSelectionAction(formData: FormData) {
       ),
     ),
   );
+  if (!hadSourcesBefore && addedSources.length > 0) {
+    await notifyFirstSourceConnected({
+      userId: session.userId,
+      ...addedSources[0]!,
+      sourceId: addedSources[0]!.id,
+      addedCount: addedSources.length,
+    });
+  }
   revalidatePath("/sources");
   revalidatePath("/");
 }
@@ -2387,6 +2406,16 @@ async function rememberRecoveredWordPressEditLink(
   revalidatePath("/drafts");
 }
 
+async function hasWordPressPush(userId: string): Promise<boolean> {
+  const r = await db.execute({
+    sql: `SELECT 1 FROM drafts
+          WHERE user_id = ? AND wp_post_id IS NOT NULL
+          LIMIT 1`,
+    args: [userId],
+  });
+  return r.rows.length > 0;
+}
+
 /**
  * Push the rendered draft to the connected outlet as a WordPress post.
  * Default status is "draft" — the user lands on the WP edit screen, reads
@@ -2462,6 +2491,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
 
   const headline = String(row.headline ?? "");
   const body = String(row.body ?? "");
+  const isFirstPostPush = !(await hasWordPressPush(session.userId));
 
   const result = await publishToWordPress({
     creds,
@@ -2512,6 +2542,18 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     },
     { userId: session.userId },
   );
+  if (isFirstPostPush) {
+    await notifyFirstPostPushed({
+      userId: session.userId,
+      draftId,
+      clusterId,
+      outletId,
+      mode: "drafter",
+      wpPostId: result.wpPostId,
+      editLink: result.editLink,
+      status,
+    });
+  }
 
   // Deliberately do NOT revalidate /editor/[draftId] here. The client form
   // wants to render a brief "Sent" beat and then redirect to /; if we
@@ -2614,6 +2656,7 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
   }));
   const handoffHtml = renderNotesHandoffHtml(notes, sources);
   const headline = notes.topic || fallbackTopic;
+  const isFirstPostPush = !(await hasWordPressPush(session.userId));
 
   const result = await publishToWordPress({
     creds,
@@ -2654,6 +2697,18 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
     },
     { userId: session.userId },
   );
+  if (isFirstPostPush) {
+    await notifyFirstPostPushed({
+      userId: session.userId,
+      draftId,
+      clusterId: row.cluster_id ? String(row.cluster_id) : null,
+      outletId,
+      mode: "researcher",
+      wpPostId: result.wpPostId,
+      editLink: result.editLink,
+      status: "draft",
+    });
+  }
 
   // See note on publishDraftToWPAction: avoid revalidating /editor/[draftId]
   // during the action so the form's post-success "Sent" beat survives until
