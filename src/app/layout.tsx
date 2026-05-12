@@ -34,8 +34,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Hide the topbar + shell nav on logged-out pages (login, signup, reset
   // flows, verify-email status). The auth surface should look like a clean
   // standalone form, not a chrome with broken links to gated routes.
-  // The cookie-only check avoids a user-row read on every shell render;
-  // AccountMenuClient fetches its own data via /api/account/me.
   const isAuthed = await hasSessionCookieForShell();
 
   return (

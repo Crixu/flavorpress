@@ -581,6 +581,15 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_invites_unused ON invites(used_at) WHERE used_at IS NULL`,
 
+      `CREATE TABLE IF NOT EXISTS user_plans (
+        user_id TEXT PRIMARY KEY,
+        plan TEXT NOT NULL DEFAULT 'trial',
+        custom_outlet_limit INTEGER,
+        custom_source_limit INTEGER,
+        custom_folder_limit INTEGER,
+        updated_at INTEGER NOT NULL
+      )`,
+
       `CREATE TABLE IF NOT EXISTS email_verification_tokens (
         token TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,

@@ -24,7 +24,7 @@ If a proposed move does not advance "reading to writing," flag it and surface th
 Before writing code, accepting a feature ask, or replying to a scope question, do this:
 
 1. **Restate the feature in one sentence** with an explicit user-visible verb. If you cannot, ask Lucas to clarify rather than guessing.
-2. **Run the seven-question test** (the same one in the `/reading-to-writing` skill). Reading, writing, same day, voice, no slop, pull-not-push, single-site-single-user. Mark each YES, NO, MAYBE, or N/A in your reply with one-line reasons.
+2. **Run the seven-question test** (the same one in the `/reading-to-writing` skill). Reading, writing, same day, voice, no slop, pull-not-push, deployment fit. Mark each YES, NO, MAYBE, or N/A in your reply with one-line reasons.
 3. **Output a verdict**: KEEP, DEFER, or DROP, with two to four sentences of reasoning.
 4. **On DEFER**: propose the smallest reframe that would make it pass.
 5. **On DROP**: name what this is instead (a different product, an enterprise feature, a v3 surface).
@@ -45,13 +45,13 @@ Suggested copy or naming: run the test if the suggestion changes what the user t
 
 These were cut on 2026-04-28 and the test consistently rejects them. Do not slip them back into scope without Lucas saying so out loud:
 
-- Multi-site routing, multi-tenant voice profiles, organizations, memberships
+- Organizations, memberships, and enterprise tenant hierarchies
 - Wire services (AP, Reuters, dpa, AFP, Bloomberg)
 - Cross-web trending or discovery feeds
 - Auto-publish on a schedule; daily push notifications; "morning digest" emails out
 - Marketplace of source connectors; L402 micropayments
 - Browser extensions; mobile apps
-- Admin portal, sudo / impersonation, staff roles
+- Sudo / impersonation and staff roles outside the deployment admin surface
 - Anything tagged "enterprise" until an enterprise customer signs
 
 OPML (#34), multi-story RSS extraction (#64), X via Nitter (#62, #65), and Reddit ingestion shipped between 2026-04-28 and today under the SaaS direction set 2026-04-30, which supersedes the original prototype deferral. The 2026-04-28 reset rules in this file still guard against enterprise scope creep, but the previous "revisit at 2+ prosumers" gate on source ingestion is no longer load-bearing; new source kinds are evaluated against the seven-question test directly.
@@ -73,13 +73,13 @@ These rules apply to chat replies, code comments, README content, P2 drafts, voi
 
 ## Stack ground truth
 
-Reset prototype, scaffolded 2026-04-28. Single-site, single-user, prosumer.
+Reset prototype, scaffolded 2026-04-28. Prosumer multiuser deployment.
 
 - Next.js 16.2 (Turbopack), React 19, TypeScript, Tailwind 4
 - libSQL via `@libsql/client` (file URL locally, Turso on Vercel)
 - Anthropic SDK direct (no AI Framework wrapper)
 - Vercel as deployment target (provisional; reversed from prior VIP Node.js decision)
-- No Supabase, no Auth.js, no MySQL, no Redis, no BullMQ, no orgs, no admin portal
+- No Supabase, no Auth.js, no MySQL, no Redis, no BullMQ, no orgs
 
 If a proposed change pulls in any of those stricken pieces, the test should catch it as DEFER or DROP with an enterprise-tier reframe.
 

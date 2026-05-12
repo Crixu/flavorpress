@@ -138,6 +138,7 @@ export const USER_TENANCY_TABLES = [
   "ranker_corrections",
   "event_log",
   "trace_log",
+  "user_plans",
 ] as const;
 
 export interface MigrateDefaultUserOptions {

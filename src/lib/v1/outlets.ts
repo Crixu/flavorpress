@@ -10,6 +10,7 @@
  */
 
 import { db, ensureSchema } from "../db";
+import { assertCanCreateOutlets } from "../plans";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
 import type { WPCredentials } from "../wordpress";
 
@@ -122,6 +123,7 @@ export async function stageOutlet(
     });
     return id;
   }
+  await assertCanCreateOutlets(userId);
   const id = crypto.randomUUID();
   await db.execute({
     sql: `INSERT INTO outlets (id, user_id, base_url, display_name, created_at)

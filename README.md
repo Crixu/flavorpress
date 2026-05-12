@@ -92,6 +92,7 @@ build) is picked up without an explicit migration. The macOS launcher
 sets this for you; for local dev, add `FLAVORPRESS_AUTH=local` to `.env`.
 
 Override the bootstrap email via `FLAVORPRESS_LOCAL_EMAIL=you@example.com`.
+Set `FLAVORPRESS_DEBUG_ADMIN=1` to show `/settings/admin` in local mode.
 
 ### Email
 
@@ -129,6 +130,7 @@ also register `http://localhost:3000/api/auth/wpcom/callback`.
 | `FLAVORPRESS_ORIGIN`          | yes in production | Public app origin, for example `https://your-flavorpress.example.com`. Production fails closed without this so callbacks and mutation checks do not trust arbitrary Host headers.                                                                                              |
 | `FLAVORPRESS_ENCRYPTION_KEY`  | yes in production | AES-GCM key for WordPress Application Passwords and sensitive settings stored in the database. Generate one with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.                                                                           |
 | `FLAVORPRESS_ALLOWED_ORIGINS` | no                | Optional comma-separated allowlist for trusted reverse proxy origins on mutation requests. The current request origin is always allowed.                                                                                                                                       |
+| `FLAVORPRESS_DEBUG_ADMIN`     | no                | Set to `1` to expose `/settings/admin` while `FLAVORPRESS_AUTH=local` is active. Local mode hides admin by default.                                                                                                                                                            |
 | `CRON_SECRET`                 | yes on Vercel     | Bearer token Vercel Cron sends to `/api/cron/poll`. Production returns 500 when unset so source polling is not exposed as a public mutation route.                                                                                                                             |
 | `ANTHROPIC_DRAFT_MODEL`       | no                | Model name. Defaults to `claude-haiku-4-5-20251001`.                                                                                                                                                                                                                           |
 | `FLAVORPRESS_LOCAL_CLAUDE`    | no                | Set to `1` to force the local Claude Code login path. When unset, FlavorPress auto-detects: if no API key is configured and `claude` is on PATH, it rides your Claude Code login via `@anthropic-ai/claude-agent-sdk` (same approach Conductor uses). Not supported on Vercel. |

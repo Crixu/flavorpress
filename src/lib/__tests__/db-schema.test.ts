@@ -43,6 +43,16 @@ describe("auth-foundation schema", () => {
     expect(cols.has("user_id")).toBe(true);
   });
 
+  it("creates user_plans table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("user_plans");
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("plan")).toBe(true);
+    expect(cols.has("custom_outlet_limit")).toBe(true);
+    expect(cols.has("custom_source_limit")).toBe(true);
+    expect(cols.has("custom_folder_limit")).toBe(true);
+  });
+
   it("creates view_cache table", async () => {
     await ensureSchema();
     const cols = await tableInfo("view_cache");

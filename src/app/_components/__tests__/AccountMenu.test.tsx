@@ -24,4 +24,9 @@ describe("AccountMenu", () => {
     expect(logout.closest("form")?.getAttribute("action")).toBe("/logout");
     expect(logout.closest("form")?.getAttribute("method")).toBe("post");
   });
+
+  it("renders an admin link when requested", () => {
+    render(<AccountMenu email="lucas@example.com" showAdmin />);
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/settings/admin");
+  });
 });
