@@ -20,7 +20,11 @@ describe("notification webhooks", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("accepted", { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const user = await createUser({ id: "u_notify", email: "writer@example.com", passwordHash: null });
+    const user = await createUser({
+      id: "u_notify",
+      email: "writer@example.com",
+      passwordHash: null,
+    });
     await notifySignupWithEmail({ userId: user.id, email: user.email, method: "email" });
     await notifySignupWithEmail({ userId: user.id, email: user.email, method: "email" });
 
@@ -53,7 +57,11 @@ describe("notification webhooks", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const user = await createUser({ id: "u_no_hook", email: "writer@example.com", passwordHash: null });
+    const user = await createUser({
+      id: "u_no_hook",
+      email: "writer@example.com",
+      passwordHash: null,
+    });
     await notifySignupWithEmail({ userId: user.id, email: user.email, method: "email" });
 
     expect(fetchMock).not.toHaveBeenCalled();
