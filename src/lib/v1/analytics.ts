@@ -2,11 +2,7 @@ import "server-only";
 
 import { db, ensureSchema } from "../db";
 import { getBus } from "./event-bus";
-import type {
-  ClusterFormedPayload,
-  SourceAddedPayload,
-  WordPressPushedPayload,
-} from "./types";
+import type { ClusterFormedPayload, SourceAddedPayload, WordPressPushedPayload } from "./types";
 
 export interface ReadingToWritingMetrics {
   sourcesAdded: number;

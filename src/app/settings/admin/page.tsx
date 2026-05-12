@@ -177,9 +177,7 @@ function ReadingToWritingSection({ metrics }: { metrics: ReadingToWritingMetrics
         {cards.map((card) => (
           <div key={card.label} className="fp-card p-5">
             <div className="fp-eyebrow">{card.label}</div>
-            <div className="mt-2 text-3xl font-semibold tabular tracking-tight">
-              {card.value}
-            </div>
+            <div className="mt-2 text-3xl font-semibold tabular tracking-tight">{card.value}</div>
           </div>
         ))}
       </div>
