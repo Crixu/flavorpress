@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 
 export function AccountMenuClient() {
   const [email, setEmail] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/account/me", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
-      .then((body: { email?: string; showAdmin?: boolean } | null) => {
+      .then((body: { email?: string; avatarUrl?: string; showAdmin?: boolean } | null) => {
         if (!cancelled && body?.email) {
           setEmail(body.email);
+          setAvatarUrl(body.avatarUrl ?? null);
           setShowAdmin(body.showAdmin === true);
         }
       })
@@ -23,11 +26,24 @@ export function AccountMenuClient() {
   }, []);
 
   if (!email) return null;
+  const fallbackInitial = email.slice(0, 1).toUpperCase();
+  const shouldShowAvatar = avatarUrl !== null && failedAvatarUrl !== avatarUrl;
+
   return (
     <details className="fp-account-menu">
       <summary className="fp-account-trigger" aria-label="Account menu">
         <span aria-hidden="true" className="fp-account-avatar">
-          {email.slice(0, 1).toUpperCase()}
+          {shouldShowAvatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              className="fp-account-avatar-img"
+              src={avatarUrl}
+              alt=""
+              onError={() => setFailedAvatarUrl(avatarUrl)}
+            />
+          ) : (
+            fallbackInitial
+          )}
         </span>
       </summary>
       <div className="fp-account-popover">

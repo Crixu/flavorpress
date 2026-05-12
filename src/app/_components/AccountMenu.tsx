@@ -1,14 +1,6 @@
-import { createHash } from "node:crypto";
+export { gravatarUrl } from "@/lib/gravatar";
 
-export function gravatarUrl(email: string, size = 80): string {
-  const hash = createHash("md5").update(email.trim().toLowerCase()).digest("hex");
-  const params = new URLSearchParams({
-    s: String(size),
-    d: "mp",
-    r: "g",
-  });
-  return `https://www.gravatar.com/avatar/${hash}?${params.toString()}`;
-}
+import { gravatarUrl } from "@/lib/gravatar";
 
 export function AccountMenu({ email, showAdmin = false }: { email: string; showAdmin?: boolean }) {
   return (

@@ -1,6 +1,11 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccountMenu, gravatarUrl } from "../AccountMenu";
+import { AccountMenuClient } from "../AccountMenuClient";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("gravatarUrl", () => {
   it("normalizes the email before hashing", () => {
@@ -28,5 +33,52 @@ describe("AccountMenu", () => {
   it("renders an admin link when requested", () => {
     render(<AccountMenu email="lucas@example.com" showAdmin />);
     expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/settings/admin");
+  });
+});
+
+describe("AccountMenuClient", () => {
+  it("renders the account Gravatar returned by the session API", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          email: "lucas@example.com",
+          avatarUrl: "https://www.gravatar.com/avatar/lucas?s=80&d=404&r=g",
+          showAdmin: false,
+        }),
+      })),
+    );
+
+    const { container } = render(<AccountMenuClient />);
+
+    await screen.findByText("lucas@example.com");
+    const avatar = container.querySelector(".fp-account-avatar-img");
+    expect(avatar).toHaveAttribute("src", "https://www.gravatar.com/avatar/lucas?s=80&d=404&r=g");
+    expect(screen.getByText("lucas@example.com")).toBeInTheDocument();
+  });
+
+  it("falls back to an initial when the Gravatar image fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          email: "lucas@example.com",
+          avatarUrl: "https://www.gravatar.com/avatar/lucas?s=80&d=404&r=g",
+          showAdmin: false,
+        }),
+      })),
+    );
+
+    const { container } = render(<AccountMenuClient />);
+
+    await screen.findByText("lucas@example.com");
+    const avatar = container.querySelector(".fp-account-avatar-img");
+    expect(avatar).not.toBeNull();
+    fireEvent.error(avatar!);
+    await waitFor(() => {
+      expect(screen.getByText("L")).toBeInTheDocument();
+    });
   });
 });
