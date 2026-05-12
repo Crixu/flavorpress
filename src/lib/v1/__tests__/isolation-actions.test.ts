@@ -117,16 +117,94 @@ describe("disconnectOutletAction - cross-user isolation", () => {
   it("does not purge user A's outlet when called with purge=1 by user B", async () => {
     const { userA, userB } = await createTwoUserFixture();
     const outletId = await seedOutletForUser(userA.id);
+    const sourceId = await seedSourceForUser(userA.id);
+    await db.execute({
+      sql: `INSERT INTO voice_profiles
+            (outlet_id, user_id, style_sheet_yaml, archive_index_size, last_rebuilt_at)
+            VALUES (?, ?, ?, 0, ?)`,
+      args: [outletId, userA.id, "style: test", Date.now()],
+    });
+    await db.execute({
+      sql: `INSERT INTO outlet_sources (outlet_id, source_id, created_at) VALUES (?, ?, ?)`,
+      args: [outletId, sourceId, Date.now()],
+    });
 
     await loginAs(userB.id);
     await callAction("disconnectOutletAction", { outletId, purge: "1" });
 
-    const r = await db.execute({
+    const outlet = await db.execute({
       sql: `SELECT id FROM outlets WHERE id = ?`,
       args: [outletId],
     });
-    // The outlet row still exists because the purge was scoped to userB's userId.
-    expect(r.rows.length).toBe(1);
+    const profile = await db.execute({
+      sql: `SELECT outlet_id FROM voice_profiles WHERE outlet_id = ?`,
+      args: [outletId],
+    });
+    const assignment = await db.execute({
+      sql: `SELECT outlet_id FROM outlet_sources WHERE outlet_id = ?`,
+      args: [outletId],
+    });
+    expect(outlet.rows.length).toBe(1);
+    expect(profile.rows.length).toBe(1);
+    expect(assignment.rows.length).toBe(1);
+  });
+
+  it("purges the current user's outlet setup rows", async () => {
+    const { userA } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+    const sourceId = await seedSourceForUser(userA.id);
+    await db.execute({
+      sql: `INSERT INTO voice_profiles
+            (outlet_id, user_id, style_sheet_yaml, archive_index_size, last_rebuilt_at)
+            VALUES (?, ?, ?, 0, ?)`,
+      args: [outletId, userA.id, "style: test", Date.now()],
+    });
+    await db.execute({
+      sql: `INSERT INTO outlet_sources (outlet_id, source_id, created_at) VALUES (?, ?, ?)`,
+      args: [outletId, sourceId, Date.now()],
+    });
+    await db.execute({
+      sql: `INSERT INTO wp_authorize_states
+            (state, user_id, outlet_id, expected_site_url, expected_site_origin, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        "state-test",
+        userA.id,
+        outletId,
+        "https://example.com",
+        "https://example.com",
+        Date.now(),
+        Date.now() + 60_000,
+      ],
+    });
+
+    await loginAs(userA.id);
+    await callAction("disconnectOutletAction", {
+      outletId,
+      purge: "1",
+      redirectTo: "/voice",
+    });
+
+    const outlet = await db.execute({
+      sql: `SELECT id FROM outlets WHERE id = ?`,
+      args: [outletId],
+    });
+    const profile = await db.execute({
+      sql: `SELECT outlet_id FROM voice_profiles WHERE outlet_id = ?`,
+      args: [outletId],
+    });
+    const assignment = await db.execute({
+      sql: `SELECT outlet_id FROM outlet_sources WHERE outlet_id = ?`,
+      args: [outletId],
+    });
+    const authState = await db.execute({
+      sql: `SELECT outlet_id FROM wp_authorize_states WHERE outlet_id = ?`,
+      args: [outletId],
+    });
+    expect(outlet.rows.length).toBe(0);
+    expect(profile.rows.length).toBe(0);
+    expect(assignment.rows.length).toBe(0);
+    expect(authState.rows.length).toBe(0);
   });
 });
 
