@@ -20,6 +20,7 @@ import { createSessionCookie } from "@/lib/auth";
 import {
   loadSession,
   AuthRequiredError,
+  canAccessSettings,
   isLocalAuthMode,
   isLocalAdminDebugMode,
   hasSessionCookieForShell,
@@ -193,5 +194,12 @@ describe("local auth mode", () => {
     // Local mode forces isAdmin true regardless of the stored flag, so the
     // legacy default-user gets effective admin without us mutating the row.
     expect(s?.isAdmin).toBe(true);
+  });
+});
+
+describe("canAccessSettings", () => {
+  it("allows admins and rejects non-admin writers", () => {
+    expect(canAccessSettings({ isAdmin: true })).toBe(true);
+    expect(canAccessSettings({ isAdmin: false })).toBe(false);
   });
 });

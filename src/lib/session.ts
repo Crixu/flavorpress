@@ -47,6 +47,10 @@ export function shouldShowAdminControls(
   return isLocalAdminDebugMode(env);
 }
 
+export function canAccessSettings(session: Pick<Session, "isAdmin">): boolean {
+  return session.isAdmin;
+}
+
 function localBootstrapEmail(env: EnvLike = process.env): string {
   return (env.FLAVORPRESS_LOCAL_EMAIL ?? "local@flavorpress.app").trim().toLowerCase();
 }
