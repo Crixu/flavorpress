@@ -23,6 +23,7 @@ export interface AdminInviteRow {
   createdAt: number;
   expiresAt: number | null;
   usedAt: number | null;
+  revokedAt: number | null;
 }
 
 export interface AdminSourceRow {
@@ -100,6 +101,7 @@ function mapAdminUserRow(row: Record<string, unknown>): AdminUserRow {
 
 export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
   await ensureSchema();
+  const now = Date.now();
   const [usersR, invitesR] = await db.batch(
     [
       {
@@ -121,14 +123,29 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
         args: [],
       },
       {
-        sql: `SELECT i.token, i.created_at, i.expires_at, i.used_at,
+        sql: `SELECT i.token, i.created_at, i.expires_at, i.used_at, i.revoked_at,
                      creator.email AS created_by_email,
                      used.email AS used_by_email
-              FROM invites i
+              FROM (
+                SELECT token, created_by_user_id, used_by_user_id, created_at,
+                       expires_at, used_at, revoked_at, 0 AS sort_bucket, created_at AS sort_at
+                FROM invites
+                WHERE used_at IS NULL
+                UNION ALL
+                SELECT token, created_by_user_id, used_by_user_id, created_at,
+                       expires_at, used_at, revoked_at, 1 AS sort_bucket, used_at AS sort_at
+                FROM (
+                  SELECT token, created_by_user_id, used_by_user_id, created_at,
+                         expires_at, used_at, revoked_at
+                  FROM invites
+                  WHERE used_at IS NOT NULL
+                  ORDER BY used_at DESC
+                  LIMIT 5
+                )
+              ) i
               LEFT JOIN users creator ON creator.id = i.created_by_user_id
               LEFT JOIN users used ON used.id = i.used_by_user_id
-              ORDER BY i.created_at DESC
-              LIMIT 20`,
+              ORDER BY i.sort_bucket ASC, i.sort_at DESC`,
         args: [],
       },
     ],
@@ -144,9 +161,10 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     createdAt: Number(row.created_at),
     expiresAt: row.expires_at == null ? null : Number(row.expires_at),
     usedAt: row.used_at == null ? null : Number(row.used_at),
+    revokedAt: row.revoked_at == null ? null : Number(row.revoked_at),
   }));
 
-  return { users, invites, now: Date.now() };
+  return { users, invites, now };
 }
 
 export async function loadAdminUserDetailSnapshot(

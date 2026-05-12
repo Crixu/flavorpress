@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
-import { issueInvite, consumeInvite, readInvite, InviteError } from "@/lib/invites";
+import { issueInvite, consumeInvite, readInvite, revokeInvite, InviteError } from "@/lib/invites";
 
 beforeEach(async () => {
   await ensureSchema();
@@ -54,5 +54,18 @@ describe("invites", () => {
   it("consumeInvite throws when token is expired", async () => {
     const r = await issueInvite({ expiresAt: Date.now() - 1000 });
     await expect(consumeInvite(r.token, "u_test")).rejects.toBeInstanceOf(InviteError);
+  });
+
+  it("revokes an unused token", async () => {
+    const r = await issueInvite({});
+    await expect(revokeInvite(r.token)).resolves.toBe(true);
+    await expect(readInvite(r.token)).resolves.toBeNull();
+    await expect(consumeInvite(r.token, "u_test")).rejects.toMatchObject({ code: "revoked" });
+  });
+
+  it("does not revoke a used token", async () => {
+    const r = await issueInvite({});
+    await consumeInvite(r.token, "u_test");
+    await expect(revokeInvite(r.token)).resolves.toBe(false);
   });
 });

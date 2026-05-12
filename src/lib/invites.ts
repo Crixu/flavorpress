@@ -9,11 +9,12 @@ export interface InviteRow {
   created_at: number;
   expires_at: number | null;
   used_at: number | null;
+  revoked_at: number | null;
 }
 
 export class InviteError extends Error {
-  readonly code: "missing" | "used" | "expired";
-  constructor(code: "missing" | "used" | "expired", message: string) {
+  readonly code: "missing" | "used" | "expired" | "revoked";
+  constructor(code: "missing" | "used" | "expired" | "revoked", message: string) {
     super(message);
     this.name = "InviteError";
     this.code = code;
@@ -41,12 +42,14 @@ export async function issueInvite(opts: {
 
 export async function readInvite(token: string): Promise<InviteRow | null> {
   const r = await db.execute({
-    sql: `SELECT token, created_by_user_id, used_by_user_id, created_at, expires_at, used_at
+    sql: `SELECT token, created_by_user_id, used_by_user_id, created_at, expires_at, used_at, revoked_at
           FROM invites WHERE token = ?`,
     args: [token],
   });
   const row = r.rows[0];
   if (!row) return null;
+  const revokedAt = row.revoked_at == null ? null : Number(row.revoked_at);
+  if (revokedAt != null) return null;
   const usedAt = row.used_at == null ? null : Number(row.used_at);
   if (usedAt != null) return null;
   const expiresAt = row.expires_at == null ? null : Number(row.expires_at);
@@ -58,6 +61,7 @@ export async function readInvite(token: string): Promise<InviteRow | null> {
     created_at: Number(row.created_at),
     expires_at: expiresAt,
     used_at: usedAt,
+    revoked_at: revokedAt,
   };
 }
 
@@ -68,17 +72,32 @@ export async function consumeInvite(token: string, userId: string): Promise<void
           SET used_at = ?, used_by_user_id = ?
           WHERE token = ?
             AND used_at IS NULL
+            AND revoked_at IS NULL
             AND (expires_at IS NULL OR expires_at > ?)`,
     args: [now, userId, token, now],
   });
   if (Number(r.rowsAffected ?? 0) === 0) {
     const raw = await db.execute({
-      sql: `SELECT used_at, expires_at FROM invites WHERE token = ?`,
+      sql: `SELECT used_at, expires_at, revoked_at FROM invites WHERE token = ?`,
       args: [token],
     });
     const row = raw.rows[0];
     if (!row) throw new InviteError("missing", "Invite token does not exist.");
     if (row.used_at != null) throw new InviteError("used", "Invite token has already been used.");
+    if (row.revoked_at != null) throw new InviteError("revoked", "Invite token has been revoked.");
     throw new InviteError("expired", "Invite token has expired.");
   }
+}
+
+export async function revokeInvite(token: string): Promise<boolean> {
+  const now = Date.now();
+  const r = await db.execute({
+    sql: `UPDATE invites
+          SET revoked_at = ?
+          WHERE token = ?
+            AND used_at IS NULL
+            AND revoked_at IS NULL`,
+    args: [now, token],
+  });
+  return Number(r.rowsAffected ?? 0) > 0;
 }

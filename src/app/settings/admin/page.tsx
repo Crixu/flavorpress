@@ -4,10 +4,12 @@ import type { ReactNode } from "react";
 import { AuthRequiredError, requireSession, shouldShowAdminControls } from "@/lib/session";
 import { loadAdminSnapshot, type AdminUserRow } from "@/lib/admin";
 import { PLAN_LIMITS } from "@/lib/plans";
+import { getOrigin } from "@/lib/v1/origin";
 import { PendingMessage, SubmitButton } from "../../_components/SubmitButton";
 import { SettingsSidebar } from "../_components/SettingsSidebar";
 import {
   issueInviteAction,
+  revokeInviteAction,
   setUserAdminAction,
   setUserPlanAction,
   setUserStatusAction,
@@ -20,6 +22,7 @@ interface PageProps {
     created_invite?: string;
     error?: string;
     saved?: string;
+    revoked?: string;
   }>;
 }
 
@@ -34,7 +37,8 @@ export default async function AdminPage({ searchParams }: PageProps) {
   if (!shouldShowAdminControls(session)) redirect("/settings");
 
   const sp = await searchParams;
-  const snapshot = await loadAdminSnapshot();
+  const [snapshot, origin] = await Promise.all([loadAdminSnapshot(), getOrigin()]);
+  const createdInviteUrl = sp.created_invite ? inviteUrl(origin, sp.created_invite) : null;
 
   return (
     <div className="fp-settings-shell">
@@ -57,12 +61,13 @@ export default async function AdminPage({ searchParams }: PageProps) {
             <InviteForm />
           </header>
 
-          {sp.created_invite ? (
+          {createdInviteUrl ? (
             <Banner kind="success">
-              Invite created: <code>/signup?invite={sp.created_invite}</code>
+              Invite created: <code className="break-all">{createdInviteUrl}</code>
             </Banner>
           ) : null}
           {sp.saved ? <Banner kind="success">Saved {savedLabel(sp.saved)}.</Banner> : null}
+          {sp.revoked === "invite" ? <Banner kind="success">Invite revoked.</Banner> : null}
           {sp.error === "self_admin" ? (
             <Banner kind="error">You cannot remove your own admin access.</Banner>
           ) : null}
@@ -72,7 +77,7 @@ export default async function AdminPage({ searchParams }: PageProps) {
 
           <PlanCards />
           <UsersSection users={snapshot.users} currentUserId={session.userId} />
-          <InvitesSection invites={snapshot.invites} now={snapshot.now} />
+          <InvitesSection invites={snapshot.invites} now={snapshot.now} origin={origin} />
         </div>
       </div>
     </div>
@@ -318,16 +323,18 @@ function LimitInput({
 function InvitesSection({
   invites,
   now,
+  origin,
 }: {
   invites: Awaited<ReturnType<typeof loadAdminSnapshot>>["invites"];
   now: number;
+  origin: string;
 }) {
   return (
     <section className="space-y-3">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Invites</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-          Recent invitation links and who used them.
+          Pending invitation links and the five most recent used links.
         </p>
       </div>
       <div className="fp-card overflow-hidden">
@@ -340,14 +347,14 @@ function InvitesSection({
             {invites.map((invite) => (
               <li
                 key={invite.token}
-                className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_120px_180px] md:items-center"
+                className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_120px_180px_112px] md:items-center"
               >
                 <div className="min-w-0">
                   <code
-                    className="block truncate text-xs"
+                    className="block break-all text-xs"
                     style={{ color: "var(--ink-secondary)" }}
                   >
-                    /signup?invite={invite.token}
+                    {inviteUrl(origin, invite.token)}
                   </code>
                   <div className="mt-1 text-[11px]" style={{ color: "var(--fg-muted)" }}>
                     Created by {invite.createdByEmail ?? "system"} on {formatDate(invite.createdAt)}
@@ -358,16 +365,20 @@ function InvitesSection({
                     className={
                       invite.usedAt
                         ? "fp-chip"
-                        : invite.expiresAt && invite.expiresAt <= now
-                          ? "fp-chip fp-chip-rose"
-                          : "fp-chip fp-chip-emerald"
+                        : invite.revokedAt
+                          ? "fp-chip"
+                          : invite.expiresAt && invite.expiresAt <= now
+                            ? "fp-chip fp-chip-rose"
+                            : "fp-chip fp-chip-emerald"
                     }
                   >
                     {invite.usedAt
                       ? "Used"
-                      : invite.expiresAt && invite.expiresAt <= now
-                        ? "Expired"
-                        : "Open"}
+                      : invite.revokedAt
+                        ? "Revoked"
+                        : invite.expiresAt && invite.expiresAt <= now
+                          ? "Expired"
+                          : "Open"}
                   </span>
                 </div>
                 <div className="text-xs" style={{ color: "var(--fg-muted)" }}>
@@ -376,6 +387,16 @@ function InvitesSection({
                     : invite.expiresAt
                       ? `Expires ${formatDate(invite.expiresAt)}`
                       : "No expiration"}
+                </div>
+                <div className="flex md:justify-end">
+                  {invite.usedAt || invite.revokedAt ? null : (
+                    <form action={revokeInviteAction}>
+                      <input type="hidden" name="token" value={invite.token} />
+                      <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Revoking">
+                        Revoke
+                      </SubmitButton>
+                    </form>
+                  )}
                 </div>
               </li>
             ))}
@@ -418,4 +439,8 @@ function formatDate(value: number) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(
     new Date(value),
   );
+}
+
+function inviteUrl(origin: string, token: string): string {
+  return `${origin}/signup?invite=${encodeURIComponent(token)}`;
 }
