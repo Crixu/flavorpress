@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { gravatarUrl } from "@/lib/gravatar";
 import { AuthRequiredError, requireSession, shouldShowAdminControls } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ export async function GET() {
     const session = await requireSession();
     return NextResponse.json({
       email: session.email,
+      avatarUrl: gravatarUrl(session.email, 80, "404"),
       isAdmin: session.isAdmin,
       showAdmin: shouldShowAdminControls(session),
     });
