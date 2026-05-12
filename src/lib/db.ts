@@ -73,7 +73,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-12.v1";
+const SCHEMA_VERSION = "2026-05-12.v2";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -577,7 +577,8 @@ export async function ensureSchema(): Promise<void> {
         used_by_user_id TEXT,
         created_at INTEGER NOT NULL,
         expires_at INTEGER,
-        used_at INTEGER
+        used_at INTEGER,
+        revoked_at INTEGER
       )`,
       `CREATE INDEX IF NOT EXISTS idx_invites_unused ON invites(used_at) WHERE used_at IS NULL`,
 
@@ -877,6 +878,21 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("session_version")) {
         console.info("[migrate] users: adding session_version column");
         await db.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // invites: revocation marker for admin-issued links. Revoked invites
+  // remain auditable in storage but are no longer valid for signup.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(invites)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("revoked_at")) {
+        console.info("[migrate] invites: adding revoked_at column");
+        await db.execute("ALTER TABLE invites ADD COLUMN revoked_at INTEGER");
       }
     }
   } catch {

@@ -27,6 +27,7 @@ describe("auth-foundation schema", () => {
     expect(cols.has("expires_at")).toBe(true);
     expect(cols.has("used_at")).toBe(true);
     expect(cols.has("used_by_user_id")).toBe(true);
+    expect(cols.has("revoked_at")).toBe(true);
   });
 
   it("creates email_verification_tokens table", async () => {

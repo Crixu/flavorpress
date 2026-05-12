@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { issueInvite } from "@/lib/invites";
+import { issueInvite, revokeInvite } from "@/lib/invites";
 import { db, ensureSchema } from "@/lib/db";
 import { requireSession, shouldShowAdminControls } from "@/lib/session";
 import { setUserPlan, type PlanKey } from "@/lib/plans";
@@ -26,6 +26,16 @@ export async function issueInviteAction(formData: FormData): Promise<void> {
   const invite = await issueInvite({ createdByUserId: session.userId, expiresAt });
   revalidatePath("/settings/admin");
   adminRedirect({ created_invite: invite.token });
+}
+
+export async function revokeInviteAction(formData: FormData): Promise<void> {
+  await ensureSchema();
+  await requireAdmin();
+  const token = String(formData.get("token") ?? "").trim();
+  if (!token) throw new Error("token required.");
+  await revokeInvite(token);
+  revalidatePath("/settings/admin");
+  adminRedirect({ revoked: "invite" });
 }
 
 export async function setUserAdminAction(formData: FormData): Promise<void> {
