@@ -154,6 +154,7 @@ function AuthSectionPane({
             inputType="password"
             placeholder="sk-ant-..."
             saveLabel="Save key"
+            section="authentication"
           />
         </div>
       </details>
@@ -189,6 +190,7 @@ function ModelsSectionPane({
         inputType="text"
         placeholder={SETTING_DEFAULTS.anthropicDraftModel}
         saveLabel="Save model"
+        section="models"
         defaultValue={
           snapshot.anthropicDraftModel.source === "db" ? snapshot.anthropicDraftModel.value : ""
         }
@@ -238,6 +240,7 @@ function ExtensionsSectionPane({
                 </p>
               </div>
               <form action={toggleExtensionAction} className="shrink-0">
+                <input type="hidden" name="section" value="extensions" />
                 <input type="hidden" name="extensionId" value={ext.id} />
                 <input type="hidden" name="enabled" value={isEnabled ? "0" : "1"} />
                 <SubmitButton
@@ -271,6 +274,7 @@ function ExtensionsSectionPane({
                 inputType={field.inputType}
                 placeholder={field.placeholder}
                 saveLabel={field.saveLabel}
+                section="extensions"
                 defaultValue={field.inputType === "password" ? undefined : (snap.value ?? "")}
               />
             );
@@ -376,6 +380,7 @@ interface SettingFormProps {
   inputType: "password" | "text";
   placeholder: string;
   saveLabel: string;
+  section: "authentication" | "models" | "extensions" | "library";
   defaultValue?: string;
 }
 
@@ -389,6 +394,7 @@ function SettingForm({
   inputType,
   placeholder,
   saveLabel,
+  section,
   defaultValue,
 }: SettingFormProps) {
   return (
@@ -401,6 +407,7 @@ function SettingForm({
       </div>
       <SourceLine source={source} preview={preview} envVar={envVar} />
       <form action={saveSettingAction} className="space-y-3">
+        <input type="hidden" name="section" value={section} />
         <input type="hidden" name="key" value={settingKey} />
         <input
           type={inputType}

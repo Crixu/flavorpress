@@ -103,6 +103,18 @@ describe("saveSettingAction - admin-only", () => {
     });
     expect(to).toMatch(/saved=/);
   });
+
+  it("keeps the submitted settings section after saving", async () => {
+    const userId = await makeUser({ email: "admin@example.com", isAdmin: true });
+    await loginAs(userId);
+    const { saveSettingAction } = await import("@/lib/v1/settings-actions");
+    const to = await callRedirect(saveSettingAction, {
+      section: "models",
+      key: "anthropic_draft_model",
+      value: "claude-haiku-4-5",
+    });
+    expect(to).toBe("/settings?section=models&saved=anthropic_draft_model");
+  });
 });
 
 describe("clearSettingAction - admin-only", () => {
@@ -125,5 +137,17 @@ describe("toggleExtensionAction - admin-only", () => {
       enabled: "0",
     });
     expect(to).toMatch(/error=forbidden/);
+  });
+
+  it("stays on the extensions section after toggling", async () => {
+    const userId = await makeUser({ email: "admin@example.com", isAdmin: true });
+    await loginAs(userId);
+    const { toggleExtensionAction } = await import("@/lib/v1/settings-actions");
+    const to = await callRedirect(toggleExtensionAction, {
+      section: "extensions",
+      extensionId: "fact-check",
+      enabled: "0",
+    });
+    expect(to).toBe("/settings?section=extensions&extension=fact-check&state=disabled");
   });
 });
