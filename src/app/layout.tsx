@@ -47,7 +47,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <header className="fp-topbar">
                 <Link href="/" className="fp-brand">
                   <span className="fp-brand-name">FlavorPress</span>
-                  <span className="fp-version-badge">v1 alpha</span>
+                  <span className="fp-version-badge">V1 - Closed Beta</span>
                 </Link>
                 <div className="fp-topbar-right">
                   {showSettings ? (
