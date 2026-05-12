@@ -65,6 +65,7 @@ import { findClaimingSourceExtension } from "@/extensions/source-extensions";
 import { getDisabledExtensionIds } from "./settings";
 import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
+import { recordSourceAdded, recordWordPressPushed } from "./analytics";
 
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
@@ -233,6 +234,13 @@ export async function addSourceAction(formData: FormData) {
   // background once the request returns. We hand back the host as the
   // initial label so the row is immediately recognizable.
   const titleJobs: { id: string; url: string }[] = [];
+  const addedSources: Array<{
+    id: string;
+    kind: string;
+    url: string;
+    displayName: string | null;
+    folderId: string | null;
+  }> = [];
 
   for (const input of inputs) {
     let kind: "rss" | "reddit" | "podcast" | "youtube" | "x";
@@ -285,6 +293,7 @@ export async function addSourceAction(formData: FormData) {
           Date.now(),
         ],
       });
+      addedSources.push({ id, kind, url, displayName: display, folderId });
       // Extensions seed their own display names; the LLM auto-titler would
       // just re-derive a label from the bridge host and clobber it.
       if (!claimedByExtension) titleJobs.push({ id, url });
@@ -297,6 +306,20 @@ export async function addSourceAction(formData: FormData) {
   if (titleJobs.length > 0) {
     after(() => runBackgroundAutoTitling(titleJobs, session.userId));
   }
+  await Promise.all(
+    addedSources.map((source) =>
+      recordSourceAdded(
+        {
+          sourceId: source.id,
+          kind: source.kind,
+          url: source.url,
+          displayName: source.displayName,
+          folderId: source.folderId,
+        },
+        { userId: session.userId },
+      ),
+    ),
+  );
   revalidatePath("/sources");
   revalidatePath("/");
 }
@@ -425,6 +448,13 @@ export async function importOpmlSelectionAction(formData: FormData) {
 
   const folderId = await resolveFolderIdField(formData, session.userId);
   const titleJobs: { id: string; url: string }[] = [];
+  const addedSources: Array<{
+    id: string;
+    kind: string;
+    url: string;
+    displayName: string | null;
+    folderId: string | null;
+  }> = [];
 
   for (let i = 0; i < urls.length; i += 1) {
     const url = urls[i]!;
@@ -453,6 +483,7 @@ export async function importOpmlSelectionAction(formData: FormData) {
           Date.now(),
         ],
       });
+      addedSources.push({ id, kind, url, displayName: seedTitle, folderId });
       // Auto-title only when the seed equals the bare host (i.e. OPML didn't
       // carry a title). Otherwise the picker's chosen label sticks.
       if (seedTitle === hostFromUrl(url)) {
@@ -467,6 +498,20 @@ export async function importOpmlSelectionAction(formData: FormData) {
   if (titleJobs.length > 0) {
     after(() => runBackgroundAutoTitling(titleJobs, session.userId));
   }
+  await Promise.all(
+    addedSources.map((source) =>
+      recordSourceAdded(
+        {
+          sourceId: source.id,
+          kind: source.kind,
+          url: source.url,
+          displayName: source.displayName,
+          folderId: source.folderId,
+        },
+        { userId: session.userId },
+      ),
+    ),
+  );
   revalidatePath("/sources");
   revalidatePath("/");
 }
@@ -2368,6 +2413,18 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
   if (clusterId) {
     await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished, session.userId);
   }
+  await recordWordPressPushed(
+    {
+      draftId,
+      clusterId,
+      outletId,
+      mode: "drafter",
+      wpPostId: result.wpPostId,
+      editLink: result.editLink,
+      status,
+    },
+    { userId: session.userId },
+  );
 
   // Deliberately do NOT revalidate /editor/[draftId] here. The client form
   // wants to render a brief "Sent" beat and then redirect to /; if we
@@ -2496,6 +2553,18 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
       session.userId,
     ],
   });
+  await recordWordPressPushed(
+    {
+      draftId,
+      clusterId: row.cluster_id ? String(row.cluster_id) : null,
+      outletId,
+      mode: "researcher",
+      wpPostId: result.wpPostId,
+      editLink: result.editLink,
+      status: "draft",
+    },
+    { userId: session.userId },
+  );
 
   // See note on publishDraftToWPAction: avoid revalidating /editor/[draftId]
   // during the action so the form's post-success "Sent" beat survives until

@@ -1,6 +1,7 @@
 import "server-only";
 import { db, ensureSchema } from "./db";
 import { limitsForPlan, type PlanKey, type PlanLimits } from "./plans";
+import { loadReadingToWritingMetrics, type ReadingToWritingMetrics } from "./v1/analytics";
 
 export interface AdminUserRow {
   id: string;
@@ -61,6 +62,7 @@ export interface AdminFolderRow {
 export interface AdminSnapshot {
   users: AdminUserRow[];
   invites: AdminInviteRow[];
+  readingToWriting: ReadingToWritingMetrics;
   now: number;
 }
 
@@ -102,55 +104,59 @@ function mapAdminUserRow(row: Record<string, unknown>): AdminUserRow {
 export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
   await ensureSchema();
   const now = Date.now();
-  const [usersR, invitesR] = await db.batch(
-    [
-      {
-        sql: `SELECT u.id, u.email, u.status, u.is_admin, u.created_at, u.last_active_at,
-                     COUNT(DISTINCT o.id) AS outlet_count,
-                     COUNT(DISTINCT s.id) AS source_count,
-                     COUNT(DISTINCT f.id) AS folder_count,
-                     p.plan AS plan,
-                     p.custom_outlet_limit AS custom_outlet_limit,
-                     p.custom_source_limit AS custom_source_limit,
-                     p.custom_folder_limit AS custom_folder_limit
-              FROM users u
-              LEFT JOIN outlets o ON o.user_id = u.id
-              LEFT JOIN sources s ON s.user_id = u.id
-              LEFT JOIN source_folders f ON f.user_id = u.id
-              LEFT JOIN user_plans p ON p.user_id = u.id
-              GROUP BY u.id
-              ORDER BY u.created_at DESC`,
-        args: [],
-      },
-      {
-        sql: `SELECT i.token, i.created_at, i.expires_at, i.used_at, i.revoked_at,
-                     creator.email AS created_by_email,
-                     used.email AS used_by_email
-              FROM (
-                SELECT token, created_by_user_id, used_by_user_id, created_at,
-                       expires_at, used_at, revoked_at, 0 AS sort_bucket, created_at AS sort_at
-                FROM invites
-                WHERE used_at IS NULL
-                UNION ALL
-                SELECT token, created_by_user_id, used_by_user_id, created_at,
-                       expires_at, used_at, revoked_at, 1 AS sort_bucket, used_at AS sort_at
+  const [adminRows, readingToWriting] = await Promise.all([
+    db.batch(
+      [
+        {
+          sql: `SELECT u.id, u.email, u.status, u.is_admin, u.created_at, u.last_active_at,
+                       COUNT(DISTINCT o.id) AS outlet_count,
+                       COUNT(DISTINCT s.id) AS source_count,
+                       COUNT(DISTINCT f.id) AS folder_count,
+                       p.plan AS plan,
+                       p.custom_outlet_limit AS custom_outlet_limit,
+                       p.custom_source_limit AS custom_source_limit,
+                       p.custom_folder_limit AS custom_folder_limit
+                FROM users u
+                LEFT JOIN outlets o ON o.user_id = u.id
+                LEFT JOIN sources s ON s.user_id = u.id
+                LEFT JOIN source_folders f ON f.user_id = u.id
+                LEFT JOIN user_plans p ON p.user_id = u.id
+                GROUP BY u.id
+                ORDER BY u.created_at DESC`,
+          args: [],
+        },
+        {
+          sql: `SELECT i.token, i.created_at, i.expires_at, i.used_at, i.revoked_at,
+                       creator.email AS created_by_email,
+                       used.email AS used_by_email
                 FROM (
                   SELECT token, created_by_user_id, used_by_user_id, created_at,
-                         expires_at, used_at, revoked_at
+                         expires_at, used_at, revoked_at, 0 AS sort_bucket, created_at AS sort_at
                   FROM invites
-                  WHERE used_at IS NOT NULL
-                  ORDER BY used_at DESC
-                  LIMIT 5
-                )
-              ) i
-              LEFT JOIN users creator ON creator.id = i.created_by_user_id
-              LEFT JOIN users used ON used.id = i.used_by_user_id
-              ORDER BY i.sort_bucket ASC, i.sort_at DESC`,
-        args: [],
-      },
-    ],
-    "read",
-  );
+                  WHERE used_at IS NULL
+                  UNION ALL
+                  SELECT token, created_by_user_id, used_by_user_id, created_at,
+                         expires_at, used_at, revoked_at, 1 AS sort_bucket, used_at AS sort_at
+                  FROM (
+                    SELECT token, created_by_user_id, used_by_user_id, created_at,
+                           expires_at, used_at, revoked_at
+                    FROM invites
+                    WHERE used_at IS NOT NULL
+                    ORDER BY used_at DESC
+                    LIMIT 5
+                  )
+                ) i
+                LEFT JOIN users creator ON creator.id = i.created_by_user_id
+                LEFT JOIN users used ON used.id = i.used_by_user_id
+                ORDER BY i.sort_bucket ASC, i.sort_at DESC`,
+          args: [],
+        },
+      ],
+      "read",
+    ),
+    loadReadingToWritingMetrics(),
+  ]);
+  const [usersR, invitesR] = adminRows;
 
   const users = (usersR.rows as Record<string, unknown>[]).map(mapAdminUserRow);
 
@@ -164,7 +170,7 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     revokedAt: row.revoked_at == null ? null : Number(row.revoked_at),
   }));
 
-  return { users, invites, now };
+  return { users, invites, readingToWriting, now };
 }
 
 export async function loadAdminUserDetailSnapshot(
