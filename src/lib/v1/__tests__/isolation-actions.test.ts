@@ -421,6 +421,20 @@ describe("pollSourceAction - cross-user isolation", () => {
   });
 });
 
+describe("pollAllSourcesAction - plan gate", () => {
+  it("rejects non-admin writers without a Custom plan", async () => {
+    const { userA } = await createTwoUserFixture();
+    await seedSourceForUser(userA.id);
+
+    await loginAs(userA.id);
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      () => Promise<unknown>
+    >;
+    await expect(mod.pollAllSourcesAction!()).rejects.toThrow(/custom plan/i);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // getJobProgressAction (maintenance jobs)
 // ---------------------------------------------------------------------------

@@ -277,7 +277,7 @@ function UserControls({ user, isSelf }: { user: AdminUserRow; isSelf: boolean })
           <select name="plan" defaultValue={user.plan} className="fp-input">
             <option value="trial">Trial</option>
             <option value="pro">Pro</option>
-            <option value="custom">Custom</option>
+            <option value="custom">Custom (Poll all)</option>
           </select>
         </label>
         <div className="grid grid-cols-3 gap-2">

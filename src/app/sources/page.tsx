@@ -14,6 +14,7 @@ import Link from "next/link";
 import { ensureSchema, db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { AuthRequiredError, requireSession } from "@/lib/session";
+import { canPollAllSources } from "@/lib/plans";
 import { listOutlets, resolveOutletSourceIds } from "@/lib/v1/outlets";
 import { FolderSidebar } from "./_components/FolderSidebar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
@@ -47,6 +48,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const folderParam = sp.folder ?? null;
 
   const outlets = await listOutlets(session.userId);
+  const showPollAll = await canPollAllSources(session.userId, session.isAdmin);
 
   // If filtering by an outlet, resolve which source IDs are in scope.
   // Outlets with no explicit assignment fall back to all sources. Outlets
@@ -202,7 +204,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             folders={folders.map((f) => ({ id: f.id, name: f.name }))}
             currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
           />
-          {!isEmpty ? <PollAllButton /> : null}
+          {!isEmpty && showPollAll ? <PollAllButton /> : null}
         </div>
       </div>
 

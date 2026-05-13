@@ -4,6 +4,7 @@ import {
   assertCanCreateFolders,
   assertCanCreateOutlets,
   assertCanCreateSources,
+  canPollAllSources,
   getUserPlan,
   PlanLimitError,
   setUserPlan,
@@ -36,6 +37,17 @@ describe("plans", () => {
     const plan = await getUserPlan("u_test");
     expect(plan.plan).toBe("custom");
     expect(plan.limits).toEqual({ outlets: 7, sources: 150, folders: 12 });
+  });
+
+  it("allows Poll all for Custom plans and admins only", async () => {
+    expect(await canPollAllSources("u_test", false)).toBe(false);
+    expect(await canPollAllSources("u_test", true)).toBe(true);
+
+    await setUserPlan("u_test", "pro");
+    expect(await canPollAllSources("u_test", false)).toBe(false);
+
+    await setUserPlan("u_test", "custom");
+    expect(await canPollAllSources("u_test", false)).toBe(true);
   });
 
   it("blocks creates past the assigned caps", async () => {

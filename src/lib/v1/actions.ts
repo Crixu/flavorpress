@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db, ensureSchema } from "../db";
 import { notifyFirstPostPushed, notifyFirstSourceConnected } from "../notifications";
-import { assertCanCreateFolders, assertCanCreateSources } from "../plans";
+import { assertCanCreateFolders, assertCanCreateSources, canPollAllSources } from "../plans";
 import { requireSession } from "../session";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
@@ -1371,6 +1371,9 @@ export async function pollAllSourcesAction(): Promise<{ sourceCount: number }> {
   await ensureSchema();
   await ensureRegisteredCapabilities();
   const session = await requireSession();
+  if (!(await canPollAllSources(session.userId, session.isAdmin))) {
+    throw new Error("Poll all requires a Custom plan.");
+  }
   const sources = await db.execute({
     sql: `SELECT id FROM sources
           WHERE user_id = ? AND active = 1
