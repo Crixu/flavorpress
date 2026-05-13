@@ -3,6 +3,7 @@ import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
 import { readInvite } from "@/lib/invites";
 import { isLocalAuthMode } from "@/lib/session";
 import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
+import { AuthLogo } from "../_components/AuthLogo";
 import { signupAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ export default async function SignupPage({ searchParams }: PageProps) {
       <div style={containerStyle}>
         <div style={{ width: "100%", maxWidth: 420 }}>
           <header style={{ marginBottom: 24, textAlign: "center" }}>
+            <AuthLogo />
             <h1 style={headingStyle}>Invitation required</h1>
             <p style={subtitleStyle}>Ask the FlavorPress admin for an invitation link.</p>
           </header>
@@ -52,6 +54,7 @@ export default async function SignupPage({ searchParams }: PageProps) {
     <div style={containerStyle}>
       <div style={{ width: "100%", maxWidth: 420 }}>
         <header style={{ marginBottom: 24, textAlign: "center" }}>
+          <AuthLogo />
           <h1 style={headingStyle}>Create your FlavorPress account</h1>
           <p style={subtitleStyle}>You were invited.</p>
         </header>

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
 import { isLocalAuthMode } from "@/lib/session";
 import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
+import { AuthLogo } from "../_components/AuthLogo";
 import { loginAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
     >
       <div style={{ width: "100%", maxWidth: 420 }}>
         <header style={{ marginBottom: 24, textAlign: "center" }}>
+          <AuthLogo />
           <h1
             style={{
               fontFamily: "var(--font-serif), Georgia, serif",
