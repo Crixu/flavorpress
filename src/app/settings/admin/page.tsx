@@ -77,6 +77,7 @@ export default async function AdminPage({ searchParams }: PageProps) {
           ) : null}
 
           <PlanCards />
+          <OutletStatsWidget stats={snapshot.outletStats} />
           <ReadingToWritingSection metrics={snapshot.readingToWriting} />
           <UsersSection users={snapshot.users} currentUserId={session.userId} />
           <InvitesSection invites={snapshot.invites} now={snapshot.now} origin={origin} />
@@ -102,6 +103,73 @@ function InviteForm() {
         Create invite
       </SubmitButton>
     </form>
+  );
+}
+
+function OutletStatsWidget({
+  stats,
+}: {
+  stats: Awaited<ReturnType<typeof loadAdminSnapshot>>["outletStats"];
+}) {
+  const connectionRate =
+    stats.total === 0 ? "0%" : `${Math.round((stats.connected / stats.total) * 100)}%`;
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Connected outlets</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          WordPress destinations ready to receive drafts across this deployment.
+        </p>
+      </div>
+      <div className="fp-card p-5">
+        <div className="grid gap-5 md:grid-cols-[minmax(180px,0.9fr)_1fr] md:items-end">
+          <div>
+            <div className="fp-eyebrow">Ready outlets</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-4xl font-semibold tabular tracking-tight">
+                {stats.connected}
+              </span>
+              <span className="text-sm tabular" style={{ color: "var(--fg-muted)" }}>
+                / {stats.total}
+              </span>
+            </div>
+            <div className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>
+              {connectionRate} connected
+            </div>
+          </div>
+          <dl
+            className="grid grid-cols-3 gap-3 border-t pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <OutletStat label="Staged" value={stats.staged} />
+            <OutletStat label="Errors" value={stats.withErrors} danger={stats.withErrors > 0} />
+            <OutletStat label="Writers" value={stats.usersWithConnectedOutlets} />
+          </dl>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OutletStat({
+  label,
+  value,
+  danger = false,
+}: {
+  label: string;
+  value: number;
+  danger?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="fp-eyebrow">{label}</dt>
+      <dd
+        className="mt-1 text-xl font-semibold tabular"
+        style={danger ? { color: "var(--error-fg)" } : undefined}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
 
