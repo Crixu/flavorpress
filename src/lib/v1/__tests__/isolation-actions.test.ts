@@ -435,6 +435,25 @@ describe("pollAllSourcesAction - plan gate", () => {
   });
 });
 
+describe("startWPAuthorizeAction - plan gate", () => {
+  it("redirects outlet cap failures to a user-visible notice", async () => {
+    const { userA } = await createTwoUserFixture();
+    await seedOutletForUser(userA.id);
+
+    await loginAs(userA.id);
+    const fd = new FormData();
+    fd.set("baseUrl", "https://new-site.example");
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+
+    await expect(mod.startWPAuthorizeAction!(fd)).rejects.toThrow(
+      "__REDIRECT__:/voice?plan_limit=outlets&limit=1",
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // getJobProgressAction (maintenance jobs)
 // ---------------------------------------------------------------------------

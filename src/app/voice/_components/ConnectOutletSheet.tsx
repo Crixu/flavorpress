@@ -6,13 +6,17 @@ import {
   startWpcomOutletAuthorizeAction,
   connectOutletManualAction,
 } from "@/lib/v1/actions";
-import { SideSheet, Button, Field } from "@/components/wpds";
+import { SideSheet, Button, Field, Notice } from "@/components/wpds";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   authorizeAvailable: boolean;
   wpcomAvailable: boolean;
+  canCreateOutlet: boolean;
+  outletLimit: number;
+  outletCount: number;
+  planLabel: string;
   initialBaseUrl?: string;
   mode?: "connect" | "reconnect";
 }
@@ -32,6 +36,10 @@ export function ConnectOutletSheet({
   onClose,
   authorizeAvailable,
   wpcomAvailable,
+  canCreateOutlet,
+  outletLimit,
+  outletCount,
+  planLabel,
   initialBaseUrl = "",
   mode = "connect",
 }: Props) {
@@ -41,6 +49,7 @@ export function ConnectOutletSheet({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const isReconnect = mode === "reconnect";
+  const limitBlocks = !isReconnect && !canCreateOutlet;
 
   function handleAuthorize() {
     setError(null);
@@ -81,6 +90,7 @@ export function ConnectOutletSheet({
         await connectOutletManualAction(fd);
         onClose();
       } catch (err) {
+        if (isNextRedirect(err)) throw err;
         setError(err instanceof Error ? err.message : "Connection failed");
       }
     });
@@ -107,8 +117,16 @@ export function ConnectOutletSheet({
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="https://example.com"
           readOnly={isReconnect}
+          disabled={limitBlocks}
         />
       </Field>
+
+      {limitBlocks ? (
+        <Notice tone="warn">
+          You are using {outletCount} of {outletLimit} outlets on {planLabel}. Remove an outlet or
+          ask an admin to raise the cap before connecting another WordPress site.
+        </Notice>
+      ) : null}
 
       {wpcomAvailable ? (
         <div
@@ -127,7 +145,7 @@ export function ConnectOutletSheet({
             Sends you to WordPress.com to approve FlavorPress for this site. Use this for
             WordPress.com sites or self-hosted sites connected through Jetpack.
           </div>
-          <Button onClick={handleWpcomAuthorize} disabled={!baseUrl || pending}>
+          <Button onClick={handleWpcomAuthorize} disabled={limitBlocks || !baseUrl || pending}>
             Connect with WordPress.com
           </Button>
         </div>
@@ -150,7 +168,7 @@ export function ConnectOutletSheet({
             Sends you to your WordPress site to approve FlavorPress. WordPress generates the
             Application Password and sends you back here.
           </div>
-          <Button onClick={handleAuthorize} disabled={!baseUrl || pending}>
+          <Button onClick={handleAuthorize} disabled={limitBlocks || !baseUrl || pending}>
             {isReconnect ? "Re-authorize on WordPress" : "Authorize on WordPress"}
           </Button>
         </div>
@@ -184,7 +202,11 @@ export function ConnectOutletSheet({
           here.
         </div>
         <Field label="Username">
-          <input value={username} onChange={(e) => setUsername(e.target.value)} />
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            disabled={limitBlocks}
+          />
         </Field>
         <Field label="Application password">
           <input
@@ -192,9 +214,13 @@ export function ConnectOutletSheet({
             value={appPassword}
             onChange={(e) => setAppPassword(e.target.value)}
             placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
+            disabled={limitBlocks}
           />
         </Field>
-        <Button onClick={handleManual} disabled={!baseUrl || !username || !appPassword || pending}>
+        <Button
+          onClick={handleManual}
+          disabled={limitBlocks || !baseUrl || !username || !appPassword || pending}
+        >
           {isReconnect ? "Reconnect manually" : "Connect manually"}
         </Button>
       </div>

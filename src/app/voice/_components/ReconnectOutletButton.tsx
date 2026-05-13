@@ -23,6 +23,10 @@ export function ReconnectOutletButton({ baseUrl, authorizeAvailable, wpcomAvaila
         onClose={() => setOpen(false)}
         authorizeAvailable={authorizeAvailable}
         wpcomAvailable={wpcomAvailable}
+        canCreateOutlet={true}
+        outletLimit={0}
+        outletCount={0}
+        planLabel=""
         initialBaseUrl={baseUrl}
         mode="reconnect"
       />

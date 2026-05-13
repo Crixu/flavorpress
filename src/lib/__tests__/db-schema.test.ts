@@ -52,6 +52,7 @@ describe("auth-foundation schema", () => {
     expect(cols.has("custom_outlet_limit")).toBe(true);
     expect(cols.has("custom_source_limit")).toBe(true);
     expect(cols.has("custom_folder_limit")).toBe(true);
+    expect(cols.has("poll_all_enabled")).toBe(true);
   });
 
   it("creates notification_webhook_deliveries table", async () => {

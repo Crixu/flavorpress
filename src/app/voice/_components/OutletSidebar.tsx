@@ -15,9 +15,21 @@ interface Props {
   outlets: OutletItem[];
   selectedId: string | null;
   onConnectClick: () => void;
+  canCreateOutlet: boolean;
+  outletLimit: number;
+  outletCount: number;
+  planLabel: string;
 }
 
-export function OutletSidebar({ outlets, selectedId, onConnectClick }: Props) {
+export function OutletSidebar({
+  outlets,
+  selectedId,
+  onConnectClick,
+  canCreateOutlet,
+  outletLimit,
+  outletCount,
+  planLabel,
+}: Props) {
   const sorted = [...outlets].sort((a, b) => {
     if (a.connected !== b.connected) return a.connected ? -1 : 1;
     if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
@@ -27,16 +39,28 @@ export function OutletSidebar({ outlets, selectedId, onConnectClick }: Props) {
   return (
     <div className="fp-outlet-side">
       <div className="fp-outlet-side-header">
-        <span className="fp-outlet-side-h">Outlets · {outlets.length}</span>
+        <span className="fp-outlet-side-h">
+          Outlets · {outletCount}
+          {isUnlimitedLimit(outletLimit) ? "" : ` / ${outletLimit}`}
+        </span>
         <button
           type="button"
           className="fp-outlet-add-btn"
           onClick={onConnectClick}
-          title="Connect WordPress site"
+          title={
+            canCreateOutlet
+              ? "Connect WordPress site"
+              : `You are using ${outletCount} of ${outletLimit} outlets.`
+          }
         >
           + Connect
         </button>
       </div>
+      {!canCreateOutlet ? (
+        <div className="px-3 pb-2 text-[11px]" style={{ color: "var(--fg-muted)" }}>
+          Outlet limit reached on {planLabel}. Open Connect for details.
+        </div>
+      ) : null}
       {sorted.map((o) => {
         const active = selectedId === o.id;
         return (
@@ -60,4 +84,8 @@ export function OutletSidebar({ outlets, selectedId, onConnectClick }: Props) {
       })}
     </div>
   );
+}
+
+function isUnlimitedLimit(limit: number): boolean {
+  return limit >= Number.MAX_SAFE_INTEGER;
 }
