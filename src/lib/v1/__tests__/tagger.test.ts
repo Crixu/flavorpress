@@ -7,10 +7,14 @@ vi.mock("@/lib/anthropic", () => ({
       .filter((b) => b.type === "text")
       .map((b) => b.text ?? "")
       .join(""),
-  MODEL: "claude-sonnet-4-6",
+}));
+
+vi.mock("@/lib/v1/settings", () => ({
+  getAnthropicDraftModel: vi.fn().mockResolvedValue("claude-test-model"),
 }));
 
 import { createAnthropicClient } from "@/lib/anthropic";
+import { getAnthropicDraftModel } from "@/lib/v1/settings";
 import { extractItemTags, normalizeTag } from "@/lib/v1/tagger";
 
 describe("normalizeTag", () => {
@@ -61,9 +65,13 @@ describe("extractItemTags", () => {
       client: fakeClient as never,
       mode: "api" as const,
     });
+    vi.mocked(getAnthropicDraftModel).mockResolvedValueOnce("claude-settings-model");
 
     const tags = await extractItemTags({ title: "Slow espresso", body: "..." });
     expect(tags).toEqual(["espresso", "roasting", "lisbon", "extraction"]);
+    expect(fakeClient.messages.create).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "claude-settings-model" }),
+    );
   });
 
   it("returns empty array when client is null", async () => {

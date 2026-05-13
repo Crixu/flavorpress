@@ -18,7 +18,8 @@
  */
 
 import { db } from "../db";
-import { createAnthropicClient, extractJson, extractText, MODEL } from "../anthropic";
+import { createAnthropicClient, extractJson, extractText } from "../anthropic";
+import { getAnthropicDraftModel } from "./settings";
 
 export const ORACLE_PROMPT_VERSION = "2026-05-05.v1";
 
@@ -65,8 +66,9 @@ reason: one short sentence. No em-dashes; use semicolons or new sentences if you
 
 export async function askMergeOracle(input: MergeOracleInput): Promise<MergeOracleResult | null> {
   const [hashA, hashB] = orderHashes(input.aHash, input.bHash);
+  const model = await getAnthropicDraftModel();
   // Cache hit shortcut.
-  const cached = await loadCached(hashA, hashB);
+  const cached = await loadCached(hashA, hashB, model);
   if (cached) return { ...cached, source: "cache" };
 
   const { client } = await createAnthropicClient();
@@ -79,7 +81,7 @@ export async function askMergeOracle(input: MergeOracleInput): Promise<MergeOrac
 
   try {
     const message = await client.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 200,
       system: SYSTEM_PROMPT,
       messages: [
@@ -96,7 +98,7 @@ export async function askMergeOracle(input: MergeOracleInput): Promise<MergeOrac
       typeof parsed.reason === "string" && parsed.reason.trim().length > 0
         ? parsed.reason.trim().slice(0, 240)
         : null;
-    await persistCache(hashA, hashB, sameStory, reason);
+    await persistCache(hashA, hashB, model, sameStory, reason);
     return { sameStory, reason, source: "llm" };
   } catch {
     // Auth, rate limit, malformed JSON: treat as "no decision". The
@@ -127,12 +129,13 @@ function orderItems(
 async function loadCached(
   hashA: string,
   hashB: string,
+  model: string,
 ): Promise<{ sameStory: boolean; reason: string | null } | null> {
   const r = await db.execute({
     sql: `SELECT same_story, reason FROM merge_oracle_cache
           WHERE hash_a = ? AND hash_b = ? AND model = ? AND prompt_version = ?
           LIMIT 1`,
-    args: [hashA, hashB, MODEL, ORACLE_PROMPT_VERSION],
+    args: [hashA, hashB, model, ORACLE_PROMPT_VERSION],
   });
   if (r.rows.length === 0) return null;
   return {
@@ -144,6 +147,7 @@ async function loadCached(
 async function persistCache(
   hashA: string,
   hashB: string,
+  model: string,
   sameStory: boolean,
   reason: string | null,
 ): Promise<void> {
@@ -151,6 +155,6 @@ async function persistCache(
     sql: `INSERT OR REPLACE INTO merge_oracle_cache
           (hash_a, hash_b, model, prompt_version, same_story, reason, computed_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    args: [hashA, hashB, MODEL, ORACLE_PROMPT_VERSION, sameStory ? 1 : 0, reason, Date.now()],
+    args: [hashA, hashB, model, ORACLE_PROMPT_VERSION, sameStory ? 1 : 0, reason, Date.now()],
   });
 }

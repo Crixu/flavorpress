@@ -53,7 +53,7 @@ import {
   publishToWordPress,
 } from "../wordpress";
 import { createHash } from "node:crypto";
-import { createAnthropicClient, extractText, MODEL } from "../anthropic";
+import { createAnthropicClient, extractText } from "../anthropic";
 import {
   stageOutlet,
   commitOutletCredentials,
@@ -71,7 +71,7 @@ import { createWPAuthorizeState } from "./wp-authorize-state";
 import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { findClaimingSourceExtension } from "@/extensions/source-extensions";
-import { getDisabledExtensionIds } from "./settings";
+import { getAnthropicDraftModel, getDisabledExtensionIds } from "./settings";
 import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 import { recordSourceAdded, recordWordPressPushed } from "./analytics";
@@ -1843,8 +1843,9 @@ async function summarizeBlogIdentity(input: {
     if (!client) {
       return fallback || "A personal blog.";
     }
+    const model = await getAnthropicDraftModel();
     const message = await client.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 300,
       system: `You write a 2-3 sentence description of a blog from its homepage signals. Output only the description; no preamble, no labels, no quotes. Speak about the blog in third person ("This blog covers..."). Avoid em-dashes; use semicolons or new sentences. Avoid marketing voice and AI cliches ("dive into", "delve", "leverage", "tapestry"). Be concrete about subject and angle; skip superlatives.`,
       messages: [

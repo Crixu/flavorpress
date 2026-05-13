@@ -1,7 +1,7 @@
 /**
  * Settings panel - master-detail layout.
  *
- * Anthropic key, draft model, and inbound webhook secret. Lookup
+ * Anthropic key, model, and inbound webhook secret. Lookup
  * precedence is DB -> process.env, so anyone running with .env-only keeps
  * working; values stored here override when present.
  */
@@ -182,13 +182,13 @@ function ModelsSectionPane({
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Models</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-          Anthropic model used for draft generation.
+          Anthropic model used for drafting, source helpers, and editor tools.
         </p>
       </div>
 
       <SettingForm
-        title="Draft model"
-        hint="Anthropic model used by the draft generator. Default is Haiku 4.5; bump to Sonnet for higher quality at higher cost."
+        title="Anthropic model"
+        hint="Default is Haiku 4.5; bump to Sonnet for higher quality at higher cost."
         settingKey={SETTING_KEYS.anthropicDraftModel}
         envVar="ANTHROPIC_DRAFT_MODEL"
         source={snapshot.anthropicDraftModel.source}
@@ -472,7 +472,7 @@ function labelFor(key: string): string {
     case SETTING_KEYS.anthropicApiKey:
       return "Anthropic API key";
     case SETTING_KEYS.anthropicDraftModel:
-      return "draft model";
+      return "Anthropic model";
     default: {
       const field = extensionSettingFields.find((f) => f.key === key);
       return field ? field.title : "setting";

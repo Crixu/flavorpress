@@ -4,7 +4,7 @@ import Link from "next/link";
 
 const ITEMS = [
   { key: "authentication", label: "Authentication", hint: "API key / Claude login" },
-  { key: "models", label: "Models", hint: "Draft model" },
+  { key: "models", label: "Models", hint: "Anthropic model" },
   { key: "extensions", label: "Extensions", hint: "Toggle and configure" },
   { key: "library", label: "Library", hint: "Maintenance · export · clear" },
 ];

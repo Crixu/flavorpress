@@ -22,8 +22,9 @@
  */
 
 import { db } from "../db";
-import { createAnthropicClient, extractJson, extractText, MODEL } from "../anthropic";
+import { createAnthropicClient, extractJson, extractText } from "../anthropic";
 import { extractEntities as regexExtractEntities } from "./cluster-engine";
+import { getAnthropicDraftModel } from "./settings";
 
 export const PROMPT_VERSION = "2026-05-05.v1";
 
@@ -82,14 +83,16 @@ Pick the lane a recurring reader would file this under. Be specific; "tech" is t
 No em-dashes; use semicolons or new sentences if needed.`;
 
 export async function extractItemEntities(input: ExtractionInput): Promise<EntityExtraction> {
+  const model = await getAnthropicDraftModel();
+
   // 1. Cache check.
-  const cached = await loadCached(input.contentHash);
+  const cached = await loadCached(input.contentHash, model);
   if (cached) return { ...cached, source: "cache" };
 
   // 2. LLM call.
-  const llm = await runLLMExtraction(input);
+  const llm = await runLLMExtraction(input, model);
   if (llm) {
-    await persistCache(input.contentHash, llm);
+    await persistCache(input.contentHash, model, llm);
     return { ...llm, source: "llm" };
   }
 
@@ -105,13 +108,14 @@ export async function extractItemEntities(input: ExtractionInput): Promise<Entit
 
 async function runLLMExtraction(
   input: ExtractionInput,
+  model: string,
 ): Promise<{ entities: string[]; primarySubject: string | null; beatTag: string | null } | null> {
   const { client } = await createAnthropicClient();
   if (!client) return null;
 
   try {
     const message = await client.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 400,
       system: SYSTEM_PROMPT,
       messages: [
@@ -168,12 +172,13 @@ function stringOrNull(value: unknown): string | null {
 
 async function loadCached(
   contentHash: string,
+  model: string,
 ): Promise<{ entities: string[]; primarySubject: string | null; beatTag: string | null } | null> {
   const r = await db.execute({
     sql: `SELECT entities, primary_subject, beat_tag FROM entity_cache
           WHERE content_hash = ? AND model = ? AND prompt_version = ?
           LIMIT 1`,
-    args: [contentHash, MODEL, PROMPT_VERSION],
+    args: [contentHash, model, PROMPT_VERSION],
   });
   if (r.rows.length === 0) return null;
   const row = r.rows[0]!;
@@ -195,6 +200,7 @@ async function loadCached(
 
 async function persistCache(
   contentHash: string,
+  model: string,
   result: { entities: string[]; primarySubject: string | null; beatTag: string | null },
 ): Promise<void> {
   await db.execute({
@@ -203,7 +209,7 @@ async function persistCache(
           VALUES (?, ?, ?, ?, ?, ?, ?)`,
     args: [
       contentHash,
-      MODEL,
+      model,
       PROMPT_VERSION,
       JSON.stringify(result.entities),
       result.primarySubject,

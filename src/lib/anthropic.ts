@@ -5,8 +5,6 @@ import { getAnthropicApiKey } from "./v1/settings";
 
 export { LocalClaudeError, type LocalClaudeErrorKind } from "./anthropic-local";
 
-export const MODEL = "claude-sonnet-4-6";
-
 export function extractText(message: Anthropic.Messages.Message): string {
   return message.content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")

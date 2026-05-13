@@ -1,6 +1,7 @@
 import "server-only";
 
-import { type AnthropicLike, createAnthropicClient, extractText, MODEL } from "../anthropic";
+import { type AnthropicLike, createAnthropicClient, extractText } from "../anthropic";
+import { getAnthropicDraftModel } from "./settings";
 
 export interface TagInput {
   title: string;
@@ -60,8 +61,9 @@ export async function extractItemTags(input: TagInput, opts: TagOptions = {}): P
   if (!client) return [];
 
   try {
+    const model = await getAnthropicDraftModel();
     const message = await client.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 200,
       system: SYSTEM_PROMPT,
       messages: [

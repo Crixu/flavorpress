@@ -14,10 +14,11 @@ import "server-only";
  * every time.
  */
 
-import { createAnthropicClient, extractJson, extractText, MODEL } from "../anthropic";
+import { createAnthropicClient, extractJson, extractText } from "../anthropic";
 import { db } from "../db";
 import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
+import { getAnthropicDraftModel } from "./settings";
 import type { DraftFormat, DraftFormatOption } from "./draft-format";
 
 export interface AngleSuggestion {
@@ -127,8 +128,9 @@ RULES:
 
   const userMessage = `Cluster source bundle:\n\n${sourceBlock}\n\nReturn the JSON envelope now.`;
 
+  const model = await getAnthropicDraftModel();
   const message = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 700,
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],

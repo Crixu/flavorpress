@@ -1,5 +1,6 @@
-import { MODEL, createAnthropicClient, extractText } from "@/lib/anthropic";
+import { createAnthropicClient, extractText } from "@/lib/anthropic";
 
+import { getAnthropicDraftModel } from "./settings";
 import { VOICE_INTERVIEW_QUESTIONS } from "./voice-interview-questions";
 export { VOICE_INTERVIEW_QUESTIONS } from "./voice-interview-questions";
 
@@ -43,8 +44,9 @@ export async function synthesizeVoiceEssay(answers: string[]): Promise<string | 
     const { client } = await createAnthropicClient();
     if (!client) return null;
     const { system, user } = buildSynthesisPrompt(sanitized);
+    const model = await getAnthropicDraftModel();
     const message = await client.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 2000,
       system,
       messages: [{ role: "user", content: user }],
