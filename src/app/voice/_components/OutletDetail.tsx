@@ -22,9 +22,10 @@ import {
 import { DRAFT_FORMAT_PRESETS, DRAFT_FORMATS, type DraftFormatOption } from "@/lib/v1/draft-format";
 import { MAX_OUTLET_FORMATS } from "@/lib/v1/outlet-formats";
 import { VoiceSetupPicker } from "@/app/voice/[outletId]/_components/VoiceSetupPicker";
-import { MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
+import { decodePreflight, MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import type { Outlet } from "@/lib/v1/outlets";
 import { DeleteOutletButton } from "./DeleteOutletButton";
+import { ReconnectOutletButton } from "./ReconnectOutletButton";
 import { RestoreFormatsButton } from "./RestoreFormatsButton";
 
 interface ProfileData {
@@ -48,10 +49,20 @@ interface Props {
   formats: DraftFormatOption[];
   isThinArchive: boolean;
   archivePostCount: number | null;
+  authorizeAvailable: boolean;
 }
 
-export function OutletDetail({ outlet, profile, formats, isThinArchive, archivePostCount }: Props) {
+export function OutletDetail({
+  outlet,
+  profile,
+  formats,
+  isThinArchive,
+  archivePostCount,
+  authorizeAvailable,
+}: Props) {
   const outletId = outlet.id;
+  const hasConnectionIssue = Boolean(outlet.lastError);
+  const preflightIssue = decodePreflight(outlet.lastError);
 
   return (
     <div className="space-y-6">
@@ -198,6 +209,59 @@ export function OutletDetail({ outlet, profile, formats, isThinArchive, archiveP
       {profile ? <RedoVoiceSetup outletId={outletId} /> : null}
 
       <OutletFormatEditor outletId={outletId} formats={formats} />
+
+      {hasConnectionIssue ? (
+        <section className="fp-card p-5">
+          <div className="text-base font-semibold">WordPress connection needs attention.</div>
+          <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+            Reconnect this outlet before sending new drafts to WordPress. The existing voice profile
+            and draft formats stay in place.
+          </p>
+          {preflightIssue ? (
+            <>
+              {preflightIssue.errors.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {preflightIssue.errors.map((message, index) => (
+                    <div
+                      key={index}
+                      className="rounded-md p-3 text-[13px] leading-relaxed"
+                      style={{ background: "var(--rose-tint)", color: "var(--rose)" }}
+                    >
+                      {message}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {preflightIssue.warnings.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {preflightIssue.warnings.map((message, index) => (
+                    <div
+                      key={index}
+                      className="rounded-md p-3 text-[13px] leading-relaxed"
+                      style={{ background: "var(--amber-tint)", color: "var(--amber)" }}
+                    >
+                      {message}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : outlet.lastError ? (
+            <div
+              className="mt-3 rounded-md p-3 text-[13px] leading-relaxed"
+              style={{ background: "var(--rose-tint)", color: "var(--rose)" }}
+            >
+              {outlet.lastError}
+            </div>
+          ) : null}
+          <div className="mt-4">
+            <ReconnectOutletButton
+              baseUrl={outlet.baseUrl}
+              authorizeAvailable={authorizeAvailable}
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section className="fp-danger-zone">
         <div className="fp-danger-zone-h">Delete Outlet</div>

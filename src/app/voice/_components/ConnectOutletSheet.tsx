@@ -8,6 +8,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   authorizeAvailable: boolean;
+  initialBaseUrl?: string;
+  mode?: "connect" | "reconnect";
 }
 
 function isNextRedirect(err: unknown): boolean {
@@ -20,12 +22,19 @@ function isNextRedirect(err: unknown): boolean {
   );
 }
 
-export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props) {
-  const [baseUrl, setBaseUrl] = useState("");
+export function ConnectOutletSheet({
+  open,
+  onClose,
+  authorizeAvailable,
+  initialBaseUrl = "",
+  mode = "connect",
+}: Props) {
+  const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [username, setUsername] = useState("");
   const [appPassword, setAppPassword] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const isReconnect = mode === "reconnect";
 
   function handleAuthorize() {
     setError(null);
@@ -61,7 +70,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props)
     <SideSheet
       open={open}
       onClose={onClose}
-      title="Connect WordPress site"
+      title={isReconnect ? "Reconnect WordPress site" : "Connect WordPress site"}
       footer={
         <>
           <span style={{ flex: 1 }} />
@@ -77,6 +86,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props)
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="https://example.com"
+          readOnly={isReconnect}
         />
       </Field>
 
@@ -98,7 +108,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props)
             Application Password and sends you back here.
           </div>
           <Button onClick={handleAuthorize} disabled={!baseUrl || pending}>
-            Authorize on WordPress
+            {isReconnect ? "Re-authorize on WordPress" : "Authorize on WordPress"}
           </Button>
         </div>
       ) : null}
@@ -140,7 +150,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable }: Props)
           />
         </Field>
         <Button onClick={handleManual} disabled={!baseUrl || !username || !appPassword || pending}>
-          Connect manually
+          {isReconnect ? "Reconnect manually" : "Connect manually"}
         </Button>
       </div>
 
