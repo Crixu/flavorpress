@@ -120,6 +120,8 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
           formats={formats}
           isThinArchive={isThinArchive}
           archivePostCount={archivePostCount}
+          authorizeAvailable={authorizeAvailable}
+          wpcomAvailable={wpcomAvailable}
         />
       </div>
     </VoiceShell>
