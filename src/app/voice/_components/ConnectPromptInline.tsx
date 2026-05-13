@@ -6,9 +6,10 @@ import { ConnectOutletSheet } from "./ConnectOutletSheet";
 
 interface Props {
   authorizeAvailable: boolean;
+  wpcomAvailable: boolean;
 }
 
-export function ConnectPromptInline({ authorizeAvailable }: Props) {
+export function ConnectPromptInline({ authorizeAvailable, wpcomAvailable }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -20,6 +21,7 @@ export function ConnectPromptInline({ authorizeAvailable }: Props) {
         open={open}
         onClose={() => setOpen(false)}
         authorizeAvailable={authorizeAvailable}
+        wpcomAvailable={wpcomAvailable}
       />
     </>
   );

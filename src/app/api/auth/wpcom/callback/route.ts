@@ -54,6 +54,7 @@ export async function GET(req: Request) {
 
   const state = await consumeWpcomState(stateToken);
   if (!state) return loginErr("oauth_state");
+  if (state.mode !== "signup" && state.mode !== "login") return loginErr("oauth_state");
 
   let wp;
   try {

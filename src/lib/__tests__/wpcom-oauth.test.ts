@@ -3,6 +3,7 @@ import {
   issueWpcomState,
   consumeWpcomState,
   buildAuthorizeUrl,
+  buildSiteAuthorizeUrl,
   isWpcomOAuthConfigured,
   resetWpcomStateCacheForTests,
 } from "@/lib/wpcom-oauth";
@@ -27,6 +28,24 @@ describe("wpcom state token", () => {
     const state = await consumeWpcomState(token);
     expect(state?.mode).toBe("signup");
     expect(state?.invite).toBe("INV");
+  });
+
+  it("carries outlet connection state", async () => {
+    const token = await issueWpcomState({
+      nonce: "n5",
+      mode: "outlet",
+      userId: "u1",
+      outletId: "o1",
+      expectedSiteUrl: "https://example.com",
+    });
+    const state = await consumeWpcomState(token);
+    expect(state).toEqual({
+      nonce: "n5",
+      mode: "outlet",
+      userId: "u1",
+      outletId: "o1",
+      expectedSiteUrl: "https://example.com",
+    });
   });
 
   it("rejects tampered token", async () => {
@@ -61,6 +80,25 @@ describe("buildAuthorizeUrl", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("https://example.com/cb");
     expect(url.searchParams.get("state")).toBe("STATE");
     expect(url.searchParams.get("scope")).toBe("auth");
+    expect(url.searchParams.get("response_type")).toBe("code");
+  });
+});
+
+describe("buildSiteAuthorizeUrl", () => {
+  it("requests site publishing scopes for the chosen blog", () => {
+    process.env.WPCOM_OAUTH_CLIENT_ID = "test-client";
+    const url = new URL(
+      buildSiteAuthorizeUrl({
+        redirectUri: "https://example.com/wpcom",
+        state: "STATE",
+        siteUrl: "https://blog.example",
+      }),
+    );
+    expect(url.host).toBe("public-api.wordpress.com");
+    expect(url.searchParams.get("client_id")).toBe("test-client");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://example.com/wpcom");
+    expect(url.searchParams.get("blog")).toBe("https://blog.example");
+    expect(url.searchParams.get("scope")).toBe("sites posts media");
     expect(url.searchParams.get("response_type")).toBe("code");
   });
 });

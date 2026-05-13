@@ -15,6 +15,7 @@ import { AuthRequiredError, requireSession } from "@/lib/session";
 import { getOutlet, listOutlets } from "@/lib/v1/outlets";
 import { canUseAuthorizeFlow } from "@/lib/v1/origin";
 import { decodePreflight } from "@/lib/wordpress";
+import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { disconnectOutletAction, startWPAuthorizeAction } from "@/lib/v1/actions";
 import { Notice } from "@/components/wpds";
 import { SubmitButton } from "../_components/SubmitButton";
@@ -45,6 +46,7 @@ export default async function VoicePage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const outlets = await listOutlets(session.userId);
   const authorizeAvailable = await canUseAuthorizeFlow();
+  const wpcomAvailable = isWpcomOAuthConfigured();
   const hasStatus = Boolean(sp.wp_error || sp.wp_rejected || sp.check);
 
   if (sp.wp_connected) {
@@ -65,7 +67,13 @@ export default async function VoicePage({ searchParams }: PageProps) {
 
   // No outlets at all: zero-state with feature introduction and connect prompt.
   if (outlets.length === 0) {
-    return <ZeroState authorizeAvailable={authorizeAvailable} status={sp} />;
+    return (
+      <ZeroState
+        authorizeAvailable={authorizeAvailable}
+        wpcomAvailable={wpcomAvailable}
+        status={sp}
+      />
+    );
   }
 
   const checkOutlet = sp.check ? await getOutlet(sp.check, session.userId) : null;
@@ -76,7 +84,12 @@ export default async function VoicePage({ searchParams }: PageProps) {
 
   // Outlets exist but none are connected: show sidebar with prompt to authorize.
   return (
-    <VoiceShell outlets={outlets} selectedId={null} authorizeAvailable={authorizeAvailable}>
+    <VoiceShell
+      outlets={outlets}
+      selectedId={null}
+      authorizeAvailable={authorizeAvailable}
+      wpcomAvailable={wpcomAvailable}
+    >
       <div className="space-y-4">
         <VoiceStatusMessages status={sp} />
         {preflight && checkOutlet ? (
@@ -112,9 +125,11 @@ export default async function VoicePage({ searchParams }: PageProps) {
 
 function ZeroState({
   authorizeAvailable,
+  wpcomAvailable,
   status,
 }: {
   authorizeAvailable: boolean;
+  wpcomAvailable: boolean;
   status: Awaited<PageProps["searchParams"]>;
 }) {
   return (
@@ -137,7 +152,10 @@ function ZeroState({
           Use the + Connect button below to link a WordPress site. Once connected, build the voice
           profile and start generating drafts.
         </p>
-        <ConnectPromptInline authorizeAvailable={authorizeAvailable} />
+        <ConnectPromptInline
+          authorizeAvailable={authorizeAvailable}
+          wpcomAvailable={wpcomAvailable}
+        />
       </section>
 
       <section className="fp-card-feature p-6 fp-gradient-surface">
