@@ -52,6 +52,14 @@ export interface AdminOutletRow {
   createdAt: number;
 }
 
+export interface AdminOutletStats {
+  total: number;
+  connected: number;
+  staged: number;
+  withErrors: number;
+  usersWithConnectedOutlets: number;
+}
+
 export interface AdminFolderRow {
   id: string;
   name: string;
@@ -62,6 +70,7 @@ export interface AdminFolderRow {
 export interface AdminSnapshot {
   users: AdminUserRow[];
   invites: AdminInviteRow[];
+  outletStats: AdminOutletStats;
   readingToWriting: ReadingToWritingMetrics;
   now: number;
 }
@@ -151,12 +160,21 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
                 ORDER BY i.sort_bucket ASC, i.sort_at DESC`,
           args: [],
         },
+        {
+          sql: `SELECT COUNT(*) AS total,
+                       SUM(CASE WHEN app_password_encrypted IS NOT NULL THEN 1 ELSE 0 END) AS connected,
+                       SUM(CASE WHEN app_password_encrypted IS NULL THEN 1 ELSE 0 END) AS staged,
+                       SUM(CASE WHEN last_error IS NOT NULL AND TRIM(last_error) <> '' THEN 1 ELSE 0 END) AS with_errors,
+                       COUNT(DISTINCT CASE WHEN app_password_encrypted IS NOT NULL THEN user_id END) AS users_with_connected_outlets
+                FROM outlets`,
+          args: [],
+        },
       ],
       "read",
     ),
     loadReadingToWritingMetrics(),
   ]);
-  const [usersR, invitesR] = adminRows;
+  const [usersR, invitesR, outletStatsR] = adminRows;
 
   const users = (usersR.rows as Record<string, unknown>[]).map(mapAdminUserRow);
 
@@ -170,7 +188,16 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     revokedAt: row.revoked_at == null ? null : Number(row.revoked_at),
   }));
 
-  return { users, invites, readingToWriting, now };
+  const outletStatsRow = (outletStatsR.rows as Record<string, unknown>[])[0] ?? {};
+  const outletStats: AdminOutletStats = {
+    total: Number(outletStatsRow.total ?? 0),
+    connected: Number(outletStatsRow.connected ?? 0),
+    staged: Number(outletStatsRow.staged ?? 0),
+    withErrors: Number(outletStatsRow.with_errors ?? 0),
+    usersWithConnectedOutlets: Number(outletStatsRow.users_with_connected_outlets ?? 0),
+  };
+
+  return { users, invites, outletStats, readingToWriting, now };
 }
 
 export async function loadAdminUserDetailSnapshot(
