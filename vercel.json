@@ -2,8 +2,20 @@
   "regions": ["fra1"],
   "crons": [
     {
+      "path": "/api/cron/poll-early",
+      "schedule": "0 0 * * *"
+    },
+    {
       "path": "/api/cron/poll",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/poll-midday",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/poll-late",
+      "schedule": "0 18 * * *"
     }
   ]
 }
