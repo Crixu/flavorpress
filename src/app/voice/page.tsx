@@ -11,6 +11,7 @@
 
 import { redirect } from "next/navigation";
 import { ensureSchema } from "@/lib/db";
+import { getUserPlan } from "@/lib/plans";
 import { AuthRequiredError, requireSession } from "@/lib/session";
 import { getOutlet, listOutlets } from "@/lib/v1/outlets";
 import { canUseAuthorizeFlow } from "@/lib/v1/origin";
@@ -29,6 +30,8 @@ interface PageProps {
     wp_connected?: string;
     wp_error?: string;
     wp_rejected?: string;
+    plan_limit?: string;
+    limit?: string;
     check?: string;
   }>;
 }
@@ -44,10 +47,17 @@ export default async function VoicePage({ searchParams }: PageProps) {
   }
 
   const sp = await searchParams;
-  const outlets = await listOutlets(session.userId);
-  const authorizeAvailable = await canUseAuthorizeFlow();
+  const [outlets, authorizeAvailable, plan] = await Promise.all([
+    listOutlets(session.userId),
+    canUseAuthorizeFlow(),
+    getUserPlan(session.userId),
+  ]);
   const wpcomAvailable = isWpcomOAuthConfigured();
-  const hasStatus = Boolean(sp.wp_error || sp.wp_rejected || sp.check);
+  const outletLimit = plan.limits.outlets;
+  const outletCount = outlets.length;
+  const canCreateOutlet = outletCount < outletLimit;
+  const currentPlanLabel = planLabel(plan);
+  const hasStatus = Boolean(sp.wp_error || sp.wp_rejected || sp.plan_limit || sp.check);
 
   if (sp.wp_connected) {
     redirect(`/voice/${sp.wp_connected}?wp_connected=1`);
@@ -71,6 +81,10 @@ export default async function VoicePage({ searchParams }: PageProps) {
       <ZeroState
         authorizeAvailable={authorizeAvailable}
         wpcomAvailable={wpcomAvailable}
+        canCreateOutlet={canCreateOutlet}
+        outletLimit={outletLimit}
+        outletCount={outletCount}
+        planLabel={currentPlanLabel}
         status={sp}
       />
     );
@@ -89,6 +103,10 @@ export default async function VoicePage({ searchParams }: PageProps) {
       selectedId={null}
       authorizeAvailable={authorizeAvailable}
       wpcomAvailable={wpcomAvailable}
+      canCreateOutlet={canCreateOutlet}
+      outletLimit={outletLimit}
+      outletCount={outletCount}
+      planLabel={currentPlanLabel}
     >
       <div className="space-y-4">
         <VoiceStatusMessages status={sp} />
@@ -126,10 +144,18 @@ export default async function VoicePage({ searchParams }: PageProps) {
 function ZeroState({
   authorizeAvailable,
   wpcomAvailable,
+  canCreateOutlet,
+  outletLimit,
+  outletCount,
+  planLabel,
   status,
 }: {
   authorizeAvailable: boolean;
   wpcomAvailable: boolean;
+  canCreateOutlet: boolean;
+  outletLimit: number;
+  outletCount: number;
+  planLabel: string;
   status: Awaited<PageProps["searchParams"]>;
 }) {
   return (
@@ -155,6 +181,10 @@ function ZeroState({
         <ConnectPromptInline
           authorizeAvailable={authorizeAvailable}
           wpcomAvailable={wpcomAvailable}
+          canCreateOutlet={canCreateOutlet}
+          outletLimit={outletLimit}
+          outletCount={outletCount}
+          planLabel={planLabel}
         />
       </section>
 
@@ -190,6 +220,12 @@ function VoiceStatusMessages({ status }: { status: Awaited<PageProps["searchPara
       {status.wp_rejected ? (
         <Notice tone="warn">
           You declined authorization on your WordPress site. No credentials were stored.
+        </Notice>
+      ) : null}
+      {status.plan_limit === "outlets" ? (
+        <Notice tone="warn">
+          This plan allows {status.limit ?? "this many"} outlets. Remove an outlet or ask an admin
+          to raise the cap before connecting another WordPress site.
         </Notice>
       ) : null}
     </>
@@ -320,4 +356,11 @@ function FeatureBlock({ title, detail }: { title: string; detail: string }) {
       </div>
     </div>
   );
+}
+
+function planLabel(plan: { plan: string; source: string }): string {
+  if (plan.source === "local") return "Local unlimited plan";
+  if (plan.plan === "pro") return "Pro";
+  if (plan.plan === "custom") return "Custom";
+  return "Trial";
 }

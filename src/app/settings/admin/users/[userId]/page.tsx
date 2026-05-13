@@ -82,8 +82,9 @@ function UserSummary({
   snapshot: NonNullable<Awaited<ReturnType<typeof loadAdminUserDetailSnapshot>>>;
 }) {
   return (
-    <section className="grid gap-3 md:grid-cols-4">
+    <section className="grid gap-3 md:grid-cols-5">
       <Metric label="Plan" value={planLabel(snapshot.user.plan)} />
+      <Metric label="Poll all" value={snapshot.user.pollAllEnabled ? "Enabled" : "Off"} />
       <Metric
         label="Outlets"
         value={`${snapshot.user.outletCount} / ${snapshot.user.limits.outlets}`}

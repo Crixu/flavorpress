@@ -73,7 +73,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-12.v3";
+const SCHEMA_VERSION = "2026-05-13.v1";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -615,6 +615,7 @@ export async function ensureSchema(): Promise<void> {
         custom_outlet_limit INTEGER,
         custom_source_limit INTEGER,
         custom_folder_limit INTEGER,
+        poll_all_enabled INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
       )`,
 
@@ -865,6 +866,26 @@ async function migrateLegacyTables(): Promise<void> {
         // eslint-disable-next-line no-console
         console.info("[migrate] related_image_runs: adding license_filter column");
         await db.execute("ALTER TABLE related_image_runs ADD COLUMN license_filter TEXT");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // user_plans: explicit Poll all entitlement, separate from the custom
+  // plan label. Existing custom rows keep their old behavior.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(user_plans)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("poll_all_enabled")) {
+        console.info("[migrate] user_plans: adding poll_all_enabled column");
+        await db.execute(
+          "ALTER TABLE user_plans ADD COLUMN poll_all_enabled INTEGER NOT NULL DEFAULT 0",
+        );
+        await db.execute(
+          "UPDATE user_plans SET poll_all_enabled = 1 WHERE lower(trim(plan)) = 'custom'",
+        );
       }
     }
   } catch {

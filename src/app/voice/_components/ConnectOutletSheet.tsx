@@ -6,13 +6,17 @@ import {
   startWpcomOutletAuthorizeAction,
   connectOutletManualAction,
 } from "@/lib/v1/actions";
-import { SideSheet, Button, Field } from "@/components/wpds";
+import { SideSheet, Button, Field, Notice } from "@/components/wpds";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   authorizeAvailable: boolean;
   wpcomAvailable: boolean;
+  canCreateOutlet: boolean;
+  outletLimit: number;
+  outletCount: number;
+  planLabel: string;
 }
 
 function isNextRedirect(err: unknown): boolean {
@@ -25,7 +29,16 @@ function isNextRedirect(err: unknown): boolean {
   );
 }
 
-export function ConnectOutletSheet({ open, onClose, authorizeAvailable, wpcomAvailable }: Props) {
+export function ConnectOutletSheet({
+  open,
+  onClose,
+  authorizeAvailable,
+  wpcomAvailable,
+  canCreateOutlet,
+  outletLimit,
+  outletCount,
+  planLabel,
+}: Props) {
   const [baseUrl, setBaseUrl] = useState("");
   const [username, setUsername] = useState("");
   const [appPassword, setAppPassword] = useState("");
@@ -71,6 +84,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable, wpcomAva
         await connectOutletManualAction(fd);
         onClose();
       } catch (err) {
+        if (isNextRedirect(err)) throw err;
         setError(err instanceof Error ? err.message : "Connection failed");
       }
     });
@@ -96,8 +110,16 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable, wpcomAva
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="https://example.com"
+          disabled={!canCreateOutlet}
         />
       </Field>
+
+      {!canCreateOutlet ? (
+        <Notice tone="warn">
+          You are using {outletCount} of {outletLimit} outlets on {planLabel}. Remove an outlet or
+          ask an admin to raise the cap before connecting another WordPress site.
+        </Notice>
+      ) : null}
 
       {wpcomAvailable ? (
         <div
@@ -116,7 +138,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable, wpcomAva
             Sends you to WordPress.com to approve FlavorPress for this site. Use this for
             WordPress.com sites or self-hosted sites connected through Jetpack.
           </div>
-          <Button onClick={handleWpcomAuthorize} disabled={!baseUrl || pending}>
+          <Button onClick={handleWpcomAuthorize} disabled={!canCreateOutlet || !baseUrl || pending}>
             Connect with WordPress.com
           </Button>
         </div>
@@ -139,7 +161,7 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable, wpcomAva
             Sends you to your WordPress site to approve FlavorPress. WordPress generates the
             Application Password and sends you back here.
           </div>
-          <Button onClick={handleAuthorize} disabled={!baseUrl || pending}>
+          <Button onClick={handleAuthorize} disabled={!canCreateOutlet || !baseUrl || pending}>
             Authorize on WordPress
           </Button>
         </div>
@@ -173,7 +195,11 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable, wpcomAva
           here.
         </div>
         <Field label="Username">
-          <input value={username} onChange={(e) => setUsername(e.target.value)} />
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            disabled={!canCreateOutlet}
+          />
         </Field>
         <Field label="Application password">
           <input
@@ -181,9 +207,13 @@ export function ConnectOutletSheet({ open, onClose, authorizeAvailable, wpcomAva
             value={appPassword}
             onChange={(e) => setAppPassword(e.target.value)}
             placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
+            disabled={!canCreateOutlet}
           />
         </Field>
-        <Button onClick={handleManual} disabled={!baseUrl || !username || !appPassword || pending}>
+        <Button
+          onClick={handleManual}
+          disabled={!canCreateOutlet || !baseUrl || !username || !appPassword || pending}
+        >
           Connect manually
         </Button>
       </div>

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { issueInvite, revokeInvite } from "@/lib/invites";
 import { db, ensureSchema } from "@/lib/db";
 import { requireSession, shouldShowAdminControls } from "@/lib/session";
-import { setUserPlan, type PlanKey } from "@/lib/plans";
+import { normalizePlanKey, setUserPlan } from "@/lib/plans";
 
 async function requireAdmin() {
   const session = await requireSession();
@@ -77,14 +77,20 @@ export async function setUserPlanAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const userId = String(formData.get("userId") ?? "");
   const rawPlan = String(formData.get("plan") ?? "trial");
-  const plan: PlanKey = rawPlan === "pro" || rawPlan === "custom" ? rawPlan : "trial";
+  const plan = normalizePlanKey(rawPlan);
   if (!userId) throw new Error("userId required.");
   await setUserPlan(userId, plan, {
     outlets: Number(formData.get("customOutletLimit") ?? 0),
     sources: Number(formData.get("customSourceLimit") ?? 0),
     folders: Number(formData.get("customFolderLimit") ?? 0),
+    pollAllEnabled: formData.get("pollAllEnabled") === "1",
   });
   revalidatePath("/settings/admin");
+  revalidatePath(`/settings/admin/users/${userId}`);
+  revalidatePath("/");
+  revalidatePath("/sources");
+  revalidatePath("/voice");
+  revalidatePath("/voice/[outletId]", "page");
   adminRedirect({ saved: "plan" });
 }
 

@@ -177,7 +177,7 @@ function PlanCards() {
   const cards = [
     { name: "Trial", limits: PLAN_LIMITS.trial, hint: "Default for new signups." },
     { name: "Pro", limits: PLAN_LIMITS.pro, hint: "Paid tier." },
-    { name: "Custom", limits: null, hint: null },
+    { name: "Custom", limits: null, hint: "Per-user caps and Poll all access." },
   ];
   return (
     <section className="grid gap-3 md:grid-cols-3" aria-label="Plan limits">
@@ -345,7 +345,7 @@ function UserControls({ user, isSelf }: { user: AdminUserRow; isSelf: boolean })
           <select name="plan" defaultValue={user.plan} className="fp-input">
             <option value="trial">Trial</option>
             <option value="pro">Pro</option>
-            <option value="custom">Custom (Poll all)</option>
+            <option value="custom">Custom</option>
           </select>
         </label>
         <div className="grid grid-cols-3 gap-2">
@@ -353,6 +353,21 @@ function UserControls({ user, isSelf }: { user: AdminUserRow; isSelf: boolean })
           <LimitInput name="customSourceLimit" label="Sources" defaultValue={user.limits.sources} />
           <LimitInput name="customFolderLimit" label="Folders" defaultValue={user.limits.folders} />
         </div>
+        <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+          <input
+            type="checkbox"
+            name="pollAllEnabled"
+            value="1"
+            defaultChecked={user.pollAllEnabled}
+            className="mt-1"
+          />
+          <span>
+            <span className="font-medium">Allow Poll all</span>
+            <span className="mt-0.5 block text-xs" style={{ color: "var(--fg-muted)" }}>
+              Custom-plan users with this enabled can poll every active source at once.
+            </span>
+          </span>
+        </label>
         <div className="flex items-center gap-3">
           <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Saving">
             Save plan

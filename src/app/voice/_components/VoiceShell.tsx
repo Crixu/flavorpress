@@ -18,6 +18,10 @@ interface Props {
   selectedId: string | null;
   authorizeAvailable: boolean;
   wpcomAvailable: boolean;
+  canCreateOutlet: boolean;
+  outletLimit: number;
+  outletCount: number;
+  planLabel: string;
   children: ReactNode;
 }
 
@@ -26,6 +30,10 @@ export function VoiceShell({
   selectedId,
   authorizeAvailable,
   wpcomAvailable,
+  canCreateOutlet,
+  outletLimit,
+  outletCount,
+  planLabel,
   children,
 }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -38,6 +46,10 @@ export function VoiceShell({
             outlets={outlets}
             selectedId={selectedId}
             onConnectClick={() => setSheetOpen(true)}
+            canCreateOutlet={canCreateOutlet}
+            outletLimit={outletLimit}
+            outletCount={outletCount}
+            planLabel={planLabel}
           />
         }
         sidebarWidth={240}
@@ -50,6 +62,10 @@ export function VoiceShell({
         onClose={() => setSheetOpen(false)}
         authorizeAvailable={authorizeAvailable}
         wpcomAvailable={wpcomAvailable}
+        canCreateOutlet={canCreateOutlet}
+        outletLimit={outletLimit}
+        outletCount={outletCount}
+        planLabel={planLabel}
       />
     </>
   );

@@ -9,7 +9,12 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db, ensureSchema } from "../db";
 import { notifyFirstPostPushed, notifyFirstSourceConnected } from "../notifications";
-import { assertCanCreateFolders, assertCanCreateSources, canPollAllSources } from "../plans";
+import {
+  assertCanCreateFolders,
+  assertCanCreateSources,
+  canPollAllSources,
+  PlanLimitError,
+} from "../plans";
 import { requireSession } from "../session";
 import { ensureRegisteredCapabilities } from "./bootstrap";
 import { generateDraft } from "./draft-generator";
@@ -77,6 +82,15 @@ import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 import { recordSourceAdded, recordWordPressPushed } from "./analytics";
 
+function redirectPlanLimit(error: unknown): void {
+  if (!(error instanceof PlanLimitError)) return;
+  const params = new URLSearchParams({
+    plan_limit: error.resource,
+    limit: String(error.limit),
+  });
+  redirect(`/voice?${params.toString()}`);
+}
+
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
  * findings to) and stores the result on `last_error` for the UI to read.
@@ -89,7 +103,13 @@ export async function preflightOutletAction(formData: FormData) {
     .replace(/\/$/, "");
   if (!baseUrl) throw new Error("Site URL required.");
 
-  const outletId = await stageOutlet(session.userId, baseUrl);
+  let outletId: string;
+  try {
+    outletId = await stageOutlet(session.userId, baseUrl);
+  } catch (err) {
+    redirectPlanLimit(err);
+    throw err;
+  }
   const result = await preflightWordPress(baseUrl, await getOrigin());
   await recordOutletError(outletId, encodePreflight(result));
   revalidatePath("/voice");
@@ -113,7 +133,13 @@ export async function connectOutletManualAction(formData: FormData) {
     throw new Error("All fields required.");
   }
 
-  const outletId = await stageOutlet(session.userId, baseUrl);
+  let outletId: string;
+  try {
+    outletId = await stageOutlet(session.userId, baseUrl);
+  } catch (err) {
+    redirectPlanLimit(err);
+    throw err;
+  }
   const probe = await probeWordPress({ baseUrl, username, appPassword });
   if (!probe.ok) {
     await recordOutletError(outletId, probe.message, probe.kind);
@@ -142,7 +168,13 @@ export async function startWPAuthorizeAction(formData: FormData) {
   if (!baseUrl) throw new Error("Site URL required.");
   const skipPreflight = formData.get("skipPreflight") === "1";
 
-  const outletId = await stageOutlet(session.userId, baseUrl);
+  let outletId: string;
+  try {
+    outletId = await stageOutlet(session.userId, baseUrl);
+  } catch (err) {
+    redirectPlanLimit(err);
+    throw err;
+  }
 
   // Preflight: verify reachability + Application Passwords + callback scheme
   // before sending the user out of the app. If anything fails, redirect back
@@ -197,7 +229,13 @@ export async function startWpcomOutletAuthorizeAction(formData: FormData) {
     throw new Error("Paste the full site URL, e.g. https://yourblog.com");
   }
 
-  const outletId = await stageOutlet(session.userId, siteUrl);
+  let outletId: string;
+  try {
+    outletId = await stageOutlet(session.userId, siteUrl);
+  } catch (err) {
+    redirectPlanLimit(err);
+    throw err;
+  }
   const state = await issueWpcomState({
     nonce: crypto.randomUUID(),
     mode: "outlet",
@@ -1406,7 +1444,7 @@ export async function pollAllSourcesAction(): Promise<{ sourceCount: number }> {
   await ensureRegisteredCapabilities();
   const session = await requireSession();
   if (!(await canPollAllSources(session.userId, session.isAdmin))) {
-    throw new Error("Poll all requires a Custom plan.");
+    throw new Error("Poll all requires a Custom plan with Poll all enabled.");
   }
   const sources = await db.execute({
     sql: `SELECT id FROM sources
