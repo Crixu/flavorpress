@@ -188,6 +188,72 @@ export async function commitOutletCredentials(
   }
 }
 
+export async function commitOutletWpcomOAuthCredentials(opts: {
+  outletId: string;
+  accessToken: string;
+  siteId: string;
+  siteUrl: string;
+  siteName: string | null;
+  username: string | null;
+  kind: OutletKind;
+}): Promise<void> {
+  await ensureSchema();
+  const payload = JSON.stringify({
+    type: "wpcom-oauth",
+    accessToken: opts.accessToken,
+    siteId: opts.siteId,
+    siteUrl: opts.siteUrl,
+    username: opts.username,
+  });
+  await db.execute({
+    sql: `UPDATE outlets
+          SET username = ?, app_password_encrypted = ?, kind = ?,
+              base_url = ?, display_name = COALESCE(?, display_name),
+              connected_at = ?, last_error = NULL
+          WHERE id = ?`,
+    args: [
+      opts.username,
+      secretStringToBlob(encryptSecret(`wpcom-oauth:${payload}`)),
+      opts.kind,
+      opts.siteUrl,
+      opts.siteName,
+      Date.now(),
+      opts.outletId,
+    ],
+  });
+
+  const outletRow = await db.execute({
+    sql: `SELECT o.user_id, o.base_url, o.display_name,
+                 (SELECT COUNT(*) FROM outlets
+                  WHERE user_id = o.user_id AND app_password_encrypted IS NOT NULL) AS connected_count
+          FROM outlets o WHERE o.id = ?`,
+    args: [opts.outletId],
+  });
+  if (outletRow.rows.length === 0) return;
+  const userId = String(outletRow.rows[0]!.user_id);
+  const connectedCount = Number(outletRow.rows[0]!.connected_count ?? 0);
+  const defaultRow = await db.execute({
+    sql: `SELECT id FROM outlets WHERE user_id = ? AND is_default = 1`,
+    args: [userId],
+  });
+  if (defaultRow.rows.length === 0) {
+    await db.execute({
+      sql: `UPDATE outlets SET is_default = 1 WHERE id = ?`,
+      args: [opts.outletId],
+    });
+  }
+  if (connectedCount === 1) {
+    await notifyFirstSiteConnected({
+      userId,
+      outletId: opts.outletId,
+      baseUrl: String(outletRow.rows[0]!.base_url ?? ""),
+      displayName:
+        outletRow.rows[0]!.display_name == null ? null : String(outletRow.rows[0]!.display_name),
+      kind: opts.kind,
+    });
+  }
+}
+
 export async function recordOutletError(
   outletId: string,
   message: string,
@@ -304,7 +370,7 @@ export async function getOutletCredentials(outletId: string): Promise<WPCredenti
   const decoded = blobToSecretString(blob);
   const wasLegacyPlaintext = !isEncryptedSecret(decoded);
   const payload = wasLegacyPlaintext ? decoded : decryptSecret(decoded);
-  const parsed = parseCredentialPayload(payload);
+  const parsed = parseCredentialPayload(payload, String(r.rows[0]!.base_url));
   if (!parsed) return null;
 
   if (wasLegacyPlaintext) {
@@ -314,17 +380,39 @@ export async function getOutletCredentials(outletId: string): Promise<WPCredenti
     });
   }
 
-  return {
-    baseUrl: String(r.rows[0]!.base_url),
-    username: parsed.username,
-    appPassword: parsed.appPassword,
-  };
+  return parsed;
 }
 
-function parseCredentialPayload(payload: string): { username: string; appPassword: string } | null {
+function parseCredentialPayload(payload: string, baseUrl: string): WPCredentials | null {
+  if (payload.startsWith("wpcom-oauth:")) {
+    try {
+      const data = JSON.parse(payload.slice("wpcom-oauth:".length)) as {
+        type?: string;
+        accessToken?: string;
+        siteId?: string;
+        siteUrl?: string;
+        username?: string | null;
+      };
+      if (data.type !== "wpcom-oauth" || !data.accessToken || !data.siteId || !data.siteUrl) {
+        return null;
+      }
+      return {
+        authType: "wpcom-oauth",
+        baseUrl,
+        accessToken: data.accessToken,
+        siteId: data.siteId,
+        siteUrl: data.siteUrl,
+        username: data.username ?? null,
+      };
+    } catch {
+      return null;
+    }
+  }
   const sep = payload.indexOf(":");
   if (sep < 0) return null;
   return {
+    authType: "application-password",
+    baseUrl,
     username: payload.slice(0, sep),
     appPassword: payload.slice(sep + 1),
   };

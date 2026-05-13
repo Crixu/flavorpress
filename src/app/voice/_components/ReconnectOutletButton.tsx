@@ -6,9 +6,10 @@ import { ConnectOutletSheet } from "./ConnectOutletSheet";
 interface Props {
   baseUrl: string;
   authorizeAvailable: boolean;
+  wpcomAvailable: boolean;
 }
 
-export function ReconnectOutletButton({ baseUrl, authorizeAvailable }: Props) {
+export function ReconnectOutletButton({ baseUrl, authorizeAvailable, wpcomAvailable }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -21,6 +22,7 @@ export function ReconnectOutletButton({ baseUrl, authorizeAvailable }: Props) {
         open={open}
         onClose={() => setOpen(false)}
         authorizeAvailable={authorizeAvailable}
+        wpcomAvailable={wpcomAvailable}
         initialBaseUrl={baseUrl}
         mode="reconnect"
       />

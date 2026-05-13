@@ -65,6 +65,7 @@ import {
   setSourceOutlets,
   getDefaultOutlet,
 } from "./outlets";
+import { buildSiteAuthorizeUrl, isWpcomOAuthConfigured, issueWpcomState } from "../wpcom-oauth";
 import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
 import { createWPAuthorizeState } from "./wp-authorize-state";
@@ -173,6 +174,39 @@ export async function startWPAuthorizeAction(formData: FormData) {
   const authorizeUrl = `${baseUrl}/wp-admin/authorize-application.php?${params.toString()}`;
 
   redirect(authorizeUrl);
+}
+
+export async function startWpcomOutletAuthorizeAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  if (!isWpcomOAuthConfigured()) {
+    throw new Error("WordPress.com OAuth is not configured.");
+  }
+  const baseUrl = String(formData.get("baseUrl") ?? "")
+    .trim()
+    .replace(/\/$/, "");
+  if (!baseUrl) throw new Error("Site URL required.");
+  let siteUrl: string;
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("Site URL must use http:// or https://.");
+    }
+    siteUrl = parsed.toString().replace(/\/$/, "");
+  } catch {
+    throw new Error("Paste the full site URL, e.g. https://yourblog.com");
+  }
+
+  const outletId = await stageOutlet(session.userId, siteUrl);
+  const state = await issueWpcomState({
+    nonce: crypto.randomUUID(),
+    mode: "outlet",
+    userId: session.userId,
+    outletId,
+    expectedSiteUrl: siteUrl,
+  });
+  const redirectUri = `${await getOrigin()}/api/wpcom/outlet-callback`;
+  redirect(buildSiteAuthorizeUrl({ redirectUri, state, siteUrl }));
 }
 
 export async function disconnectOutletAction(formData: FormData) {

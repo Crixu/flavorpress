@@ -4,8 +4,11 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 export interface WpcomOAuthState {
   nonce: string;
-  mode: "signup" | "login";
+  mode: "signup" | "login" | "outlet";
   invite?: string;
+  userId?: string;
+  outletId?: string;
+  expectedSiteUrl?: string;
 }
 
 interface SignedStatePayload extends WpcomOAuthState {
@@ -90,7 +93,9 @@ export async function consumeWpcomState(token: string): Promise<WpcomOAuthState 
   }
   if (typeof payload.exp !== "number" || payload.exp <= Date.now()) return null;
   if (typeof payload.nonce !== "string") return null;
-  if (payload.mode !== "signup" && payload.mode !== "login") return null;
+  if (payload.mode !== "signup" && payload.mode !== "login" && payload.mode !== "outlet") {
+    return null;
+  }
   if (consumedNonces.has(payload.nonce)) return null;
   consumedNonces.add(payload.nonce);
   // Bound cache growth: drop oldest entries when over a soft cap.
@@ -100,6 +105,9 @@ export async function consumeWpcomState(token: string): Promise<WpcomOAuthState 
   }
   const out: WpcomOAuthState = { nonce: payload.nonce, mode: payload.mode };
   if (payload.invite) out.invite = payload.invite;
+  if (payload.userId) out.userId = payload.userId;
+  if (payload.outletId) out.outletId = payload.outletId;
+  if (payload.expectedSiteUrl) out.expectedSiteUrl = payload.expectedSiteUrl;
   return out;
 }
 
@@ -113,6 +121,21 @@ export function buildAuthorizeUrl(opts: { redirectUri: string; state: string }):
   return url.toString();
 }
 
+export function buildSiteAuthorizeUrl(opts: {
+  redirectUri: string;
+  state: string;
+  siteUrl: string;
+}): string {
+  const url = new URL("https://public-api.wordpress.com/oauth2/authorize");
+  url.searchParams.set("client_id", process.env.WPCOM_OAUTH_CLIENT_ID ?? "");
+  url.searchParams.set("redirect_uri", opts.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "sites posts media");
+  url.searchParams.set("blog", opts.siteUrl);
+  url.searchParams.set("state", opts.state);
+  return url.toString();
+}
+
 export function isWpcomOAuthConfigured(env: EnvLike = process.env): boolean {
   return Boolean(env.WPCOM_OAUTH_CLIENT_ID && env.WPCOM_OAUTH_CLIENT_SECRET);
 }
@@ -121,6 +144,21 @@ export interface WpcomUserInfo {
   id: string;
   username: string;
   email: string;
+}
+
+export interface WpcomSiteConnection {
+  accessToken: string;
+  siteId: string;
+  siteUrl: string;
+  siteName: string | null;
+  username: string | null;
+  isJetpack: boolean;
+}
+
+interface TokenResponse {
+  access_token?: string;
+  blog_id?: string | number;
+  blog_url?: string;
 }
 
 export async function exchangeCodeForUser(opts: {
@@ -147,7 +185,7 @@ export async function exchangeCodeForUser(opts: {
     const body = await tokenRes.text().catch(() => "<unreadable>");
     throw new Error(`WP.com token exchange failed (${tokenRes.status}): ${body}`);
   }
-  const { access_token } = (await tokenRes.json()) as { access_token?: string };
+  const { access_token } = (await tokenRes.json()) as TokenResponse;
   if (!access_token) throw new Error("WP.com token exchange returned no access_token.");
 
   const meRes = await fetch("https://public-api.wordpress.com/rest/v1.1/me", {
@@ -169,5 +207,123 @@ export async function exchangeCodeForUser(opts: {
     id: String(me.ID),
     username: me.username,
     email: me.email,
+  };
+}
+
+function normalizeSiteUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    u.hash = "";
+    u.search = "";
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return raw.trim().replace(/\/$/, "");
+  }
+}
+
+function sameSite(a: string, b: string): boolean {
+  try {
+    const aa = new URL(normalizeSiteUrl(a));
+    const bb = new URL(normalizeSiteUrl(b));
+    return aa.hostname.toLowerCase() === bb.hostname.toLowerCase();
+  } catch {
+    return normalizeSiteUrl(a).toLowerCase() === normalizeSiteUrl(b).toLowerCase();
+  }
+}
+
+function siteLookupKey(raw: string): string {
+  try {
+    const u = new URL(raw);
+    return u.hostname;
+  } catch {
+    return raw;
+  }
+}
+
+async function fetchSiteInfo(opts: {
+  accessToken: string;
+  site: string;
+}): Promise<{ id: string; url: string; name: string | null; isJetpack: boolean }> {
+  const res = await fetch(
+    `https://public-api.wordpress.com/rest/v1.1/sites/${encodeURIComponent(opts.site)}`,
+    {
+      headers: { authorization: `Bearer ${opts.accessToken}` },
+    },
+  );
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>");
+    throw new Error(`WP.com site lookup failed (${res.status}): ${body}`);
+  }
+  const site = (await res.json()) as {
+    ID?: number;
+    URL?: string;
+    name?: string;
+    jetpack?: boolean;
+    is_jetpack?: boolean;
+  };
+  if (!site.ID) throw new Error("WP.com site lookup returned no site ID.");
+  return {
+    id: String(site.ID),
+    url: normalizeSiteUrl(site.URL ?? opts.site),
+    name: site.name ? String(site.name) : null,
+    isJetpack: Boolean(site.jetpack ?? site.is_jetpack),
+  };
+}
+
+export async function exchangeCodeForSiteConnection(opts: {
+  code: string;
+  redirectUri: string;
+  expectedSiteUrl: string;
+}): Promise<WpcomSiteConnection> {
+  const clientId = process.env.WPCOM_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.WPCOM_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error("WP.com OAuth env vars are not configured.");
+  }
+  const tokenRes = await fetch("https://public-api.wordpress.com/oauth2/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: opts.code,
+      grant_type: "authorization_code",
+      redirect_uri: opts.redirectUri,
+    }).toString(),
+  });
+  if (!tokenRes.ok) {
+    const body = await tokenRes.text().catch(() => "<unreadable>");
+    throw new Error(`WP.com token exchange failed (${tokenRes.status}): ${body}`);
+  }
+  const token = (await tokenRes.json()) as TokenResponse;
+  if (!token.access_token) throw new Error("WP.com token exchange returned no access_token.");
+
+  const meRes = await fetch("https://public-api.wordpress.com/rest/v1.1/me", {
+    headers: { authorization: `Bearer ${token.access_token}` },
+  });
+  const me = meRes.ok
+    ? ((await meRes.json()) as { username?: string })
+    : ({ username: undefined } as { username?: string });
+
+  const initialSite = token.blog_id ? String(token.blog_id) : siteLookupKey(opts.expectedSiteUrl);
+  let site = await fetchSiteInfo({ accessToken: token.access_token, site: initialSite });
+  if (!sameSite(opts.expectedSiteUrl, site.url)) {
+    const expectedSite = await fetchSiteInfo({
+      accessToken: token.access_token,
+      site: siteLookupKey(opts.expectedSiteUrl),
+    });
+    if (expectedSite.id !== site.id) {
+      throw new Error("WordPress.com returned a different site than the one requested.");
+    }
+    site = expectedSite;
+  }
+
+  return {
+    accessToken: token.access_token,
+    siteId: site.id,
+    siteUrl: site.url,
+    siteName: site.name,
+    username: me.username ? String(me.username) : null,
+    isJetpack: site.isJetpack,
   };
 }

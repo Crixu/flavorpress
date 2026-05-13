@@ -50,6 +50,7 @@ interface Props {
   isThinArchive: boolean;
   archivePostCount: number | null;
   authorizeAvailable: boolean;
+  wpcomAvailable: boolean;
 }
 
 export function OutletDetail({
@@ -59,6 +60,7 @@ export function OutletDetail({
   isThinArchive,
   archivePostCount,
   authorizeAvailable,
+  wpcomAvailable,
 }: Props) {
   const outletId = outlet.id;
   const hasConnectionIssue = Boolean(outlet.lastError);
@@ -258,6 +260,7 @@ export function OutletDetail({
             <ReconnectOutletButton
               baseUrl={outlet.baseUrl}
               authorizeAvailable={authorizeAvailable}
+              wpcomAvailable={wpcomAvailable}
             />
           </div>
         </section>

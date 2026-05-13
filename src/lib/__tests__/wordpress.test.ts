@@ -54,6 +54,28 @@ describe("getOutletPostCount", () => {
     await expect(getOutletPostCount(creds)).resolves.toBe(MIN_VOICE_TRAIN_POSTS);
     expect(requestedUrl).toContain(`per_page=${MIN_VOICE_TRAIN_POSTS}`);
   });
+
+  it("uses the WordPress.com public API for OAuth-connected outlets", async () => {
+    _setLookupForTests(async () => [{ address: "8.8.8.8", family: 4 }]);
+    let requestedUrl = "";
+    _setPinnedFetchForTests(
+      vi.fn(async (target) => {
+        requestedUrl = target.url.toString();
+        return new Response("[]", { status: 200, headers: new Headers({ "x-wp-total": "2" }) });
+      }),
+    );
+
+    await expect(
+      getOutletPostCount({
+        authType: "wpcom-oauth",
+        baseUrl: "https://example.wordpress.com",
+        accessToken: "tok_123",
+        siteId: "123",
+        siteUrl: "https://example.wordpress.com",
+      }),
+    ).resolves.toBe(2);
+    expect(requestedUrl).toContain("https://public-api.wordpress.com/wp/v2/sites/123/posts");
+  });
 });
 
 describe("blocksToHtml", () => {

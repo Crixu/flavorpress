@@ -17,10 +17,17 @@ interface Props {
   outlets: OutletItem[];
   selectedId: string | null;
   authorizeAvailable: boolean;
+  wpcomAvailable: boolean;
   children: ReactNode;
 }
 
-export function VoiceShell({ outlets, selectedId, authorizeAvailable, children }: Props) {
+export function VoiceShell({
+  outlets,
+  selectedId,
+  authorizeAvailable,
+  wpcomAvailable,
+  children,
+}: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   return (
@@ -42,6 +49,7 @@ export function VoiceShell({ outlets, selectedId, authorizeAvailable, children }
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         authorizeAvailable={authorizeAvailable}
+        wpcomAvailable={wpcomAvailable}
       />
     </>
   );

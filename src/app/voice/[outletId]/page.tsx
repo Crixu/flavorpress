@@ -12,6 +12,7 @@ import { getOutlet, getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
 import { listOutletFormats } from "@/lib/v1/outlet-formats";
 import { getOutletPostCount, MIN_VOICE_TRAIN_POSTS } from "@/lib/wordpress";
 import { canUseAuthorizeFlow } from "@/lib/v1/origin";
+import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { Notice } from "@/components/wpds";
 import { VoiceShell } from "../_components/VoiceShell";
 import { OutletDetail } from "../_components/OutletDetail";
@@ -40,6 +41,7 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
     listOutlets(session.userId),
     canUseAuthorizeFlow(),
   ]);
+  const wpcomAvailable = isWpcomOAuthConfigured();
 
   if (!outlet || outlet.userId !== session.userId) notFound();
 
@@ -92,7 +94,12 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
   const isThinArchive = archivePostCount !== null && archivePostCount < MIN_VOICE_TRAIN_POSTS;
 
   return (
-    <VoiceShell outlets={outlets} selectedId={outletId} authorizeAvailable={authorizeAvailable}>
+    <VoiceShell
+      outlets={outlets}
+      selectedId={outletId}
+      authorizeAvailable={authorizeAvailable}
+      wpcomAvailable={wpcomAvailable}
+    >
       <div className="space-y-4">
         {sp.wp_connected ? (
           <Notice tone="success">WordPress connected. Build the voice profile next.</Notice>
@@ -104,6 +111,7 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
           isThinArchive={isThinArchive}
           archivePostCount={archivePostCount}
           authorizeAvailable={authorizeAvailable}
+          wpcomAvailable={wpcomAvailable}
         />
       </div>
     </VoiceShell>

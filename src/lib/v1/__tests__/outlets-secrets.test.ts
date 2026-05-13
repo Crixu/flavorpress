@@ -11,7 +11,11 @@ vi.mock("../../db", () => ({
   ensureSchema: ensureSchemaMock,
 }));
 
-import { commitOutletCredentials, getOutletCredentials } from "../outlets";
+import {
+  commitOutletCredentials,
+  commitOutletWpcomOAuthCredentials,
+  getOutletCredentials,
+} from "../outlets";
 
 describe("outlet secret storage", () => {
   beforeEach(() => {
@@ -54,6 +58,7 @@ describe("outlet secret storage", () => {
     const credentials = await getOutletCredentials("outlet-1");
 
     expect(credentials).toEqual({
+      authType: "application-password",
       baseUrl: "https://example.com",
       username: "author",
       appPassword,
@@ -77,11 +82,52 @@ describe("outlet secret storage", () => {
     const credentials = await getOutletCredentials("outlet-1");
 
     expect(credentials?.username).toBe("author");
-    expect(credentials?.appPassword).toBe(appPassword);
+    expect(credentials?.authType).toBe("application-password");
+    if (credentials?.authType !== "wpcom-oauth") {
+      expect(credentials?.appPassword).toBe(appPassword);
+    }
     const rewrite = executeMock.mock.calls[1]![0] as { args: unknown[] };
     const stored = Buffer.from(rewrite.args[0] as Uint8Array).toString("utf8");
     expect(isEncryptedSecret(stored)).toBe(true);
     expect(stored).not.toContain("author");
     expect(stored).not.toContain(appPassword);
+  });
+
+  it("decrypts WordPress.com OAuth credentials for publish", async () => {
+    executeMock.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
+
+    await commitOutletWpcomOAuthCredentials({
+      outletId: "outlet-1",
+      accessToken: "tok_123",
+      siteId: "123",
+      siteUrl: "https://example.wordpress.com",
+      siteName: "Example",
+      username: "author",
+      kind: "wp-com",
+    });
+
+    const update = executeMock.mock.calls[0]![0] as { args: unknown[] };
+    const stored = Buffer.from(update.args[1] as Uint8Array).toString("utf8");
+    expect(isEncryptedSecret(stored)).toBe(true);
+    expect(stored).not.toContain("tok_123");
+
+    executeMock.mockReset();
+    executeMock.mockResolvedValueOnce({
+      rows: [
+        {
+          base_url: "https://example.wordpress.com",
+          app_password_encrypted: update.args[1],
+        },
+      ],
+    });
+
+    await expect(getOutletCredentials("outlet-1")).resolves.toEqual({
+      authType: "wpcom-oauth",
+      baseUrl: "https://example.wordpress.com",
+      accessToken: "tok_123",
+      siteId: "123",
+      siteUrl: "https://example.wordpress.com",
+      username: "author",
+    });
   });
 });

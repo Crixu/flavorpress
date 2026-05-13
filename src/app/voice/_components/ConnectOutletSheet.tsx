@@ -1,13 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { startWPAuthorizeAction, connectOutletManualAction } from "@/lib/v1/actions";
+import {
+  startWPAuthorizeAction,
+  startWpcomOutletAuthorizeAction,
+  connectOutletManualAction,
+} from "@/lib/v1/actions";
 import { SideSheet, Button, Field } from "@/components/wpds";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   authorizeAvailable: boolean;
+  wpcomAvailable: boolean;
   initialBaseUrl?: string;
   mode?: "connect" | "reconnect";
 }
@@ -26,6 +31,7 @@ export function ConnectOutletSheet({
   open,
   onClose,
   authorizeAvailable,
+  wpcomAvailable,
   initialBaseUrl = "",
   mode = "connect",
 }: Props) {
@@ -46,6 +52,20 @@ export function ConnectOutletSheet({
       } catch (err) {
         if (isNextRedirect(err)) throw err;
         setError(err instanceof Error ? err.message : "Authorization failed");
+      }
+    });
+  }
+
+  function handleWpcomAuthorize() {
+    setError(null);
+    start(async () => {
+      const fd = new FormData();
+      fd.set("baseUrl", baseUrl);
+      try {
+        await startWpcomOutletAuthorizeAction(fd);
+      } catch (err) {
+        if (isNextRedirect(err)) throw err;
+        setError(err instanceof Error ? err.message : "WordPress.com authorization failed");
       }
     });
   }
@@ -90,7 +110,7 @@ export function ConnectOutletSheet({
         />
       </Field>
 
-      {authorizeAvailable ? (
+      {wpcomAvailable ? (
         <div
           style={{
             margin: "18px 0",
@@ -101,7 +121,30 @@ export function ConnectOutletSheet({
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-            Option A - One-click authorize
+            Option A - WordPress.com or Jetpack
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-tertiary)", marginBottom: 10 }}>
+            Sends you to WordPress.com to approve FlavorPress for this site. Use this for
+            WordPress.com sites or self-hosted sites connected through Jetpack.
+          </div>
+          <Button onClick={handleWpcomAuthorize} disabled={!baseUrl || pending}>
+            Connect with WordPress.com
+          </Button>
+        </div>
+      ) : null}
+
+      {authorizeAvailable ? (
+        <div
+          style={{
+            margin: wpcomAvailable ? "0 0 18px" : "18px 0",
+            padding: "16px",
+            background: "var(--surface-subtle)",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border-default)",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+            {wpcomAvailable ? "Option B - Site authorize" : "Option A - Site authorize"}
           </div>
           <div style={{ fontSize: 11, color: "var(--ink-tertiary)", marginBottom: 10 }}>
             Sends you to your WordPress site to approve FlavorPress. WordPress generates the
@@ -122,7 +165,9 @@ export function ConnectOutletSheet({
         }}
       >
         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-          {authorizeAvailable ? "Option B - Application password" : "Application password"}
+          {authorizeAvailable || wpcomAvailable
+            ? "Fallback - Application password"
+            : "Application password"}
         </div>
         <div style={{ fontSize: 11, color: "var(--ink-tertiary)", marginBottom: 12 }}>
           Open{" "}

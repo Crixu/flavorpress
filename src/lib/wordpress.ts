@@ -10,11 +10,23 @@
 import { sanitizeDraftHtml } from "./draft-html-sanitizer";
 import { safeFetch, safeReadJson, safeReadText } from "./v1/safe-fetch";
 
-export interface WPCredentials {
+export interface WPApplicationPasswordCredentials {
+  authType?: "application-password";
   baseUrl: string;
   username: string;
   appPassword: string;
 }
+
+export interface WPComOAuthCredentials {
+  authType: "wpcom-oauth";
+  baseUrl: string;
+  accessToken: string;
+  siteId: string;
+  siteUrl: string;
+  username?: string | null;
+}
+
+export type WPCredentials = WPApplicationPasswordCredentials | WPComOAuthCredentials;
 
 export interface WPProbeResult {
   ok: boolean;
@@ -32,7 +44,12 @@ export interface WPPost {
   date: string;
 }
 
+function isWpcomOAuth(creds: WPCredentials): creds is WPComOAuthCredentials {
+  return creds.authType === "wpcom-oauth";
+}
+
 function authHeader(creds: WPCredentials): string {
+  if (isWpcomOAuth(creds)) return `Bearer ${creds.accessToken}`;
   const token = Buffer.from(`${creds.username}:${creds.appPassword.replace(/\s+/g, "")}`).toString(
     "base64",
   );
@@ -40,7 +57,15 @@ function authHeader(creds: WPCredentials): string {
 }
 
 function root(creds: WPCredentials): string {
+  if (isWpcomOAuth(creds)) return (creds.siteUrl || creds.baseUrl).replace(/\/$/, "");
   return creds.baseUrl.replace(/\/$/, "");
+}
+
+function wpV2Root(creds: WPCredentials): string {
+  if (isWpcomOAuth(creds)) {
+    return `https://public-api.wordpress.com/wp/v2/sites/${encodeURIComponent(creds.siteId)}`;
+  }
+  return `${root(creds)}/wp-json/wp/v2`;
 }
 
 /**
@@ -48,7 +73,9 @@ function root(creds: WPCredentials): string {
  * capability. Detects Jetpack-managed sites, custom auth plugin
  * interception, multisite vs subsite URL paste.
  */
-export async function probeWordPress(creds: WPCredentials): Promise<WPProbeResult> {
+export async function probeWordPress(
+  creds: WPApplicationPasswordCredentials,
+): Promise<WPProbeResult> {
   try {
     const res = await safeFetch(`${root(creds)}/wp-json/wp/v2/users/me`, {
       headers: { Authorization: authHeader(creds) },
@@ -373,7 +400,7 @@ export async function fetchHomepageProse(homeUrl: string, charBudget = 2000): Pr
 /** Pull the user's last N posts. Used by the voice profile build. */
 export async function listRecentPosts(creds: WPCredentials, count = 50): Promise<WPPost[]> {
   const res = await safeFetch(
-    `${root(creds)}/wp-json/wp/v2/posts?per_page=${count}&orderby=date&_fields=id,title,content,excerpt,link,date`,
+    `${wpV2Root(creds)}/posts?per_page=${count}&orderby=date&_fields=id,title,content,excerpt,link,date`,
     { headers: { Authorization: authHeader(creds) } },
   );
   if (!res.ok) throw new Error(`WP fetch failed: ${res.status}`);
@@ -396,7 +423,7 @@ export const MIN_VOICE_TRAIN_POSTS = 20;
  */
 export async function getOutletPostCount(creds: WPCredentials): Promise<number> {
   const res = await safeFetch(
-    `${root(creds)}/wp-json/wp/v2/posts?per_page=${MIN_VOICE_TRAIN_POSTS}&_fields=id`,
+    `${wpV2Root(creds)}/posts?per_page=${MIN_VOICE_TRAIN_POSTS}&_fields=id`,
     {
       headers: { Authorization: authHeader(creds) },
     },
@@ -503,7 +530,7 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
   }
 
   const res = await safeFetch(
-    `${root(input.creds)}/wp-json/wp/v2/posts?context=edit&_fields=id,link,modified_gmt`,
+    `${wpV2Root(input.creds)}/posts?context=edit&_fields=id,link,modified_gmt`,
     {
       method: "POST",
       headers: {
@@ -547,7 +574,7 @@ export async function updateWordPressPost(input: UpdateInput): Promise<PublishRe
   if (input.status) body.status = input.status;
 
   const res = await safeFetch(
-    `${root(input.creds)}/wp-json/wp/v2/posts/${input.postId}?context=edit&_fields=id,link,modified_gmt`,
+    `${wpV2Root(input.creds)}/posts/${input.postId}?context=edit&_fields=id,link,modified_gmt`,
     {
       method: "PUT",
       headers: {
@@ -585,7 +612,7 @@ export interface FetchedPost {
  * connected with already implies that.
  */
 export async function fetchPostFromWP(creds: WPCredentials, postId: number): Promise<FetchedPost> {
-  const url = `${root(creds)}/wp-json/wp/v2/posts/${postId}?context=edit&_fields=id,title,content,modified_gmt,link`;
+  const url = `${wpV2Root(creds)}/posts/${postId}?context=edit&_fields=id,title,content,modified_gmt,link`;
   const res = await safeFetch(url, {
     headers: { Authorization: authHeader(creds) },
   });
@@ -639,6 +666,7 @@ export function blocksToHtml(raw: string): string {
  * incident response.
  */
 export async function revokeAllAppPasswords(creds: WPCredentials): Promise<void> {
+  if (isWpcomOAuth(creds)) return;
   const meRes = await safeFetch(`${root(creds)}/wp-json/wp/v2/users/me`, {
     headers: { Authorization: authHeader(creds) },
   });
