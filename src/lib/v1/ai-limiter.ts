@@ -1,11 +1,10 @@
 /**
  * Process-wide rate limit for Anthropic API calls.
  *
- * Anthropic enforces a 50 req/min organization cap on
- * claude-sonnet-4-6 by default. A "poll all" can ingest dozens of
- * items in seconds, each firing a per-item entity extraction plus a
- * fire-and-forget tagger call. Without throttling, the burst rolls
- * straight into HTTP 429.
+ * Anthropic enforces request-per-minute organization caps per model.
+ * A "poll all" can ingest dozens of items in seconds, each firing a
+ * per-item entity extraction plus a fire-and-forget tagger call.
+ * Without throttling, the burst rolls straight into HTTP 429.
  *
  * The limiter is a token bucket sized to stay comfortably under the
  * org cap (45 req/min steady, burst of 10). It's wrapped around the
