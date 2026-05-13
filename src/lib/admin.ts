@@ -1,6 +1,6 @@
 import "server-only";
 import { db, ensureSchema } from "./db";
-import { limitsForPlan, type PlanKey, type PlanLimits } from "./plans";
+import { limitsForPlan, normalizePlanKey, type PlanKey, type PlanLimits } from "./plans";
 import { loadReadingToWritingMetrics, type ReadingToWritingMetrics } from "./v1/analytics";
 
 export interface AdminUserRow {
@@ -15,6 +15,7 @@ export interface AdminUserRow {
   folderCount: number;
   plan: PlanKey;
   limits: PlanLimits;
+  pollAllEnabled: boolean;
 }
 
 export interface AdminInviteRow {
@@ -83,10 +84,6 @@ export interface AdminUserDetailSnapshot {
   now: number;
 }
 
-function normalizePlanKey(value: unknown): PlanKey {
-  return value === "pro" || value === "custom" ? value : "trial";
-}
-
 function mapAdminUserRow(row: Record<string, unknown>): AdminUserRow {
   const id = String(row.id);
   const plan = normalizePlanKey(row.plan);
@@ -107,6 +104,7 @@ function mapAdminUserRow(row: Record<string, unknown>): AdminUserRow {
     folderCount: Number(row.folder_count ?? 0),
     plan,
     limits,
+    pollAllEnabled: plan === "custom" && Number(row.poll_all_enabled ?? 0) === 1,
   };
 }
 
@@ -124,7 +122,8 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
                        p.plan AS plan,
                        p.custom_outlet_limit AS custom_outlet_limit,
                        p.custom_source_limit AS custom_source_limit,
-                       p.custom_folder_limit AS custom_folder_limit
+                       p.custom_folder_limit AS custom_folder_limit,
+                       p.poll_all_enabled AS poll_all_enabled
                 FROM users u
                 LEFT JOIN outlets o ON o.user_id = u.id
                 LEFT JOIN sources s ON s.user_id = u.id
@@ -215,7 +214,8 @@ export async function loadAdminUserDetailSnapshot(
                      p.plan AS plan,
                      p.custom_outlet_limit AS custom_outlet_limit,
                      p.custom_source_limit AS custom_source_limit,
-                     p.custom_folder_limit AS custom_folder_limit
+                     p.custom_folder_limit AS custom_folder_limit,
+                     p.poll_all_enabled AS poll_all_enabled
               FROM users u
               LEFT JOIN outlets o ON o.user_id = u.id
               LEFT JOIN sources s ON s.user_id = u.id

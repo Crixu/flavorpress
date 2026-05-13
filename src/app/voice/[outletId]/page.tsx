@@ -7,6 +7,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import { ensureSchema, db } from "@/lib/db";
+import { getUserPlan } from "@/lib/plans";
 import { AuthRequiredError, requireSession } from "@/lib/session";
 import { getOutlet, getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
 import { listOutletFormats } from "@/lib/v1/outlet-formats";
@@ -36,12 +37,17 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
   const { outletId } = await params;
   const sp = await searchParams;
 
-  const [outlet, outlets, authorizeAvailable] = await Promise.all([
+  const [outlet, outlets, authorizeAvailable, plan] = await Promise.all([
     getOutlet(outletId, session.userId),
     listOutlets(session.userId),
     canUseAuthorizeFlow(),
+    getUserPlan(session.userId),
   ]);
   const wpcomAvailable = isWpcomOAuthConfigured();
+  const outletLimit = plan.limits.outlets;
+  const outletCount = outlets.length;
+  const canCreateOutlet = outletCount < outletLimit;
+  const currentPlanLabel = planLabel(plan);
 
   if (!outlet || outlet.userId !== session.userId) notFound();
 
@@ -99,6 +105,10 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
       selectedId={outletId}
       authorizeAvailable={authorizeAvailable}
       wpcomAvailable={wpcomAvailable}
+      canCreateOutlet={canCreateOutlet}
+      outletLimit={outletLimit}
+      outletCount={outletCount}
+      planLabel={currentPlanLabel}
     >
       <div className="space-y-4">
         {sp.wp_connected ? (
@@ -129,4 +139,11 @@ function formatSeedMethod(value: unknown): string {
     default:
       return "not recorded";
   }
+}
+
+function planLabel(plan: { plan: string; source: string }): string {
+  if (plan.source === "local") return "Local unlimited plan";
+  if (plan.plan === "pro") return "Pro";
+  if (plan.plan === "custom") return "Custom";
+  return "Trial";
 }

@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 
+interface AccountBody {
+  email?: string;
+  avatarUrl?: string;
+  showAdmin?: boolean;
+}
+
 export function AccountMenuClient() {
   const [email, setEmail] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -12,7 +18,7 @@ export function AccountMenuClient() {
     let cancelled = false;
     void fetch("/api/account/me", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
-      .then((body: { email?: string; avatarUrl?: string; showAdmin?: boolean } | null) => {
+      .then((body: AccountBody | null) => {
         if (!cancelled && body?.email) {
           setEmail(body.email);
           setAvatarUrl(body.avatarUrl ?? null);
