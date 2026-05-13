@@ -84,6 +84,12 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
   return rowToPlan(r.rows[0] as Record<string, unknown> | undefined, userId);
 }
 
+export async function canPollAllSources(userId: string, isAdmin: boolean): Promise<boolean> {
+  if (isAdmin) return true;
+  const plan = await getUserPlan(userId);
+  return plan.plan === "custom";
+}
+
 export async function setUserPlan(
   userId: string,
   plan: PlanKey,

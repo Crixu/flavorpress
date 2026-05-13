@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthRequiredError, requireSession } from "@/lib/session";
+import { canPollAllSources } from "@/lib/plans";
 import { TodayFolderStreams } from "./_components/TodayFolderStreams";
 import { TopicSearch } from "./_components/TopicSearch/TopicSearch";
 import { PollAllButton } from "./sources/_components/PollAllButton";
@@ -34,6 +35,7 @@ export default async function TodayPage() {
 
   const cache = await getTodayCachedViewState(session.userId);
   const frame = cache.payload?.frame ?? (await loadTodayFrame(session.userId));
+  const showPollAll = await canPollAllSources(session.userId, session.isAdmin);
   if (needsTodayOnboarding(frame)) {
     return (
       <Onboarding
@@ -91,6 +93,7 @@ export default async function TodayPage() {
               polledSourceCount={payload.emptyClusterStats.polledSourceCount}
               itemsTotal={payload.emptyClusterStats.itemsTotal}
               itemsTotalCapped={payload.emptyClusterStats.itemsTotalCapped}
+              showPollAll={showPollAll}
             />
           ) : (
             <LoadingTodayView />
@@ -186,10 +189,12 @@ function EmptyClusters({
   polledSourceCount,
   itemsTotal,
   itemsTotalCapped,
+  showPollAll,
 }: {
   polledSourceCount: number;
   itemsTotal: number;
   itemsTotalCapped: boolean;
+  showPollAll: boolean;
 }) {
   // Three distinct waiting states. Each gets one action so the user is
   // never asked to pick between "manage" and "publish" in a moment that
@@ -241,11 +246,11 @@ function EmptyClusters({
         {copy.body}
       </p>
       <div className="mt-5 flex justify-center">
-        {stage === "first-poll" ? (
+        {stage === "first-poll" && showPollAll ? (
           <PollAllButton />
         ) : (
           <Link href="/sources" className="fp-btn fp-btn-primary">
-            {stage === "no-items" ? "Open sources →" : "Add a source →"}
+            {stage === "no-cluster-yet" ? "Add a source →" : "Open sources →"}
           </Link>
         )}
       </div>
