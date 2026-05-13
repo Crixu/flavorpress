@@ -510,8 +510,17 @@ export default function DesignPage() {
         </p>
       </Section>
 
+      {/* Today tutorial */}
+      <Section eyebrow="11" title="Today tutorial mockups">
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 16 }}>
+          First-run tutorial for a ready Today screen. It teaches the live surface in place: lanes,
+          evidence, then draft action.
+        </p>
+        <TodayTutorialMockups />
+      </Section>
+
       {/* Anti-patterns */}
-      <Section eyebrow="11" title="Anti-patterns">
+      <Section eyebrow="12" title="Anti-patterns">
         <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
           Flag these in code review. They break voice, introduce scope creep, or make the product
           look like an AI slop factory.
@@ -678,6 +687,416 @@ function Swatch({ varName, value }: { varName: string; value: string }) {
         <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>{value}</div>
       </div>
     </div>
+  );
+}
+
+function TodayTutorialMockups() {
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <TutorialFrame
+        step="1"
+        title="Start with a lane"
+        body="Today is grouped by the folders the user already reads. The first hint anchors to the expanded lane, not a modal."
+        focus="lane"
+      />
+      <TutorialFrame
+        step="2"
+        title="Check the evidence"
+        body="The cluster card is the lesson: headline, source count, source chips, fit signals, then a clear way to pass."
+        focus="cluster"
+      />
+      <TutorialFrame
+        step="3"
+        title="Draft from the cluster"
+        body="The last hint points at the draft controls. The copy reinforces draft status and the user's publishing decision."
+        focus="draft"
+      />
+    </div>
+  );
+}
+
+function TutorialFrame({
+  step,
+  title,
+  body,
+  focus,
+}: {
+  step: string;
+  title: string;
+  body: string;
+  focus: "lane" | "cluster" | "draft";
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(260px, 0.82fr) minmax(0, 1.6fr)",
+        gap: 14,
+        alignItems: "stretch",
+      }}
+    >
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <StepPill step={step} />
+          <span
+            style={{
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--ink-muted)",
+              fontWeight: 600,
+            }}
+          >
+            Mockup state
+          </span>
+        </div>
+        <div
+          style={{
+            fontFamily: "var(--font-serif), Georgia, serif",
+            fontSize: 20,
+            fontWeight: 500,
+            color: "var(--ink-primary)",
+            marginBottom: 8,
+          }}
+        >
+          {title}
+        </div>
+        <p style={{ fontSize: 13, lineHeight: 1.6, color: "var(--ink-secondary)", margin: 0 }}>
+          {body}
+        </p>
+        <div style={{ marginTop: 18 }}>
+          <MockCoach step={step} focus={focus} />
+        </div>
+      </Card>
+      <div
+        style={{
+          border: "1px solid var(--border-default)",
+          borderRadius: 6,
+          background: "var(--surface-subtle)",
+          padding: 14,
+          minWidth: 0,
+        }}
+      >
+        <TodayMockSurface focus={focus} />
+      </div>
+    </div>
+  );
+}
+
+function MockCoach({ step, focus }: { step: string; focus: "lane" | "cluster" | "draft" }) {
+  const copy = {
+    lane: {
+      title: "Today is sorted into reading lanes.",
+      body: "Open a lane to see the strongest cluster for that folder.",
+      primary: "Next",
+    },
+    cluster: {
+      title: "Judge the cluster before drafting.",
+      body: "Use source count, source chips, and fit signals. If it is not yours today, set it aside.",
+      primary: "Next",
+    },
+    draft: {
+      title: "Create a draft, not a post.",
+      body: "Draft this opens the writing path. Take notes keeps the cluster as research.",
+      primary: "Finish",
+    },
+  }[focus];
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border-default)",
+        borderRadius: 6,
+        background: "var(--warn-bg)",
+        padding: 12,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "center",
+          marginBottom: 8,
+        }}
+      >
+        <span style={{ fontSize: 11, color: "var(--warn-fg)", fontWeight: 600 }}>{step} / 3</span>
+        <Button variant="link" size="sm">
+          Skip
+        </Button>
+      </div>
+      <div style={{ fontSize: 13, color: "var(--ink-primary)", fontWeight: 600 }}>{copy.title}</div>
+      <p
+        style={{
+          fontSize: 12,
+          lineHeight: 1.55,
+          color: "var(--ink-secondary)",
+          margin: "4px 0 12px",
+        }}
+      >
+        {copy.body}
+      </p>
+      <Button size="sm">{copy.primary}</Button>
+    </div>
+  );
+}
+
+function TodayMockSurface({ focus }: { focus: "lane" | "cluster" | "draft" }) {
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <TodayMockHeader />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 8,
+        }}
+      >
+        <MockStat value="12" label="new" />
+        <MockStat value="3" label="drafts" />
+        <MockStat value="8" label="sent" />
+      </div>
+      <MockLane focus={focus} />
+    </div>
+  );
+}
+
+function TodayMockHeader() {
+  return (
+    <header>
+      <div
+        style={{
+          fontSize: 10,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--ink-muted)",
+          fontWeight: 600,
+          marginBottom: 4,
+        }}
+      >
+        Tuesday, May 12
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--font-serif), Georgia, serif",
+          fontSize: 24,
+          lineHeight: 1.1,
+          fontWeight: 500,
+          color: "var(--ink-primary)",
+        }}
+      >
+        7 clusters across 3 streams
+      </div>
+      <p style={{ fontSize: 12, color: "var(--ink-tertiary)", margin: "5px 0 0" }}>
+        Each folder is a reading lane. Open the strongest cluster, ask for more, or set that lane
+        aside for now.
+      </p>
+    </header>
+  );
+}
+
+function MockStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border-default)",
+        borderRadius: 4,
+        background: "var(--surface-canvas)",
+        padding: "8px 10px",
+      }}
+    >
+      <span style={{ fontSize: 16, color: "var(--ink-primary)", fontWeight: 600 }}>{value}</span>
+      <span style={{ fontSize: 11, color: "var(--ink-muted)", marginLeft: 5 }}>{label}</span>
+    </div>
+  );
+}
+
+function MockLane({ focus }: { focus: "lane" | "cluster" | "draft" }) {
+  const laneFocused = focus === "lane";
+  return (
+    <div
+      style={{
+        background: "var(--surface-canvas)",
+        border: "1px solid var(--border-default)",
+        borderRadius: 6,
+        boxShadow: "var(--shadow-xs)",
+        outline: laneFocused ? "2px solid var(--accent-blue)" : undefined,
+        outlineOffset: laneFocused ? 3 : undefined,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "center",
+          padding: "12px 14px",
+          borderBottom: "1px solid var(--border-default)",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <span
+            style={{
+              fontFamily: "var(--font-serif), Georgia, serif",
+              fontSize: 18,
+              color: "var(--ink-primary)",
+            }}
+          >
+            Coffee
+          </span>
+          <span style={{ marginLeft: 8, fontSize: 12, color: "var(--ink-muted)" }}>3 clusters</span>
+        </div>
+        <Button variant="secondary" size="sm">
+          Refresh
+        </Button>
+      </div>
+      <div style={{ padding: 14 }}>
+        <MockClusterCard focus={focus} />
+        <div
+          style={{
+            marginTop: 8,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            border: "1px solid var(--border-default)",
+            borderRadius: 4,
+            padding: "9px 10px",
+            background: "var(--surface-subtle)",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "var(--ink-secondary)" }}>
+            Colombian farms face another dry-season price shock
+          </div>
+          <StatusBadge status="default-outlet">fit 0.74</StatusBadge>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MockClusterCard({ focus }: { focus: "lane" | "cluster" | "draft" }) {
+  const clusterFocused = focus === "cluster";
+  return (
+    <Card
+      style={{
+        outline: clusterFocused ? "2px solid var(--accent-blue)" : undefined,
+        outlineOffset: clusterFocused ? 3 : undefined,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 14,
+          alignItems: "flex-start",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--ink-muted)",
+              fontWeight: 600,
+              marginBottom: 6,
+            }}
+          >
+            #1 in Coffee · 4 sources · 2h ago
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--font-serif), Georgia, serif",
+              fontSize: 20,
+              lineHeight: 1.18,
+              fontWeight: 500,
+              color: "var(--ink-primary)",
+            }}
+          >
+            Roasters are rewriting menus around lower-caffeine blends
+          </div>
+        </div>
+        <StatusBadge status="ok">Ready</StatusBadge>
+      </div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 12 }}>
+        <Chip label="Daily Coffee News" />
+        <Chip label="Sprudge" />
+        <Chip label="Perfect Daily Grind" />
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 8,
+          background: "var(--surface-subtle)",
+          borderRadius: 4,
+          padding: 10,
+          marginTop: 12,
+        }}
+      >
+        <MockSignal label="Archive" value="0.81" />
+        <MockSignal label="Beat" value="0.77" />
+        <MockSignal label="Trust" value="0.69" />
+      </div>
+      <MockDraftControls focus={focus} />
+    </Card>
+  );
+}
+
+function MockSignal({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: "var(--ink-muted)", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 14, color: "var(--ink-primary)", fontWeight: 600 }}>{value}</div>
+    </div>
+  );
+}
+
+function MockDraftControls({ focus }: { focus: "lane" | "cluster" | "draft" }) {
+  const draftFocused = focus === "draft";
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: draftFocused ? 8 : 0,
+        borderRadius: 6,
+        outline: draftFocused ? "2px solid var(--accent-blue)" : undefined,
+        outlineOffset: draftFocused ? 3 : undefined,
+      }}
+    >
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <Button size="sm">Draft this</Button>
+        <Button variant="secondary" size="sm">
+          Take notes
+        </Button>
+        <Button variant="link" size="sm" style={{ marginLeft: "auto" }}>
+          Not now
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function StepPill({ step }: { step: string }) {
+  return (
+    <span
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 999,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--ink-primary)",
+        color: "var(--surface-canvas)",
+        fontSize: 12,
+        fontWeight: 600,
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {step}
+    </span>
   );
 }
 

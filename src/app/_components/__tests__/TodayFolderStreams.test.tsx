@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TodayFolderStreams } from "../TodayFolderStreams";
 import type { TodayFolderStream, TodayClusterPreview } from "../TodayFolderStreams";
@@ -84,8 +84,13 @@ function makeStream(overrides: {
 
 const outlets = [{ id: "outlet-1", displayName: "My Blog" }];
 const renderedAt = 1_700_000_000_000;
+const todayTutorialDoneKey = "flavorpress.today.onboarded.v1";
 
 describe("TodayFolderStreams", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("expands the first folder by default and leaves others collapsed", () => {
     const streams: TodayFolderStream[] = [
       makeStream({
@@ -262,5 +267,81 @@ describe("TodayFolderStreams", () => {
       el = el.parentElement;
     }
     expect(emphasisCard).toBeNull();
+  });
+
+  it("shows the Today tutorial on first ready visit and finishes it", () => {
+    const streams: TodayFolderStream[] = [
+      makeStream({
+        id: "coffee",
+        name: "Coffee",
+        clusters: [makeCluster({ id: "c1", sourceCount: 3 })],
+      }),
+    ];
+
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
+
+    expect(screen.getByTestId("today-tutorial-coach")).toBeInTheDocument();
+    expect(screen.getByText("Today is sorted into reading lanes.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Judge the cluster before drafting.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Create a draft, not a post.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    expect(screen.queryByTestId("today-tutorial-coach")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(todayTutorialDoneKey)).toBe("1");
+  });
+
+  it("does not show the Today tutorial after it has been completed", () => {
+    window.localStorage.setItem(todayTutorialDoneKey, "1");
+    const streams: TodayFolderStream[] = [
+      makeStream({
+        id: "coffee",
+        name: "Coffee",
+        clusters: [makeCluster({ id: "c1", sourceCount: 3 })],
+      }),
+    ];
+
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
+
+    expect(screen.queryByTestId("today-tutorial-coach")).not.toBeInTheDocument();
+  });
+
+  it("does not show the Today tutorial when folders have no clusters", () => {
+    const streams: TodayFolderStream[] = [
+      makeStream({
+        id: "coffee",
+        name: "Coffee",
+        clusters: [],
+      }),
+    ];
+
+    render(
+      <TodayFolderStreams
+        streams={streams}
+        outlets={outlets}
+        defaultOutletId="outlet-1"
+        renderedAt={renderedAt}
+      />,
+    );
+
+    expect(screen.queryByTestId("today-tutorial-coach")).not.toBeInTheDocument();
+    expect(screen.getByText("No fired clusters in Coffee yet.")).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -62,6 +62,9 @@ export interface TodayFolderStream {
 }
 
 const LAST_OPENED_FOLDER_KEY = "flavorpress.today.lastOpenedFolderId";
+const TODAY_TUTORIAL_DONE_KEY = "flavorpress.today.onboarded.v1";
+
+type TodayTutorialStep = "lane" | "cluster" | "draft";
 
 interface Props {
   streams: TodayFolderStream[];
@@ -72,6 +75,13 @@ interface Props {
 
 export function TodayFolderStreams({ streams, outlets, defaultOutletId, renderedAt }: Props) {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const tutorialDone = useSyncExternalStore(
+    subscribeToLocalStorage,
+    readTodayTutorialDone,
+    readServerTodayTutorialDone,
+  );
+  const [tutorialDismissed, setTutorialDismissed] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState<TodayTutorialStep>("lane");
 
   // Filter out optimistically-dismissed clusters but keep the lane visible
   // even when it goes empty: every folder is a reading lane the user
@@ -150,13 +160,49 @@ export function TodayFolderStreams({ streams, outlets, defaultOutletId, rendered
 
   if (visibleStreams.length === 0) return null;
 
+  const tutorialTarget = visibleStreams.find((stream) => stream.clusters.length > 0) ?? null;
+  const showTutorial = Boolean(tutorialTarget) && !tutorialDone && !tutorialDismissed;
+  const tutorialTargetClusterId = tutorialTarget?.clusters[0]?.cluster.id ?? null;
+
+  function finishTutorial() {
+    try {
+      window.localStorage.setItem(TODAY_TUTORIAL_DONE_KEY, "1");
+    } catch {
+      // ignore; hiding it for this tab is enough if storage is unavailable
+    }
+    setTutorialDismissed(true);
+  }
+
+  function advanceTutorial() {
+    if (tutorialStep === "lane") {
+      setTutorialStep("cluster");
+      return;
+    }
+    if (tutorialStep === "cluster") {
+      setTutorialStep("draft");
+      return;
+    }
+    finishTutorial();
+  }
+
   return (
     <div className="flex flex-col gap-3">
+      {showTutorial ? (
+        <TodayTutorialCoach step={tutorialStep} onNext={advanceTutorial} onSkip={finishTutorial} />
+      ) : null}
       {visibleStreams.map((stream) => (
         <FolderSection
           key={stream.id}
           stream={stream}
-          expanded={expandedIds.has(stream.id)}
+          expanded={
+            expandedIds.has(stream.id) ||
+            (showTutorial && tutorialTarget?.id === stream.id && tutorialStep !== "lane")
+          }
+          tutorialFocus={
+            showTutorial && tutorialTarget?.id === stream.id && tutorialTargetClusterId
+              ? { step: tutorialStep, clusterId: tutorialTargetClusterId }
+              : null
+          }
           onToggle={() => toggleFolder(stream.id)}
           outlets={outlets}
           defaultOutletId={defaultOutletId}
@@ -178,6 +224,7 @@ function FolderSection({
   renderedAt,
   onDismiss,
   onDismissFailed,
+  tutorialFocus,
 }: {
   stream: TodayFolderStream;
   expanded: boolean;
@@ -187,14 +234,19 @@ function FolderSection({
   renderedAt: number;
   onDismiss: (id: string) => void;
   onDismissFailed: (id: string) => void;
+  tutorialFocus: { step: TodayTutorialStep; clusterId: string } | null;
 }) {
+  const laneFocused = tutorialFocus?.step === "lane";
   return (
     <div
       style={{
         background: "var(--surface)",
         borderRadius: "var(--radius-xl)",
         boxShadow: "var(--shadow-sm)",
+        outline: laneFocused ? "2px solid var(--accent-blue)" : undefined,
+        outlineOffset: laneFocused ? 3 : undefined,
       }}
+      data-today-tutorial-focus={laneFocused ? "lane" : undefined}
     >
       <FolderSectionHeader stream={stream} expanded={expanded} onToggle={onToggle} />
       {expanded && (
@@ -220,6 +272,11 @@ function FolderSection({
                 renderedAt={renderedAt}
                 onDismiss={onDismiss}
                 onDismissFailed={onDismissFailed}
+                tutorialFocus={
+                  tutorialFocus?.clusterId === stream.clusters[0]!.cluster.id
+                    ? tutorialFocus.step
+                    : null
+                }
               />
               {stream.clusters.slice(1).map((preview, idx) => (
                 <PeekRow
@@ -436,6 +493,7 @@ function ClusterCard({
   renderedAt,
   onDismiss,
   onDismissFailed,
+  tutorialFocus,
 }: {
   preview: TodayClusterPreview;
   rank: number;
@@ -445,6 +503,7 @@ function ClusterCard({
   renderedAt: number;
   onDismiss: (id: string) => void;
   onDismissFailed: (id: string) => void;
+  tutorialFocus?: TodayTutorialStep | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -452,6 +511,8 @@ function ClusterCard({
   const headline = preview.items[0]?.title ?? "Untitled cluster";
   const fit = c.signals?.composite ?? 0;
   const isSingleSource = c.sourceCount === 1;
+  const clusterFocused = tutorialFocus === "cluster";
+  const draftFocused = tutorialFocus === "draft";
 
   function dismiss() {
     onDismiss(c.id);
@@ -478,7 +539,10 @@ function ClusterCard({
       style={{
         opacity: pending ? 0.5 : undefined,
         viewTransitionName: cardTransitionName(c.id),
+        outline: clusterFocused ? "2px solid var(--accent-blue)" : undefined,
+        outlineOffset: clusterFocused ? 3 : undefined,
       }}
+      data-today-tutorial-focus={clusterFocused ? "cluster" : undefined}
     >
       {isTop && !isSingleSource ? (
         <div
@@ -557,13 +621,22 @@ function ClusterCard({
       ) : null}
 
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
-        <ClusterActions
-          clusterId={c.id}
-          clusterTitle={headline}
-          outlets={outlets}
-          defaultOutletId={preview.preferredOutletId ?? defaultOutletId}
-          draftsByOutlet={preview.draftsByOutlet}
-        />
+        <div
+          className={draftFocused ? "rounded-xl p-2" : undefined}
+          style={{
+            outline: draftFocused ? "2px solid var(--accent-blue)" : undefined,
+            outlineOffset: draftFocused ? 3 : undefined,
+          }}
+          data-today-tutorial-focus={draftFocused ? "draft" : undefined}
+        >
+          <ClusterActions
+            clusterId={c.id}
+            clusterTitle={headline}
+            outlets={outlets}
+            defaultOutletId={preview.preferredOutletId ?? defaultOutletId}
+            draftsByOutlet={preview.draftsByOutlet}
+          />
+        </div>
         <button type="button" className="fp-btn fp-btn-ghost" onClick={dismiss} disabled={pending}>
           {pending ? "Dismissing" : isSingleSource ? "Unsave" : "Not now"}
         </button>
@@ -625,6 +698,7 @@ function PeekRow({
         renderedAt={renderedAt}
         onDismiss={onDismiss}
         onDismissFailed={onDismissFailed}
+        tutorialFocus={null}
       />
     );
   }
@@ -718,6 +792,105 @@ function RankerSignal({ label, value }: { label: string; value: number }) {
       </div>
     </div>
   );
+}
+
+function TodayTutorialCoach({
+  step,
+  onNext,
+  onSkip,
+}: {
+  step: TodayTutorialStep;
+  onNext: () => void;
+  onSkip: () => void;
+}) {
+  const steps: Record<
+    TodayTutorialStep,
+    { index: number; title: string; body: string; buttonLabel: string }
+  > = {
+    lane: {
+      index: 1,
+      title: "Today is sorted into reading lanes.",
+      body: "Open a lane to see the strongest cluster for that folder.",
+      buttonLabel: "Next",
+    },
+    cluster: {
+      index: 2,
+      title: "Judge the cluster before drafting.",
+      body: "Use source count, source chips, and fit signals. If it is not yours today, set it aside.",
+      buttonLabel: "Next",
+    },
+    draft: {
+      index: 3,
+      title: "Create a draft, not a post.",
+      body: "Draft this opens the writing path. Take notes keeps the cluster as research.",
+      buttonLabel: "Finish",
+    },
+  };
+  const current = steps[step];
+
+  return (
+    <section
+      aria-label="Today tutorial"
+      data-testid="today-tutorial-coach"
+      className="rounded-xl px-4 py-3"
+      style={{
+        background: "var(--amber-tint)",
+        border: "1px solid var(--border)",
+        color: "var(--fg)",
+      }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold tabular"
+              style={{ background: "var(--fg)", color: "var(--surface)" }}
+            >
+              {current.index}
+            </span>
+            <span
+              className="text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--amber)" }}
+            >
+              {current.index} / 3
+            </span>
+          </div>
+          <div className="mt-2 text-sm font-semibold">{current.title}</div>
+          <p
+            className="mt-1 max-w-2xl text-sm leading-relaxed"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            {current.body}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" className="fp-btn fp-btn-ghost" onClick={onSkip}>
+            Skip
+          </button>
+          <button type="button" className="fp-btn fp-btn-primary" onClick={onNext}>
+            {current.buttonLabel}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function subscribeToLocalStorage(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+}
+
+function readTodayTutorialDone(): boolean {
+  try {
+    return window.localStorage.getItem(TODAY_TUTORIAL_DONE_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+function readServerTodayTutorialDone(): boolean {
+  return true;
 }
 
 function relativeTime(ms: number, now: number): string {
