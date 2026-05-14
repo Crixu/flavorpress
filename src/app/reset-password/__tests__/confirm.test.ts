@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
+import { SESSION_COOKIE_NAME } from "@/lib/auth";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createUser, getUserByEmail } from "@/lib/users";
 import { issuePasswordResetToken } from "@/lib/email-tokens";
@@ -74,7 +75,7 @@ describe("confirmPasswordResetAction", () => {
     const after = (await getUserByEmail("a@example.com"))!;
     expect(after.sessionVersion).toBe(before + 1);
     expect(await verifyPassword("fresh strong new password", after.passwordHash!)).toBe(true);
-    expect(cookieJar.get("flavorpress_session")).toMatch(/^v2\./);
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
   });
 
   it("invalid token: error path, no DB mutation", async () => {

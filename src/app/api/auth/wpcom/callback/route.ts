@@ -41,7 +41,7 @@ async function setSessionCookie(userId: string, sessionVersion: number): Promise
   cookieStore.set(SESSION_COOKIE_NAME, session.value, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     path: "/",
     maxAge: getSessionTtlSeconds(),
     expires: new Date(session.expiresAt),

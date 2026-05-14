@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { createUser } from "@/lib/users";
-import { createSessionCookie } from "@/lib/auth";
+import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
 
 let cookieJar: Map<string, string>;
 
@@ -38,7 +38,7 @@ const SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
 
 async function loginAs(userId: string): Promise<void> {
   const cookie = await createSessionCookie({ userId, sessionVersion: 0, secret: SECRET });
-  cookieJar.set("flavorpress_session", cookie.value);
+  cookieJar.set(SESSION_COOKIE_NAME, cookie.value);
 }
 
 async function makeUser(opts: { email: string; isAdmin?: boolean }): Promise<string> {

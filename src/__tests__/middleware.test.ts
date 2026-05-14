@@ -6,7 +6,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  SESSION_COOKIE_NAME: "flavorpress_session",
+  SESSION_COOKIE_NAME: "__Host-flavorpress_session",
   isAllowedMutationOrigin: () => true,
   isMutationMethod: (method: string) => !["GET", "HEAD", "OPTIONS"].includes(method),
   safeRedirectPath: (path: string) => path,

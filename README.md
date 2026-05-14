@@ -67,9 +67,13 @@ Quickstart:
 
 1. Set `FLAVORPRESS_ADMIN_EMAIL` in `.env` to your email.
 2. Set `FLAVORPRESS_SESSION_SECRET` to a 32+ byte random string.
-3. Run `npm run dev`.
+3. Run `npm run dev -- --experimental-https` for browser signup and login.
 4. In another terminal, issue your invite: `npm run auth:invite`.
 5. Open the printed URL, sign up with the email from step 1, and pick a password.
+
+Session cookies use the `__Host-` prefix and always require HTTPS. Plain
+`npm run dev` still works with `FLAVORPRESS_AUTH=local`, because local mode
+bypasses browser session cookies.
 
 Admin CLIs:
 
@@ -283,7 +287,7 @@ The full architecture spec lives in [`docs/architecture.md`](docs/architecture.m
 ## Development
 
 ```sh
-npm run dev        # Next.js dev server on :3000
+npm run dev        # Next.js dev server on :3000; add -- --experimental-https for login
 npm run build      # production build
 npm run lint       # ESLint
 npx tsx scripts/v1-smoke.ts    # smoke test the v1 foundation

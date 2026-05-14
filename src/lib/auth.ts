@@ -1,4 +1,5 @@
-export const SESSION_COOKIE_NAME = "flavorpress_session";
+export const SESSION_COOKIE_NAME = "__Host-flavorpress_session";
+export const LEGACY_SESSION_COOKIE_NAME = "flavorpress_session";
 export const SESSION_TTL_SECONDS_DEV = 60 * 60 * 24 * 7;
 export const SESSION_TTL_SECONDS_PROD = 60 * 60 * 24;
 
