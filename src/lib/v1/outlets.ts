@@ -14,6 +14,7 @@ import { notifyFirstSiteConnected } from "../notifications";
 import { assertCanCreateOutlets } from "../plans";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
 import type { WPCredentials } from "../wordpress";
+import { refreshWpcomAccessToken, revokeWpcomToken } from "../wpcom-oauth";
 
 export type OutletKind = "wp-org" | "wp-com" | "jetpack-managed" | "multisite" | "unknown" | null;
 
@@ -71,6 +72,9 @@ function rowToOutlet(row: OutletRow): Outlet {
 const OUTLET_COLS = `id, user_id, base_url, display_name, username,
   app_password_encrypted, kind, is_default, last_error,
   connected_at, created_at, last_used_at, wpcom_expected_blog_id`;
+
+const WPCOM_TOKEN_KID = "v1";
+const WPCOM_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 
 export async function listOutlets(userId: string): Promise<Outlet[]> {
   await ensureSchema();
@@ -167,7 +171,10 @@ export async function commitOutletCredentials(
   await db.execute({
     sql: `UPDATE outlets
           SET username = ?, app_password_encrypted = ?, kind = ?,
-              connected_at = ?, last_error = NULL
+              connected_at = ?, last_error = NULL,
+              wpcom_token_expires_at = NULL,
+              wpcom_refresh_token_encrypted = NULL,
+              wpcom_token_kid = NULL
           WHERE id = ?`,
     args: [username, blob, kind, Date.now(), outletId],
   });
@@ -213,20 +220,27 @@ export async function commitOutletWpcomOAuthCredentials(opts: {
   siteName: string | null;
   username: string | null;
   kind: OutletKind;
+  expiresAt?: number | null;
+  refreshToken?: string | null;
 }): Promise<void> {
   await ensureSchema();
-  const payload = JSON.stringify({
-    type: "wpcom-oauth",
+  const payload = stringifyWpcomPayload({
     accessToken: opts.accessToken,
     siteId: opts.siteId,
     siteUrl: opts.siteUrl,
     username: opts.username,
   });
+  const refreshTokenBlob = opts.refreshToken
+    ? secretStringToBlob(encryptSecret(opts.refreshToken))
+    : null;
   await db.execute({
     sql: `UPDATE outlets
           SET username = ?, app_password_encrypted = ?, kind = ?,
               base_url = ?, display_name = COALESCE(?, display_name),
-              connected_at = ?, last_error = NULL
+              connected_at = ?, last_error = NULL,
+              wpcom_token_expires_at = ?,
+              wpcom_refresh_token_encrypted = ?,
+              wpcom_token_kid = ?
           WHERE id = ?`,
     args: [
       opts.username,
@@ -235,6 +249,9 @@ export async function commitOutletWpcomOAuthCredentials(opts: {
       opts.siteUrl,
       opts.siteName,
       Date.now(),
+      opts.expiresAt ?? null,
+      refreshTokenBlob,
+      WPCOM_TOKEN_KID,
       opts.outletId,
     ],
   });
@@ -313,12 +330,15 @@ export async function disconnectOutlet(
   userId: string,
 ): Promise<void> {
   await ensureSchema();
+  const outlet = await db.execute({
+    sql: `SELECT is_default, app_password_encrypted, wpcom_refresh_token_encrypted
+          FROM outlets WHERE id = ? AND user_id = ?`,
+    args: [outletId, userId],
+  });
+  if (outlet.rows.length === 0) return;
+  await revokeStoredWpcomTokens(outlet.rows[0]!);
+
   if (opts.purge) {
-    const outlet = await db.execute({
-      sql: `SELECT is_default FROM outlets WHERE id = ? AND user_id = ?`,
-      args: [outletId, userId],
-    });
-    if (outlet.rows.length === 0) return;
     const wasDefault = Number(outlet.rows[0]!.is_default ?? 0) === 1;
 
     await db.batch(
@@ -364,6 +384,9 @@ export async function disconnectOutlet(
   await db.execute({
     sql: `UPDATE outlets
           SET app_password_encrypted = NULL,
+              wpcom_token_expires_at = NULL,
+              wpcom_refresh_token_encrypted = NULL,
+              wpcom_token_kid = NULL,
               username = NULL,
               connected_at = NULL,
               last_error = NULL
@@ -378,7 +401,9 @@ export async function disconnectOutlet(
 export async function getOutletCredentials(outletId: string): Promise<WPCredentials | null> {
   await ensureSchema();
   const r = await db.execute({
-    sql: `SELECT base_url, app_password_encrypted FROM outlets WHERE id = ?`,
+    sql: `SELECT base_url, app_password_encrypted, wpcom_token_expires_at,
+                 wpcom_refresh_token_encrypted
+          FROM outlets WHERE id = ?`,
     args: [outletId],
   });
   if (r.rows.length === 0) return null;
@@ -397,7 +422,127 @@ export async function getOutletCredentials(outletId: string): Promise<WPCredenti
     });
   }
 
+  if (parsed.authType === "wpcom-oauth") {
+    return maybeRefreshWpcomCredentials(outletId, parsed, r.rows[0]!);
+  }
+
   return parsed;
+}
+
+async function maybeRefreshWpcomCredentials(
+  outletId: string,
+  credentials: Extract<WPCredentials, { authType: "wpcom-oauth" }>,
+  row: Record<string, unknown>,
+): Promise<WPCredentials | null> {
+  const expiresAt = row.wpcom_token_expires_at == null ? null : Number(row.wpcom_token_expires_at);
+  if (!expiresAt || expiresAt - Date.now() > WPCOM_REFRESH_WINDOW_MS) return credentials;
+
+  const refreshToken = readEncryptedToken(row.wpcom_refresh_token_encrypted);
+  if (!refreshToken) {
+    await recordOutletRefreshError(
+      outletId,
+      "WordPress.com token is expiring and no refresh token is available. Reconnect this outlet.",
+    );
+    return null;
+  }
+
+  try {
+    const refreshed = await refreshWpcomAccessToken(refreshToken);
+    const nextRefreshToken = refreshed.refreshToken ?? refreshToken;
+    const nextCredentials = {
+      ...credentials,
+      accessToken: refreshed.accessToken,
+    };
+    const payload = stringifyWpcomPayload(nextCredentials);
+    await db.execute({
+      sql: `UPDATE outlets
+            SET app_password_encrypted = ?,
+                wpcom_token_expires_at = ?,
+                wpcom_refresh_token_encrypted = ?,
+                wpcom_token_kid = ?,
+                last_error = NULL
+            WHERE id = ?`,
+      args: [
+        secretStringToBlob(encryptSecret(`wpcom-oauth:${payload}`)),
+        refreshed.expiresAt,
+        secretStringToBlob(encryptSecret(nextRefreshToken)),
+        WPCOM_TOKEN_KID,
+        outletId,
+      ],
+    });
+    return nextCredentials;
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? `WordPress.com token refresh failed: ${err.message}`
+        : "WordPress.com token refresh failed.";
+    await recordOutletRefreshError(outletId, message);
+    return null;
+  }
+}
+
+async function recordOutletRefreshError(outletId: string, message: string): Promise<void> {
+  await db.execute({
+    sql: `UPDATE outlets SET last_error = ? WHERE id = ?`,
+    args: [message, outletId],
+  });
+}
+
+async function revokeStoredWpcomTokens(row: Record<string, unknown>): Promise<void> {
+  const accessPayload = readCredentialPayload(row.app_password_encrypted);
+  const parsed = accessPayload ? parseCredentialPayload(accessPayload, "") : null;
+  const tokens: string[] = [];
+  if (parsed?.authType === "wpcom-oauth") tokens.push(parsed.accessToken);
+  const refreshToken = readEncryptedToken(row.wpcom_refresh_token_encrypted);
+  if (refreshToken) tokens.push(refreshToken);
+
+  for (const token of tokens) {
+    try {
+      await revokeWpcomToken(token);
+    } catch (err) {
+      console.warn("WP.com token revoke failed:", err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
+function readCredentialPayload(blob: unknown): string | null {
+  if (!blob) return null;
+  try {
+    const decoded = blobToSecretString(blob as ArrayBuffer | Uint8Array);
+    return isEncryptedSecret(decoded) ? decryptSecret(decoded) : decoded;
+  } catch (err) {
+    console.warn(
+      "WP.com token revoke skipped because stored credentials could not be decrypted:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  }
+}
+
+function readEncryptedToken(blob: unknown): string | null {
+  if (!blob) return null;
+  try {
+    const decoded = blobToSecretString(blob as ArrayBuffer | Uint8Array);
+    return isEncryptedSecret(decoded) ? decryptSecret(decoded) : decoded;
+  } catch {
+    return null;
+  }
+}
+
+function stringifyWpcomPayload(opts: {
+  accessToken: string;
+  siteId: string;
+  siteUrl: string;
+  username?: string | null;
+}): string {
+  return JSON.stringify({
+    type: "wpcom-oauth",
+    kid: WPCOM_TOKEN_KID,
+    accessToken: opts.accessToken,
+    siteId: opts.siteId,
+    siteUrl: opts.siteUrl,
+    username: opts.username ?? null,
+  });
 }
 
 function parseCredentialPayload(payload: string, baseUrl: string): WPCredentials | null {

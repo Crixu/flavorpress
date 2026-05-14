@@ -74,7 +74,9 @@ function locationOf(response: Response): string | null {
 }
 
 async function call(state: string, code = "fake-code"): Promise<Response> {
-  const url = `http://localhost:3000/api/wpcom/outlet-callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`;
+  const url = `http://localhost:3000/api/wpcom/outlet-callback?state=${encodeURIComponent(
+    state,
+  )}&code=${encodeURIComponent(code)}`;
   return GET(new Request(url));
 }
 
@@ -92,10 +94,18 @@ function mockWpcomSiteFlow() {
   fetchMock
     .mockImplementationOnce(async (url: string) => {
       if (url.startsWith("https://public-api.wordpress.com/oauth2/token")) {
-        return new Response(JSON.stringify({ access_token: "site-token", blog_id: "123" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            access_token: "site-token",
+            blog_id: "123",
+            expires_in: 3600,
+            refresh_token: "refresh-token",
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
       }
       throw new Error(`Unexpected fetch: ${url}`);
     })
@@ -161,6 +171,8 @@ describe("WP.com outlet callback state cookie", () => {
       siteName: "Blog",
       username: "author",
       kind: "wp-com",
+      expiresAt: expect.any(Number),
+      refreshToken: "refresh-token",
     });
     expect(mocks.cookieJar.get(WPCOM_OAUTH_STATE_COOKIE)).toBe("");
   });

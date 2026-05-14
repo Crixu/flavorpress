@@ -5,7 +5,9 @@ import {
   buildAuthorizeUrl,
   buildSiteAuthorizeUrl,
   isWpcomOAuthConfigured,
+  refreshWpcomAccessToken,
   resolveWpcomSiteBlogId,
+  revokeWpcomToken,
   resetWpcomStateCacheForTests,
   WPCOM_OAUTH_STATE_COOKIE,
   WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS,
@@ -21,6 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("wpcom state token", () => {
@@ -95,6 +98,54 @@ describe("resolveWpcomSiteBlogId", () => {
 
     await expect(resolveWpcomSiteBlogId("https://blog.example/post")).resolves.toBe("123");
     expect(String(fetchMock.mock.calls[0]![0])).toContain("/sites/blog.example");
+  });
+});
+
+describe("refreshWpcomAccessToken", () => {
+  it("exchanges a refresh token for a new access token triplet", async () => {
+    process.env.WPCOM_OAUTH_CLIENT_ID = "test-client";
+    process.env.WPCOM_OAUTH_CLIENT_SECRET = "test-secret";
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = new URLSearchParams(String(init?.body));
+      expect(body.get("client_id")).toBe("test-client");
+      expect(body.get("client_secret")).toBe("test-secret");
+      expect(body.get("grant_type")).toBe("refresh_token");
+      expect(body.get("refresh_token")).toBe("refresh_old");
+      return new Response(
+        JSON.stringify({
+          access_token: "access_new",
+          expires_in: 3600,
+          refresh_token: "refresh_new",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(refreshWpcomAccessToken("refresh_old")).resolves.toEqual({
+      accessToken: "access_new",
+      expiresAt: 1_800_003_600_000,
+      refreshToken: "refresh_new",
+    });
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      "https://public-api.wordpress.com/oauth2/token",
+    );
+  });
+});
+
+describe("revokeWpcomToken", () => {
+  it("logs and continues when WP.com rejects revoke", async () => {
+    process.env.WPCOM_OAUTH_CLIENT_ID = "test-client";
+    process.env.WPCOM_OAUTH_CLIENT_SECRET = "test-secret";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nope", { status: 500 })),
+    );
+
+    await expect(revokeWpcomToken("access_old")).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith("WP.com token revoke failed (500): nope");
   });
 });
 

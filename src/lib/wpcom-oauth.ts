@@ -172,12 +172,22 @@ export interface WpcomSiteConnection {
   siteName: string | null;
   username: string | null;
   isJetpack: boolean;
+  expiresAt: number | null;
+  refreshToken: string | null;
+}
+
+export interface WpcomTokenRefresh {
+  accessToken: string;
+  expiresAt: number | null;
+  refreshToken: string | null;
 }
 
 interface TokenResponse {
   access_token?: string;
   blog_id?: string | number;
   blog_url?: string;
+  expires_in?: number | string;
+  refresh_token?: string;
 }
 
 export async function exchangeCodeForUser(opts: {
@@ -227,6 +237,68 @@ export async function exchangeCodeForUser(opts: {
     username: me.username,
     email: me.email,
   };
+}
+
+function tokenExpiresAt(expiresIn: TokenResponse["expires_in"]): number | null {
+  if (expiresIn == null) return null;
+  const seconds = Number(expiresIn);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Date.now() + seconds * 1000;
+}
+
+function wpcomOAuthEnv(): { clientId: string; clientSecret: string } {
+  const clientId = process.env.WPCOM_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.WPCOM_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error("WP.com OAuth env vars are not configured.");
+  }
+  return { clientId, clientSecret };
+}
+
+export async function refreshWpcomAccessToken(refreshToken: string): Promise<WpcomTokenRefresh> {
+  const { clientId, clientSecret } = wpcomOAuthEnv();
+  const tokenRes = await fetch("https://public-api.wordpress.com/oauth2/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }).toString(),
+  });
+  if (!tokenRes.ok) {
+    const body = await tokenRes.text().catch(() => "<unreadable>");
+    throw new Error(`WP.com token refresh failed (${tokenRes.status}): ${body}`);
+  }
+  const token = (await tokenRes.json()) as TokenResponse;
+  if (!token.access_token) throw new Error("WP.com token refresh returned no access_token.");
+  return {
+    accessToken: token.access_token,
+    expiresAt: tokenExpiresAt(token.expires_in),
+    refreshToken: token.refresh_token ?? null,
+  };
+}
+
+export async function revokeWpcomToken(token: string): Promise<void> {
+  try {
+    const { clientId, clientSecret } = wpcomOAuthEnv();
+    const res = await fetch("https://public-api.wordpress.com/oauth2/revoke", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        token,
+      }).toString(),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "<unreadable>");
+      console.warn(`WP.com token revoke failed (${res.status}): ${body}`);
+    }
+  } catch (err) {
+    console.warn("WP.com token revoke failed:", err instanceof Error ? err.message : String(err));
+  }
 }
 
 function normalizeSiteUrl(raw: string): string {
@@ -300,11 +372,7 @@ export async function exchangeCodeForSiteConnection(opts: {
   expectedSiteUrl: string;
   expectedBlogId?: string | null;
 }): Promise<WpcomSiteConnection> {
-  const clientId = process.env.WPCOM_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.WPCOM_OAUTH_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error("WP.com OAuth env vars are not configured.");
-  }
+  const { clientId, clientSecret } = wpcomOAuthEnv();
   const tokenRes = await fetch("https://public-api.wordpress.com/oauth2/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -357,5 +425,7 @@ export async function exchangeCodeForSiteConnection(opts: {
     siteName: site.name,
     username: me.username ? String(me.username) : null,
     isJetpack: site.isJetpack,
+    expiresAt: tokenExpiresAt(token.expires_in),
+    refreshToken: token.refresh_token ?? null,
   };
 }
