@@ -97,6 +97,14 @@ describe("auth-foundation schema", () => {
     expect(cols.has("preset_id")).toBe(true);
   });
 
+  it("creates WordPress.com outlet token rotation columns", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("outlets");
+    expect(cols.has("wpcom_token_expires_at")).toBe(true);
+    expect(cols.has("wpcom_refresh_token_encrypted")).toBe(true);
+    expect(cols.has("wpcom_token_kid")).toBe(true);
+  });
+
   it("enforces wpcom_id uniqueness via partial index", async () => {
     await ensureSchema();
     const r = await db.execute(

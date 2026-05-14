@@ -73,7 +73,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-14.v1";
+const SCHEMA_VERSION = "2026-05-14.v2";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -129,6 +129,9 @@ export async function ensureSchema(): Promise<void> {
         created_at INTEGER NOT NULL,
         last_used_at INTEGER,
         wpcom_expected_blog_id TEXT,
+        wpcom_token_expires_at INTEGER,
+        wpcom_refresh_token_encrypted BLOB,
+        wpcom_token_kid TEXT,
         UNIQUE(user_id, base_url)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_outlets_user ON outlets(user_id)`,
@@ -856,9 +859,8 @@ async function migrateLegacyTables(): Promise<void> {
     // Table will be created clean by CREATE IF NOT EXISTS.
   }
 
-  // outlets: wpcom_expected_blog_id pins the blog_id resolved at authorize
-  // stage so the callback can byte-match the token-response blog_id before
-  // accepting any further fetches.
+  // outlets: WP.com OAuth metadata pins the blog_id resolved at authorize
+  // stage and stores token rotation state alongside the encrypted bearer.
   try {
     const pragma = await db.execute("PRAGMA table_info(outlets)");
     if (pragma.rows.length > 0) {
@@ -866,6 +868,18 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("wpcom_expected_blog_id")) {
         console.info("[migrate] outlets: adding wpcom_expected_blog_id column");
         await db.execute("ALTER TABLE outlets ADD COLUMN wpcom_expected_blog_id TEXT");
+      }
+      if (!cols.includes("wpcom_token_expires_at")) {
+        console.info("[migrate] outlets: adding wpcom_token_expires_at column");
+        await db.execute("ALTER TABLE outlets ADD COLUMN wpcom_token_expires_at INTEGER");
+      }
+      if (!cols.includes("wpcom_refresh_token_encrypted")) {
+        console.info("[migrate] outlets: adding wpcom_refresh_token_encrypted column");
+        await db.execute("ALTER TABLE outlets ADD COLUMN wpcom_refresh_token_encrypted BLOB");
+      }
+      if (!cols.includes("wpcom_token_kid")) {
+        console.info("[migrate] outlets: adding wpcom_token_kid column");
+        await db.execute("ALTER TABLE outlets ADD COLUMN wpcom_token_kid TEXT");
       }
     }
   } catch {

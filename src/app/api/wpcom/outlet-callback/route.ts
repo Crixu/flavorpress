@@ -81,6 +81,8 @@ export async function GET(req: Request) {
         siteName: connection.siteName,
         username: connection.username,
         kind: connection.isJetpack ? "jetpack-managed" : "wp-com",
+        expiresAt: connection.expiresAt,
+        refreshToken: connection.refreshToken,
       });
       return redirectTo(`/voice?wp_connected=${state.outletId}`);
     } catch (err) {
