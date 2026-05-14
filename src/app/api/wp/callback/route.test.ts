@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   recordOutletError: vi.fn(),
   commitOutletCredentials: vi.fn(),
   probeWordPress: vi.fn(),
+  rotateOutletAppPassword: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -52,6 +53,11 @@ vi.mock("@/lib/wordpress", () => ({
   probeWordPress: mocks.probeWordPress,
 }));
 
+vi.mock("@/lib/v1/wp-rotate", () => ({
+  isWpAppPasswordRotationEnabled: () => process.env.FLAVORPRESS_WP_ROTATE_APP_PW === "1",
+  rotateOutletAppPassword: mocks.rotateOutletAppPassword,
+}));
+
 import { GET } from "./route";
 
 const authorizeState = {
@@ -71,6 +77,13 @@ describe("WordPress authorize callback", () => {
     mocks.ensureSchema.mockResolvedValue(undefined);
     mocks.recordOutletError.mockResolvedValue(undefined);
     mocks.commitOutletCredentials.mockResolvedValue(undefined);
+    mocks.rotateOutletAppPassword.mockResolvedValue({
+      appPassword: "rotated-secret",
+      replacementUuid: "replacement-uuid",
+      previousUuid: "previous-uuid",
+      previousDeleted: true,
+    });
+    delete process.env.FLAVORPRESS_WP_ROTATE_APP_PW;
   });
 
   it("rejects a callback with missing state", async () => {
@@ -86,6 +99,20 @@ describe("WordPress authorize callback", () => {
     expect(locationOf(response)).toBe("https://app.example/voice?wp_error=missing_state");
     expect(mocks.consumeWPAuthorizeState).not.toHaveBeenCalled();
     expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
+  });
+
+  it("sets no-referrer and no-store on redirects", async () => {
+    const response = await GET(
+      request({
+        outlet_id: "outlet-1",
+        site_url: "https://wp.example",
+        user_login: "author",
+        password: "secret",
+      }),
+    );
+
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("rejects a callback with wrong state", async () => {
@@ -227,6 +254,96 @@ describe("WordPress authorize callback", () => {
       "wp-org",
     );
     expect(locationOf(response)).toBe("https://app.example/voice?wp_connected=outlet-1");
+  });
+
+  it("stores a rotated application password when rotation is enabled", async () => {
+    process.env.FLAVORPRESS_WP_ROTATE_APP_PW = "1";
+    mocks.consumeWPAuthorizeState.mockResolvedValue({ ok: true, value: authorizeState });
+    mocks.getOutlet.mockResolvedValue({ id: "outlet-1", baseUrl: "https://wp.example" });
+    mocks.probeWordPress.mockResolvedValue({ ok: true, kind: "wp-org" });
+
+    const response = await GET(
+      request({
+        outlet_id: "outlet-1",
+        state: "state-1",
+        site_url: "https://wp.example",
+        user_login: "author",
+        password: "callback-secret",
+      }),
+    );
+
+    expect(mocks.rotateOutletAppPassword).toHaveBeenCalledWith({
+      baseUrl: "https://wp.example",
+      username: "author",
+      appPassword: "callback-secret",
+    });
+    expect(mocks.commitOutletCredentials).toHaveBeenCalledWith(
+      "outlet-1",
+      "author",
+      "rotated-secret",
+      "wp-org",
+    );
+    expect(locationOf(response)).toBe("https://app.example/voice?wp_connected=outlet-1");
+  });
+
+  it("does not store the callback password when flagged rotation fails", async () => {
+    process.env.FLAVORPRESS_WP_ROTATE_APP_PW = "1";
+    mocks.consumeWPAuthorizeState.mockResolvedValue({ ok: true, value: authorizeState });
+    mocks.getOutlet.mockResolvedValue({ id: "outlet-1", baseUrl: "https://wp.example" });
+    mocks.probeWordPress.mockResolvedValue({ ok: true, kind: "wp-org" });
+    mocks.rotateOutletAppPassword.mockRejectedValue(new Error("create denied"));
+
+    const response = await GET(
+      request({
+        outlet_id: "outlet-1",
+        state: "state-1",
+        site_url: "https://wp.example",
+        user_login: "author",
+        password: "callback-secret",
+      }),
+    );
+
+    expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
+    expect(mocks.recordOutletError).toHaveBeenCalledWith(
+      "outlet-1",
+      "WordPress credential rotation failed: create denied",
+    );
+    expect(locationOf(response)).toBe(
+      "https://app.example/voice?wp_error=credential_rotation_failed",
+    );
+  });
+
+  it("does not log the callback secret", async () => {
+    mocks.consumeWPAuthorizeState.mockResolvedValue({ ok: true, value: authorizeState });
+    mocks.getOutlet.mockResolvedValue({ id: "outlet-1", baseUrl: "https://wp.example" });
+    mocks.probeWordPress.mockResolvedValue({ ok: true, kind: "wp-org" });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    let logged = "";
+    try {
+      await GET(
+        request({
+          outlet_id: "outlet-1",
+          state: "state-1",
+          site_url: "https://wp.example",
+          user_login: "author",
+          password: "callback-secret",
+        }),
+      );
+      logged = [...info.mock.calls, ...warn.mock.calls, ...error.mock.calls]
+        .flat()
+        .map(String)
+        .join("\n");
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+      error.mockRestore();
+    }
+
+    expect(logged).not.toContain("callback-secret");
+    expect(logged).not.toContain("password=");
   });
 });
 

@@ -17,6 +17,7 @@ import { ensureSchema } from "@/lib/db";
 import { probeWordPress } from "@/lib/wordpress";
 import { commitOutletCredentials, recordOutletError, getOutlet } from "@/lib/v1/outlets";
 import { getOrigin } from "@/lib/v1/origin";
+import { isWpAppPasswordRotationEnabled, rotateOutletAppPassword } from "@/lib/v1/wp-rotate";
 import { consumeWPAuthorizeState, normalizeSiteUrl, siteOrigin } from "@/lib/v1/wp-authorize-state";
 
 export async function GET(req: Request) {
@@ -27,7 +28,8 @@ export async function GET(req: Request) {
   const state = url.searchParams.get("state") ?? "";
   const baseUrl = url.searchParams.get("site_url") ?? "";
   const username = url.searchParams.get("user_login") ?? "";
-  const password = url.searchParams.get("password") ?? "";
+  const callbackAppPassword = url.searchParams.get("password") ?? "";
+  url.searchParams.delete("password");
 
   if (!state) {
     return redirectTo("/voice?wp_error=missing_state", appOrigin);
@@ -44,7 +46,7 @@ export async function GET(req: Request) {
     return redirectTo("/voice?wp_error=state_mismatch", appOrigin);
   }
 
-  if (!baseUrl || !username || !password) {
+  if (!baseUrl || !username || !callbackAppPassword) {
     await recordOutletError(outletId, "WordPress authorize callback returned missing fields.");
     return redirectTo("/voice?wp_error=missing_params", appOrigin);
   }
@@ -77,17 +79,36 @@ export async function GET(req: Request) {
   const probe = await probeWordPress({
     baseUrl,
     username,
-    appPassword: password,
+    appPassword: callbackAppPassword,
   });
   if (!probe.ok) {
     await recordOutletError(outletId, probe.message, probe.kind);
     return redirectTo(`/voice?wp_error=${encodeURIComponent(probe.message)}`, appOrigin);
   }
 
-  await commitOutletCredentials(outletId, username, password, probe.kind);
+  let appPasswordToStore = callbackAppPassword;
+  if (isWpAppPasswordRotationEnabled()) {
+    try {
+      const rotation = await rotateOutletAppPassword({
+        baseUrl: returnedSiteUrl,
+        username,
+        appPassword: callbackAppPassword,
+      });
+      appPasswordToStore = rotation.appPassword;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await recordOutletError(outletId, `WordPress credential rotation failed: ${message}`);
+      return redirectTo("/voice?wp_error=credential_rotation_failed", appOrigin);
+    }
+  }
+
+  await commitOutletCredentials(outletId, username, appPasswordToStore, probe.kind);
   return redirectTo(`/voice?wp_connected=${outletId}`, appOrigin);
 }
 
 function redirectTo(path: string, origin: string): NextResponse {
-  return NextResponse.redirect(new URL(path, origin));
+  const response = NextResponse.redirect(new URL(path, origin));
+  response.headers.set("Referrer-Policy", "no-referrer");
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }
