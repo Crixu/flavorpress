@@ -100,8 +100,16 @@ describe("origin and redirects", () => {
 
   it("keeps redirects app-local", () => {
     expect(safeRedirectPath("/sources?folder=abc")).toBe("/sources?folder=abc");
+    expect(safeRedirectPath("/foo/bar?x=1#a")).toBe("/foo/bar?x=1#a");
+    expect(safeRedirectPath("/foo")).toBe("/foo");
     expect(safeRedirectPath("https://evil.example.com")).toBe("/");
     expect(safeRedirectPath("//evil.example.com/path")).toBe("/");
+    expect(safeRedirectPath("\\\\evil.example.com")).toBe("/");
+    expect(safeRedirectPath("/\\evil.example.com")).toBe("/");
+    expect(safeRedirectPath("/%5Cevil.example.com")).toBe("/");
+    expect(safeRedirectPath("/%5c%5cevil.example.com")).toBe("/");
+    expect(safeRedirectPath("/＼evil.example.com")).toBe("/");
+    expect(safeRedirectPath("/﹨evil.example.com")).toBe("/");
   });
 
   it("uses browser origin before host fallback", () => {

@@ -15,6 +15,11 @@
 import { db } from "../db";
 import { createAnthropicClient, extractText, LocalClaudeError } from "../anthropic";
 import { getAnthropicDraftModel } from "./settings";
+import {
+  newSourceNonce,
+  renderUntrustedPromptBlock,
+  untrustedSourceContract,
+} from "./prompt-safety";
 
 const MAX_BODY_CONTEXT_CHARS = 1200;
 const ALTERNATES_PER_REROLL = 3;
@@ -60,10 +65,22 @@ export function buildRerollPrompt(opts: {
 
   const signatureBlock =
     opts.signatureTerms.length > 0
-      ? `\nSIGNATURE TERMS (the writer's vocabulary; reuse where it fits): ${opts.signatureTerms.join(", ")}`
+      ? `\nSIGNATURE TERMS (the writer's vocabulary; reuse where it fits): ${opts.signatureTerms.join(
+          ", ",
+        )}`
       : "";
 
+  const sourceNonce = newSourceNonce();
   const rejectedBlock = opts.rejected.map((h, i) => `  ${i + 1}. ${h}`).join("\n");
+  const draftBlock = renderUntrustedPromptBlock(
+    "source",
+    sourceNonce,
+    [
+      { label: "REJECTED HEADLINES", value: rejectedBlock || "(none)", byteCap: 2000 },
+      { label: "DRAFT BODY", value: opts.bodyExcerpt, byteCap: MAX_BODY_CONTEXT_CHARS },
+    ],
+    { attributes: { index: 1 } },
+  );
 
   const systemPrompt = `You write headlines that match a specific writer's voice for a draft they've already written.
 
@@ -78,13 +95,10 @@ CONSTRAINTS:
 - Lead with a concrete noun or claim; no setup-then-reveal.
 - Each headline is a different angle on the draft, not a rephrasing of the others.
 - None may share the framing of any REJECTED HEADLINE. Pick a new entry point: a different subject, a different stance, a different beat. Do not repeat the rhetorical move that produced the rejected lines.
+- ${untrustedSourceContract(sourceNonce)}
 - Output strictly the JSON envelope below. No prose before or after.`;
 
-  const userMessage = `REJECTED HEADLINES (the writer has seen these and moved on; produce nothing in their family):
-${rejectedBlock}
-
-DRAFT BODY (excerpt; the headline must fit the actual story):
-${opts.bodyExcerpt}
+  const userMessage = `${draftBlock}
 
 Return ${ALTERNATES_PER_REROLL} fresh headlines as JSON:
 {"headlines": ["string", "string", "string"]}`;
