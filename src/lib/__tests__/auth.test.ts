@@ -78,6 +78,7 @@ describe("origin and redirects", () => {
   });
 
   it("checks mutation origins where browsers provide them", () => {
+    expect(isAllowedMutationOrigin(new Headers(), "https://flavorpress.example.com")).toBe(false);
     expect(
       isAllowedMutationOrigin(
         new Headers({ origin: "https://flavorpress.example.com" }),
@@ -96,6 +97,18 @@ describe("origin and redirects", () => {
         "https://flavorpress.example.com",
       ),
     ).toBe(false);
+    expect(
+      isAllowedMutationOrigin(
+        new Headers({ "sec-fetch-site": "same-origin" }),
+        "https://flavorpress.example.com",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedMutationOrigin(
+        new Headers({ "sec-fetch-site": "none" }),
+        "https://flavorpress.example.com",
+      ),
+    ).toBe(true);
   });
 
   it("keeps redirects app-local", () => {

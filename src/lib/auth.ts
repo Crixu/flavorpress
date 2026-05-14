@@ -113,7 +113,7 @@ export function isAllowedMutationOrigin(
   if (referer) return isAllowedOrigin(referer, requestOrigin, env);
 
   const fetchSite = headers.get("sec-fetch-site")?.toLowerCase();
-  if (!fetchSite) return true;
+  if (!fetchSite) return false;
   return fetchSite === "same-origin" || fetchSite === "none";
 }
 
