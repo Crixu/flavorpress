@@ -16,6 +16,11 @@
 import { createAnthropicClient, extractText } from "../anthropic";
 import { safeFetch, safeReadText } from "./safe-fetch";
 import { getAnthropicDraftModel } from "./settings";
+import {
+  newSourceNonce,
+  renderUntrustedPromptBlock,
+  untrustedSourceContract,
+} from "./prompt-safety";
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -50,24 +55,40 @@ export async function generateSourceTitle(url: string): Promise<string> {
     const { client } = await createAnthropicClient();
     if (!client) return fallback;
     const model = await getAnthropicDraftModel();
+    const sourceNonce = newSourceNonce();
+    const sourceBlock = renderUntrustedPromptBlock(
+      "source",
+      sourceNonce,
+      [
+        { label: "URL", value: url, byteCap: 2000 },
+        { label: "HOST", value: host, byteCap: 500 },
+        { label: "FEED TITLE", value: signals.channelTitle ?? "(none)", byteCap: 500 },
+        {
+          label: "FEED DESCRIPTION",
+          value: signals.channelDescription ?? "(none)",
+          byteCap: 2000,
+        },
+        {
+          label: "SAMPLE ITEM TITLES",
+          value:
+            signals.itemTitles
+              .slice(0, 5)
+              .map((t) => `- ${t}`)
+              .join("\n") || "(none)",
+          byteCap: 2000,
+        },
+      ],
+      { attributes: { index: 1 } },
+    );
     const message = await client.messages.create({
       model,
       max_tokens: 60,
-      system: `You name RSS feeds with a short, recognizable label. Output ONLY the label; no quotes, no preamble, no punctuation around it. Aim for 1-4 words. Match how the publication brands itself, not how a marketer would describe it. Skip filler like "blog", "feed", "news" unless it's part of the actual brand name. Skip the URL host unless that's how readers know the source.`,
+      system: `You name RSS feeds with a short, recognizable label. Output ONLY the label; no quotes, no preamble, no punctuation around it. Aim for 1-4 words. Match how the publication brands itself, not how a marketer would describe it. Skip filler like "blog", "feed", "news" unless it's part of the actual brand name. Skip the URL host unless that's how readers know the source.
+${untrustedSourceContract(sourceNonce)}`,
       messages: [
         {
           role: "user",
-          content: `URL: ${url}
-HOST: ${host}
-FEED TITLE: ${signals.channelTitle ?? "(none)"}
-FEED DESCRIPTION: ${signals.channelDescription ?? "(none)"}
-SAMPLE ITEM TITLES:
-${
-  signals.itemTitles
-    .slice(0, 5)
-    .map((t) => `- ${t}`)
-    .join("\n") || "(none)"
-}
+          content: `${sourceBlock}
 
 Return the label.`,
         },
