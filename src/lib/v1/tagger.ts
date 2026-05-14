@@ -2,6 +2,7 @@ import "server-only";
 
 import { type AnthropicLike, createAnthropicClient, extractText } from "../anthropic";
 import { getAnthropicDraftModel } from "./settings";
+import { newSourceNonce, renderUntrustedSource, untrustedSourceContract } from "./prompt-safety";
 
 export interface TagInput {
   title: string;
@@ -62,14 +63,26 @@ export async function extractItemTags(input: TagInput, opts: TagOptions = {}): P
 
   try {
     const model = await getAnthropicDraftModel();
+    const sourceNonce = newSourceNonce();
+    const sourceBlock = renderUntrustedSource(
+      {
+        title: input.title,
+        body: input.body,
+      },
+      sourceNonce,
+      { index: 1, includeBody: true, bodyByteCap: 4000 },
+    );
     const message = await client.messages.create({
       model,
       max_tokens: 200,
-      system: SYSTEM_PROMPT,
+      system: `${SYSTEM_PROMPT}
+${untrustedSourceContract(sourceNonce)}`,
       messages: [
         {
           role: "user",
-          content: `Title: ${input.title}\nBody: ${input.body.slice(0, 4000)}`,
+          content: `${sourceBlock}
+
+Return the JSON now.`,
         },
       ],
     });
