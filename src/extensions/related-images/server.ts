@@ -135,8 +135,9 @@ export async function runRelatedImageSearch(
   const ranAt = Date.now();
 
   await db.execute({
-    sql: `DELETE FROM related_image_results WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM related_image_results WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, session.userId],
   });
   // Persist a run marker before any rows. A zero-hit search needs to be
   // distinguishable from "never searched" on reload; without this the
@@ -290,12 +291,14 @@ export async function clearRelatedImages(draftId: string): Promise<void> {
   if (ownership.rows.length === 0) throw new Error("Draft not found.");
 
   await db.execute({
-    sql: `DELETE FROM related_image_results WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM related_image_results WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, session.userId],
   });
   await db.execute({
-    sql: `DELETE FROM related_image_runs WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM related_image_runs WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, session.userId],
   });
 }
 

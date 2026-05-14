@@ -32,4 +32,39 @@ describe("sanitizeDraftHtml", () => {
       '<p>script data relative <a href="https://example.com/post">good</a> <a href="mailto:me@example.com">mail</a></p>',
     );
   });
+
+  it("drops javascript: hrefs including mixed-case and embedded whitespace", () => {
+    expect(sanitizeDraftHtml('<a href="javascript:alert(1)">x</a>')).toBe("x");
+    expect(sanitizeDraftHtml('<a href="JaVaScRiPt:alert(1)">x</a>')).toBe("x");
+    expect(sanitizeDraftHtml('<a href="java\tscript:alert(1)">x</a>')).toBe("x");
+    expect(sanitizeDraftHtml('<a href=" javascript:alert(1)">x</a>')).toBe("x");
+  });
+
+  it("drops data: hrefs", () => {
+    expect(sanitizeDraftHtml('<a href="data:text/html,<script>alert(1)</script>">x</a>')).toBe("x");
+  });
+
+  it("strips srcdoc on iframes (DROP_WITH_CONTENT)", () => {
+    expect(sanitizeDraftHtml('<iframe srcdoc="<script>alert(1)</script>">x</iframe>')).toBe("");
+  });
+
+  it("strips onerror/onload attributes", () => {
+    expect(sanitizeDraftHtml('<p>x<img src=x onerror="alert(1)">y</p>')).toBe("<p>xy</p>");
+    expect(sanitizeDraftHtml('<p>x<svg onload="alert(1)">y</svg>z</p>')).toBe("<p>xz</p>");
+  });
+
+  it("rejects protocol-relative //evil.com hrefs", () => {
+    expect(sanitizeDraftHtml('<a href="//evil.com/x">x</a>')).toBe("x");
+  });
+
+  it("rejects leading-whitespace bypasses", () => {
+    expect(sanitizeDraftHtml('<a href="  javascript:alert(1)">x</a>')).toBe("x");
+    expect(sanitizeDraftHtml('<a href="\tjavascript:alert(1)">x</a>')).toBe("x");
+    expect(sanitizeDraftHtml('<a href=" javascript:alert(1)">x</a>')).toBe("x");
+  });
+
+  it("rejects \\u00a0 NBSP-prefixed dangerous schemes", () => {
+    expect(sanitizeDraftHtml('<a href=" javascript:alert(1)">x</a>')).toBe("x");
+    expect(sanitizeDraftHtml('<a href=" data:text/html,hi">x</a>')).toBe("x");
+  });
 });

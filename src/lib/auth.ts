@@ -36,12 +36,13 @@ export function getSessionTtlSeconds(env: Env = process.env): number {
 export function getSessionSecret(env: Env = process.env): string | null {
   const secret = env.FLAVORPRESS_SESSION_SECRET;
   if (secret && secret.length >= 32) return secret;
-  if (env.NODE_ENV === "development") {
-    return "dev-only-flavorpress-session-secret-change-me";
-  }
   return null;
 }
 
+// The session cookie is signed (HMAC-SHA-256) but not encrypted. The payload
+// holds only userId, sessionVersion, issuedAt, expiresAt; none are sensitive.
+// If SessionPayload grows to include email, roles, or other confidential
+// fields, switch to AEAD and rotate the secret.
 export async function createSessionCookie(opts: {
   userId: string;
   sessionVersion: number;
@@ -84,6 +85,7 @@ export async function verifySessionCookie(
 
   const expected = await hmac(payloadPart, effectiveSecret);
   const actual = base64UrlDecode(signaturePart);
+  if (actual.length !== expected.length) return null;
   if (!constantTimeEqualBytes(actual, expected)) return null;
 
   const payload = parsePayload(payloadPart);

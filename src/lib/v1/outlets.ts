@@ -31,6 +31,7 @@ export interface Outlet {
   connectedAt: number | null;
   createdAt: number;
   lastUsedAt: number | null;
+  wpcomExpectedBlogId: string | null;
 }
 
 interface OutletRow {
@@ -46,6 +47,7 @@ interface OutletRow {
   connected_at: number | null;
   created_at: number;
   last_used_at: number | null;
+  wpcom_expected_blog_id: string | null;
 }
 
 function rowToOutlet(row: OutletRow): Outlet {
@@ -62,12 +64,13 @@ function rowToOutlet(row: OutletRow): Outlet {
     connectedAt: row.connected_at ? Number(row.connected_at) : null,
     createdAt: Number(row.created_at),
     lastUsedAt: row.last_used_at ? Number(row.last_used_at) : null,
+    wpcomExpectedBlogId: row.wpcom_expected_blog_id ? String(row.wpcom_expected_blog_id) : null,
   };
 }
 
 const OUTLET_COLS = `id, user_id, base_url, display_name, username,
   app_password_encrypted, kind, is_default, last_error,
-  connected_at, created_at, last_used_at`;
+  connected_at, created_at, last_used_at, wpcom_expected_blog_id`;
 
 export async function listOutlets(userId: string): Promise<Outlet[]> {
   await ensureSchema();
@@ -99,6 +102,20 @@ export async function getDefaultOutlet(userId: string): Promise<Outlet | null> {
   });
   if (r.rows.length === 0) return null;
   return rowToOutlet(r.rows[0] as unknown as OutletRow);
+}
+
+export async function setOutletWpcomExpectedBlogId(
+  outletId: string,
+  userId: string,
+  blogId: string | null,
+): Promise<void> {
+  await ensureSchema();
+  await db.execute({
+    sql: `UPDATE outlets
+          SET wpcom_expected_blog_id = ?
+          WHERE id = ? AND user_id = ?`,
+    args: [blogId, outletId, userId],
+  });
 }
 
 /**

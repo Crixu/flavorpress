@@ -30,11 +30,40 @@ export interface RawItem {
   commentCount?: number | null;
 }
 
+export interface ExtractionBudget {
+  take(): boolean;
+  readonly remaining: number;
+}
+
 export interface ConnectorContext {
   source: Source;
   traceId: string;
   log: ReturnType<typeof traceLogger>;
   since?: number;
+  extractionBudget: ExtractionBudget;
+}
+
+const DEFAULT_EXTRACTION_CAP = 25;
+
+function resolveExtractionCap(): number {
+  const raw = process.env.FLAVORPRESS_CONNECTOR_EXTRACT_CAP;
+  if (!raw) return DEFAULT_EXTRACTION_CAP;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_EXTRACTION_CAP;
+}
+
+export function createExtractionBudget(cap: number = resolveExtractionCap()): ExtractionBudget {
+  let remaining = cap;
+  return {
+    take(): boolean {
+      if (remaining <= 0) return false;
+      remaining--;
+      return true;
+    },
+    get remaining(): number {
+      return remaining;
+    },
+  };
 }
 
 /**
@@ -78,6 +107,7 @@ export async function runConnector<TRaw>(
     traceId,
     log,
     since: source.lastPolledAt ?? undefined,
+    extractionBudget: createExtractionBudget(),
   };
 
   await log.info("connector.fetch", `polling ${source.kind}`, {

@@ -7,6 +7,8 @@ import path from "node:path";
 
 const dbDir = path.join(os.tmpdir(), "flavorpress-vitest");
 fs.mkdirSync(dbDir, { recursive: true });
+process.env.FLAVORPRESS_SESSION_SECRET =
+  process.env.FLAVORPRESS_SESSION_SECRET ?? "test-secret-that-is-at-least-32-bytes-long!!";
 process.env.LIBSQL_URL =
   process.env.FLAVORPRESS_TEST_LIBSQL_URL ??
   `file:${path.join(

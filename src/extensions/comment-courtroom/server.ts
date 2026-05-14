@@ -130,20 +130,22 @@ Return the JSON now.`;
     );
   }
 
-  const persisted = await persistRun(draftId, parsed.comments ?? []);
+  const persisted = await persistRun(draftId, parsed.comments ?? [], session.userId);
   return persisted;
 }
 
 async function persistRun(
   draftId: string,
   raw: ModelComment[],
+  userId: string,
 ): Promise<{ comments: CourtroomComment[]; ranAt: number }> {
   const ranAt = Date.now();
   const flat = flattenTree(draftId, raw, ranAt);
 
   await db.execute({
-    sql: `DELETE FROM comment_courtroom_comments WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM comment_courtroom_comments WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, userId],
   });
 
   for (const c of flat) {
@@ -157,9 +159,9 @@ async function persistRun(
 
   await db.execute({
     sql: `INSERT INTO comment_courtroom_runs (draft_id, ran_at)
-          VALUES (?, ?)
+          SELECT ?, ? WHERE EXISTS (SELECT 1 FROM drafts WHERE id = ? AND user_id = ?)
           ON CONFLICT(draft_id) DO UPDATE SET ran_at = excluded.ran_at`,
-    args: [draftId, ranAt],
+    args: [draftId, ranAt, draftId, userId],
   });
 
   return { comments: flat, ranAt };
@@ -289,12 +291,14 @@ export async function clearCommentCourtroom(draftId: string): Promise<void> {
   if (ownership.rows.length === 0) throw new Error("Draft not found.");
 
   await db.execute({
-    sql: `DELETE FROM comment_courtroom_comments WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM comment_courtroom_comments WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, session.userId],
   });
   await db.execute({
-    sql: `DELETE FROM comment_courtroom_runs WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM comment_courtroom_runs WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, session.userId],
   });
 }
 

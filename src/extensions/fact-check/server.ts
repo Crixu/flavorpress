@@ -138,8 +138,9 @@ export async function runFactCheck(
   const ranAt = Date.now();
 
   await db.execute({
-    sql: `DELETE FROM fact_check_claims WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM fact_check_claims WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, session.userId],
   });
 
   const persisted: FactCheckClaim[] = [];
@@ -455,8 +456,9 @@ export async function applyFactCheckFix(
     args: [newBody, Date.now(), draftId, session.userId],
   });
   await db.execute({
-    sql: `DELETE FROM fact_check_claims WHERE id = ? AND draft_id = ?`,
-    args: [claimId, draftId],
+    sql: `DELETE FROM fact_check_claims WHERE id = ? AND draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [claimId, draftId, session.userId],
   });
 
   // The replacement may swallow other claims whose `claim_text` lived
@@ -464,7 +466,7 @@ export async function applyFactCheckFix(
   // sentence). Those rows would otherwise survive as stale annotations
   // pointing at text that no longer exists in the body. Drop any whose
   // claim text is no longer findable in the new body.
-  const survivors = await pruneStaleClaims(draftId, newBody);
+  const survivors = await pruneStaleClaims(draftId, newBody, session.userId);
 
   const ranAt = await loadFactCheckRunAt(draftId);
   if (ranAt !== null) {
@@ -478,7 +480,11 @@ export async function applyFactCheckFix(
  * stripped form of the new body. Drop rows that no longer map to any
  * span. Returns the survivors in their original order.
  */
-async function pruneStaleClaims(draftId: string, newBody: string): Promise<FactCheckClaim[]> {
+async function pruneStaleClaims(
+  draftId: string,
+  newBody: string,
+  userId: string,
+): Promise<FactCheckClaim[]> {
   const remaining = await loadFactCheckClaims(draftId);
   const haystack = stripHtml(newBody).toLowerCase();
   const survivors: FactCheckClaim[] = [];
@@ -493,8 +499,9 @@ async function pruneStaleClaims(draftId: string, newBody: string): Promise<FactC
   if (stale.length > 0) {
     const placeholders = stale.map(() => "?").join(",");
     await db.execute({
-      sql: `DELETE FROM fact_check_claims WHERE draft_id = ? AND id IN (${placeholders})`,
-      args: [draftId, ...stale],
+      sql: `DELETE FROM fact_check_claims WHERE draft_id = ? AND id IN (${placeholders})
+            AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+      args: [draftId, ...stale, userId],
     });
   }
   return survivors;
@@ -557,13 +564,15 @@ export async function clearFactCheckClaims(draftId: string): Promise<void> {
   if (ownership.rows.length === 0) throw new Error("Draft not found.");
 
   await db.execute({
-    sql: `DELETE FROM fact_check_claims WHERE draft_id = ?`,
-    args: [draftId],
+    sql: `DELETE FROM fact_check_claims WHERE draft_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, session.userId],
   });
   await db.execute({
     sql: `DELETE FROM fact_check_results
-          WHERE draft_id = ? AND capability_id = ?`,
-    args: [draftId, FACT_CHECK_ID],
+          WHERE draft_id = ? AND capability_id = ?
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [draftId, FACT_CHECK_ID, session.userId],
   });
 }
 

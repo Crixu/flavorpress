@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
 import { issueInvite, consumeInvite, readInvite, revokeInvite, InviteError } from "@/lib/invites";
+import { hashToken } from "@/lib/token-hash";
+
+process.env.FLAVORPRESS_SESSION_SECRET =
+  process.env.FLAVORPRESS_SESSION_SECRET ?? "test-secret-that-is-at-least-32-bytes-long!!";
 
 beforeEach(async () => {
   await ensureSchema();
@@ -35,10 +39,51 @@ describe("invites", () => {
     await consumeInvite(r.token, "u_test");
     const raw = await db.execute({
       sql: "SELECT used_at, used_by_user_id FROM invites WHERE token = ?",
-      args: [r.token],
+      args: [hashToken(r.token)],
     });
     expect(raw.rows[0]?.used_at).not.toBeNull();
     expect(raw.rows[0]?.used_by_user_id).toBe("u_test");
+  });
+
+  it("stores invite tokens hashed, not plaintext", async () => {
+    const r = await issueInvite({});
+    const direct = await db.execute({
+      sql: "SELECT token FROM invites WHERE token = ?",
+      args: [r.token],
+    });
+    expect(direct.rows.length).toBe(0);
+    const hashed = await db.execute({
+      sql: "SELECT token FROM invites WHERE token = ?",
+      args: [hashToken(r.token)],
+    });
+    expect(hashed.rows.length).toBe(1);
+  });
+
+  it("does not accept the stored hash as an invite token", async () => {
+    const r = await issueInvite({});
+    const storedHash = hashToken(r.token);
+
+    await expect(readInvite(storedHash)).resolves.toBeNull();
+    await expect(consumeInvite(storedHash, "u_attacker")).rejects.toMatchObject({
+      code: "missing",
+    });
+    await consumeInvite(r.token, "u_test");
+  });
+
+  it("tolerates legacy plaintext rows and upgrades on use", async () => {
+    const raw = "legacy-plaintext-token-xyz";
+    await db.execute({
+      sql: `INSERT INTO invites (token, created_by_user_id, created_at, expires_at)
+            VALUES (?, ?, ?, ?)`,
+      args: [raw, null, Date.now(), null],
+    });
+    await consumeInvite(raw, "u_legacy");
+    const row = await db.execute({
+      sql: "SELECT token, used_by_user_id FROM invites WHERE token = ?",
+      args: [hashToken(raw)],
+    });
+    expect(row.rows.length).toBe(1);
+    expect(row.rows[0]?.used_by_user_id).toBe("u_legacy");
   });
 
   it("consumeInvite throws when token is missing", async () => {

@@ -1,6 +1,8 @@
 import "server-only";
+import { timingSafeEqual } from "node:crypto";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+let warnedFallbackSecret = false;
 
 export interface WpcomOAuthState {
   nonce: string;
@@ -26,12 +28,22 @@ export function resetWpcomStateCacheForTests(): void {
   consumedNonces.clear();
 }
 
-function getSecret(): string {
-  const s = process.env.FLAVORPRESS_SESSION_SECRET;
-  if (!s || s.length < 32) {
-    throw new Error("FLAVORPRESS_SESSION_SECRET is required for WP.com state signing.");
+export function getWpcomStateSecret(): string {
+  const dedicated = process.env.FLAVORPRESS_WPCOM_STATE_SECRET;
+  if (dedicated && dedicated.length >= 32) return dedicated;
+  const shared = process.env.FLAVORPRESS_SESSION_SECRET;
+  if (shared && shared.length >= 32) {
+    if (!warnedFallbackSecret) {
+      warnedFallbackSecret = true;
+      console.warn(
+        "FLAVORPRESS_WPCOM_STATE_SECRET is unset; falling back to FLAVORPRESS_SESSION_SECRET. Set a dedicated secret before the next release.",
+      );
+    }
+    return shared;
   }
-  return s;
+  throw new Error(
+    "FLAVORPRESS_WPCOM_STATE_SECRET (or fallback FLAVORPRESS_SESSION_SECRET) is required for WP.com state signing.",
+  );
 }
 
 async function hmac(message: string, secret: string): Promise<Uint8Array> {
@@ -63,17 +75,10 @@ function b64urlDecode(s: string): Uint8Array {
   return out;
 }
 
-function eq(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let d = 0;
-  for (let i = 0; i < a.length; i += 1) d |= a[i]! ^ b[i]!;
-  return d === 0;
-}
-
 export async function issueWpcomState(state: WpcomOAuthState): Promise<string> {
   const payload: SignedStatePayload = { ...state, exp: Date.now() + STATE_TTL_MS };
   const part = b64url(encoder.encode(JSON.stringify(payload)));
-  const sig = await hmac(part, getSecret());
+  const sig = await hmac(part, getWpcomStateSecret());
   return `v1.${part}.${b64url(sig)}`;
 }
 
@@ -82,9 +87,10 @@ export async function consumeWpcomState(token: string): Promise<WpcomOAuthState 
   if (parts.length !== 3 || parts[0] !== "v1") return null;
   const [, part, sig] = parts;
   if (!part || !sig) return null;
-  const expected = await hmac(part, getSecret());
+  const expected = await hmac(part, getWpcomStateSecret());
   const actual = b64urlDecode(sig);
-  if (!eq(actual, expected)) return null;
+  if (actual.length !== expected.length) return null;
+  if (!timingSafeEqual(actual, expected)) return null;
   let payload: SignedStatePayload;
   try {
     payload = JSON.parse(new TextDecoder().decode(b64urlDecode(part))) as SignedStatePayload;
@@ -241,14 +247,14 @@ function siteLookupKey(raw: string): string {
 }
 
 async function fetchSiteInfo(opts: {
-  accessToken: string;
+  accessToken?: string | null;
   site: string;
 }): Promise<{ id: string; url: string; name: string | null; isJetpack: boolean }> {
+  const headers: Record<string, string> = {};
+  if (opts.accessToken) headers.authorization = `Bearer ${opts.accessToken}`;
   const res = await fetch(
     `https://public-api.wordpress.com/rest/v1.1/sites/${encodeURIComponent(opts.site)}`,
-    {
-      headers: { authorization: `Bearer ${opts.accessToken}` },
-    },
+    { headers },
   );
   if (!res.ok) {
     const body = await res.text().catch(() => "<unreadable>");
@@ -270,10 +276,16 @@ async function fetchSiteInfo(opts: {
   };
 }
 
+export async function resolveWpcomSiteBlogId(siteUrl: string): Promise<string | null> {
+  const site = await fetchSiteInfo({ site: siteLookupKey(siteUrl) });
+  return site.id;
+}
+
 export async function exchangeCodeForSiteConnection(opts: {
   code: string;
   redirectUri: string;
   expectedSiteUrl: string;
+  expectedBlogId?: string | null;
 }): Promise<WpcomSiteConnection> {
   const clientId = process.env.WPCOM_OAUTH_CLIENT_ID;
   const clientSecret = process.env.WPCOM_OAUTH_CLIENT_SECRET;
@@ -298,6 +310,13 @@ export async function exchangeCodeForSiteConnection(opts: {
   const token = (await tokenRes.json()) as TokenResponse;
   if (!token.access_token) throw new Error("WP.com token exchange returned no access_token.");
 
+  if (opts.expectedBlogId != null) {
+    const returnedBlogId = token.blog_id != null ? String(token.blog_id) : null;
+    if (returnedBlogId !== opts.expectedBlogId) {
+      throw new Error("WordPress.com returned a different site than the one requested.");
+    }
+  }
+
   const meRes = await fetch("https://public-api.wordpress.com/rest/v1.1/me", {
     headers: { authorization: `Bearer ${token.access_token}` },
   });
@@ -307,7 +326,7 @@ export async function exchangeCodeForSiteConnection(opts: {
 
   const initialSite = token.blog_id ? String(token.blog_id) : siteLookupKey(opts.expectedSiteUrl);
   let site = await fetchSiteInfo({ accessToken: token.access_token, site: initialSite });
-  if (!sameSite(opts.expectedSiteUrl, site.url)) {
+  if (opts.expectedBlogId == null && !sameSite(opts.expectedSiteUrl, site.url)) {
     const expectedSite = await fetchSiteInfo({
       accessToken: token.access_token,
       site: siteLookupKey(opts.expectedSiteUrl),

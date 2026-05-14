@@ -15,6 +15,7 @@ import {
   commitOutletCredentials,
   commitOutletWpcomOAuthCredentials,
   getOutletCredentials,
+  setOutletWpcomExpectedBlogId,
 } from "../outlets";
 
 describe("outlet secret storage", () => {
@@ -128,6 +129,19 @@ describe("outlet secret storage", () => {
       siteId: "123",
       siteUrl: "https://example.wordpress.com",
       username: "author",
+    });
+  });
+
+  it("pins the expected WordPress.com blog id on the user's outlet", async () => {
+    executeMock.mockResolvedValue({ rows: [] });
+
+    await setOutletWpcomExpectedBlogId("outlet-1", "user-1", "123");
+
+    expect(executeMock).toHaveBeenCalledWith({
+      sql: `UPDATE outlets
+          SET wpcom_expected_blog_id = ?
+          WHERE id = ? AND user_id = ?`,
+      args: ["123", "outlet-1", "user-1"],
     });
   });
 });

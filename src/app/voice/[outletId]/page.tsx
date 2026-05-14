@@ -53,8 +53,8 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
 
   const [r, formats] = await Promise.all([
     db.execute({
-      sql: `SELECT * FROM voice_profiles WHERE outlet_id = ?`,
-      args: [outletId],
+      sql: `SELECT * FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
+      args: [outletId, session.userId],
     }),
     listOutletFormats(outletId, session.userId),
   ]);

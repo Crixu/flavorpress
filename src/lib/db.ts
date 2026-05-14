@@ -73,7 +73,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-13.v1";
+const SCHEMA_VERSION = "2026-05-14.v1";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -128,6 +128,7 @@ export async function ensureSchema(): Promise<void> {
         connected_at INTEGER,
         created_at INTEGER NOT NULL,
         last_used_at INTEGER,
+        wpcom_expected_blog_id TEXT,
         UNIQUE(user_id, base_url)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_outlets_user ON outlets(user_id)`,
@@ -849,6 +850,22 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("paused_until")) {
         console.info("[migrate] sources: adding paused_until column");
         await db.execute("ALTER TABLE sources ADD COLUMN paused_until INTEGER");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // outlets: wpcom_expected_blog_id pins the blog_id resolved at authorize
+  // stage so the callback can byte-match the token-response blog_id before
+  // accepting any further fetches.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(outlets)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("wpcom_expected_blog_id")) {
+        console.info("[migrate] outlets: adding wpcom_expected_blog_id column");
+        await db.execute("ALTER TABLE outlets ADD COLUMN wpcom_expected_blog_id TEXT");
       }
     }
   } catch {

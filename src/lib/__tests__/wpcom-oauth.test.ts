@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   issueWpcomState,
   consumeWpcomState,
   buildAuthorizeUrl,
   buildSiteAuthorizeUrl,
   isWpcomOAuthConfigured,
+  resolveWpcomSiteBlogId,
   resetWpcomStateCacheForTests,
 } from "@/lib/wpcom-oauth";
 
@@ -13,6 +14,10 @@ beforeEach(() => {
   delete process.env.WPCOM_OAUTH_CLIENT_ID;
   delete process.env.WPCOM_OAUTH_CLIENT_SECRET;
   resetWpcomStateCacheForTests();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("wpcom state token", () => {
@@ -66,6 +71,27 @@ describe("wpcom state token", () => {
     const token = await issueWpcomState({ nonce: "n4", mode: "login" });
     await consumeWpcomState(token);
     expect(await consumeWpcomState(token)).toBeNull();
+  });
+});
+
+describe("resolveWpcomSiteBlogId", () => {
+  it("looks up the requested site before OAuth without a bearer token", async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.authorization).toBeUndefined();
+      return new Response(
+        JSON.stringify({
+          ID: 123,
+          URL: "https://blog.example",
+          name: "Blog",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(resolveWpcomSiteBlogId("https://blog.example/post")).resolves.toBe("123");
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/sites/blog.example");
   });
 });
 
