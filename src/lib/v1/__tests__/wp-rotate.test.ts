@@ -106,6 +106,41 @@ describe("rotateOutletAppPassword", () => {
       }),
     ).rejects.toThrow("WordPress create application password failed: HTTP 403 denied");
   });
+
+  it("fails before returning a credential when WordPress cannot delete the callback password", async () => {
+    _setLookupForTests(async () => [{ address: "8.8.8.8", family: 4 }]);
+    _setPinnedFetchForTests(
+      vi.fn(async (target, init) => {
+        if (target.url.pathname === "/wp-json/wp/v2/users/me") {
+          return jsonResponse({ id: 42 });
+        }
+        if (target.url.pathname === "/wp-json/wp/v2/users/42/application-passwords/introspect") {
+          return jsonResponse({ uuid: "old-uuid" });
+        }
+        if (
+          target.url.pathname === "/wp-json/wp/v2/users/42/application-passwords" &&
+          init.method === "POST"
+        ) {
+          return jsonResponse({ uuid: "new-uuid", password: "new-secret" });
+        }
+        if (
+          target.url.pathname === "/wp-json/wp/v2/users/42/application-passwords/old-uuid" &&
+          init.method === "DELETE"
+        ) {
+          return new Response("delete denied", { status: 403 });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    await expect(
+      rotateOutletAppPassword({
+        baseUrl: "https://wp.example",
+        username: "author",
+        appPassword: "old-secret",
+      }),
+    ).rejects.toThrow("WordPress delete callback password failed: HTTP 403 delete denied");
+  });
 });
 
 function jsonResponse(value: unknown): Response {

@@ -23,7 +23,8 @@ export interface RotateOutletAppPasswordResult {
 }
 
 export function isWpAppPasswordRotationEnabled(env?: RotationEnv): boolean {
-  return (env?.FLAVORPRESS_WP_ROTATE_APP_PW ?? process.env.FLAVORPRESS_WP_ROTATE_APP_PW) === "1";
+  const source = env ?? process.env;
+  return source.FLAVORPRESS_WP_ROTATE_APP_PW === "1";
 }
 
 export async function rotateOutletAppPassword(
@@ -68,7 +69,13 @@ export async function rotateOutletAppPassword(
         },
       },
     );
-    previousDeleted = deleteRes.ok;
+    if (!deleteRes.ok) {
+      const text = await safeReadText(deleteRes).catch(() => "");
+      throw new Error(
+        `WordPress delete callback password failed: HTTP ${deleteRes.status} ${text.slice(0, 200)}`.trim(),
+      );
+    }
+    previousDeleted = true;
   }
 
   return {
