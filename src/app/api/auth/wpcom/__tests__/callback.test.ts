@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type * as NextServer from "next/server";
 import { db, ensureSchema } from "@/lib/db";
-import { issueWpcomState, resetWpcomStateCacheForTests } from "@/lib/wpcom-oauth";
+import {
+  issueWpcomState,
+  resetWpcomStateCacheForTests,
+  WPCOM_OAUTH_STATE_COOKIE,
+} from "@/lib/wpcom-oauth";
 import { issueInvite } from "@/lib/invites";
 import { hashPassword } from "@/lib/password";
 import { createUser, getUserByEmail } from "@/lib/users";
@@ -20,7 +25,7 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock("next/server", async () => {
-  const actual = await vi.importActual<typeof import("next/server")>("next/server");
+  const actual = await vi.importActual<typeof NextServer>("next/server");
   return {
     ...actual,
     after: (fn: () => unknown) => {
@@ -74,10 +79,19 @@ async function call(state: string, code: string): Promise<Response> {
   return GET(new Request(url));
 }
 
+async function stateWithCookie(opts: {
+  nonce: string;
+  mode: "signup" | "login";
+  invite?: string;
+}): Promise<string> {
+  cookieJar.set(WPCOM_OAUTH_STATE_COOKIE, opts.nonce);
+  return issueWpcomState(opts);
+}
+
 describe("wpcom callback signup", () => {
   it("creates a user from WP.com identity on valid invite", async () => {
     const { token: invite } = await issueInvite({});
-    const state = await issueWpcomState({ nonce: "n_signup", mode: "signup", invite });
+    const state = await stateWithCookie({ nonce: "n_signup", mode: "signup", invite });
     mockWpcomFlow({ ID: 12345, username: "lucas", email: "lucas@wordpress.test" });
 
     const res = await call(state, "fake-code");
@@ -89,6 +103,7 @@ describe("wpcom callback signup", () => {
     expect(u?.wpcomUsername).toBe("lucas");
     expect(u?.emailVerifiedAt).not.toBeNull();
     expect(cookieJar.get("flavorpress_session")).toMatch(/^v2\./);
+    expect(cookieJar.get(WPCOM_OAUTH_STATE_COOKIE)).toBe("");
   });
 
   it("refuses email collision on signup", async () => {
@@ -97,7 +112,7 @@ describe("wpcom callback signup", () => {
       passwordHash: await hashPassword("the existing password long"),
     });
     const { token: invite } = await issueInvite({});
-    const state = await issueWpcomState({ nonce: "n_collide", mode: "signup", invite });
+    const state = await stateWithCookie({ nonce: "n_collide", mode: "signup", invite });
     mockWpcomFlow({ ID: 12345, username: "lucas", email: "lucas@wordpress.test" });
     const res = await call(state, "fake-code");
     expect(res.status).toBe(302);
@@ -107,7 +122,7 @@ describe("wpcom callback signup", () => {
   });
 
   it("rejects missing invite on signup", async () => {
-    const state = await issueWpcomState({ nonce: "n_no_invite", mode: "signup" });
+    const state = await stateWithCookie({ nonce: "n_no_invite", mode: "signup" });
     mockWpcomFlow({ ID: 12345, username: "lucas", email: "lucas@wordpress.test" });
     const res = await call(state, "fake-code");
     expect(res.status).toBe(302);
@@ -122,7 +137,7 @@ describe("wpcom callback login", () => {
             VALUES ('u_known', 'known@wp.test', 'active', 0, 0, '99999', 'known', ?, ?)`,
       args: [Date.now(), Date.now()],
     });
-    const state = await issueWpcomState({ nonce: "n_login", mode: "login" });
+    const state = await stateWithCookie({ nonce: "n_login", mode: "login" });
     mockWpcomFlow({ ID: 99999, username: "known", email: "known@wp.test" });
     const res = await call(state, "fake-code");
     expect(res.status).toBe(302);
@@ -131,7 +146,7 @@ describe("wpcom callback login", () => {
   });
 
   it("rejects login with unknown wpcom_id", async () => {
-    const state = await issueWpcomState({ nonce: "n_unknown", mode: "login" });
+    const state = await stateWithCookie({ nonce: "n_unknown", mode: "login" });
     mockWpcomFlow({ ID: 77777, username: "stranger", email: "stranger@wp.test" });
     const res = await call(state, "fake-code");
     expect(res.status).toBe(302);
@@ -141,8 +156,43 @@ describe("wpcom callback login", () => {
 
 describe("wpcom callback invalid", () => {
   it("rejects an unsigned/invalid state", async () => {
+    cookieJar.set(WPCOM_OAUTH_STATE_COOKIE, "n_invalid");
     const res = await call("totally-bogus", "fake-code");
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toMatch(/error=oauth_state/);
+  });
+
+  it("rejects a valid state without the per-browser nonce cookie", async () => {
+    const state = await issueWpcomState({ nonce: "n_missing_cookie", mode: "login" });
+    const res = await call(state, "fake-code");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toMatch(/error=oauth_state/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a valid state with a mismatched nonce cookie", async () => {
+    const state = await issueWpcomState({ nonce: "n_state", mode: "login" });
+    cookieJar.set(WPCOM_OAUTH_STATE_COOKIE, "n_other_browser");
+    const res = await call(state, "fake-code");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toMatch(/error=oauth_state/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects replay after a valid callback consumes the state", async () => {
+    await db.execute({
+      sql: `INSERT INTO users (id, email, status, is_admin, session_version, wpcom_id, wpcom_username, email_verified_at, created_at)
+            VALUES ('u_replay', 'replay@wp.test', 'active', 0, 0, '88888', 'replay', ?, ?)`,
+      args: [Date.now(), Date.now()],
+    });
+    const state = await stateWithCookie({ nonce: "n_replay", mode: "login" });
+    mockWpcomFlow({ ID: 88888, username: "replay", email: "replay@wp.test" });
+    const first = await call(state, "fake-code");
+    expect(first.headers.get("location")).toBe("http://localhost:3000/");
+
+    cookieJar.set(WPCOM_OAUTH_STATE_COOKIE, "n_replay");
+    const second = await call(state, "fake-code");
+    expect(second.status).toBe(302);
+    expect(second.headers.get("location")).toMatch(/error=oauth_state/);
   });
 });

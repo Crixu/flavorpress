@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { buildAuthorizeUrl, isWpcomOAuthConfigured, issueWpcomState } from "@/lib/wpcom-oauth";
+import {
+  buildAuthorizeUrl,
+  isWpcomOAuthConfigured,
+  issueWpcomState,
+  WPCOM_OAUTH_STATE_COOKIE,
+  WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS,
+  wpcomStateCookieOptions,
+} from "@/lib/wpcom-oauth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,11 +39,18 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL(fallbackPath("signup", null, "invite"), url.origin));
   }
 
+  const nonce = randomBytes(16).toString("base64url");
   const state = await issueWpcomState({
-    nonce: randomBytes(16).toString("base64url"),
+    nonce,
     mode,
     invite: invite ?? undefined,
   });
   const authorize = buildAuthorizeUrl({ redirectUri: redirectUri(), state });
-  return NextResponse.redirect(authorize);
+  const response = NextResponse.redirect(authorize);
+  response.cookies.set(
+    WPCOM_OAUTH_STATE_COOKIE,
+    nonce,
+    wpcomStateCookieOptions(WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS),
+  );
+  return response;
 }
