@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
+  LEGACY_SESSION_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   isAllowedMutationOrigin,
   isMutationMethod,
@@ -30,7 +31,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const session = await verifySessionCookie(req.cookies.get(SESSION_COOKIE_NAME)?.value);
+  const session =
+    (await verifySessionCookie(req.cookies.get(SESSION_COOKIE_NAME)?.value)) ??
+    (await verifySessionCookie(req.cookies.get(LEGACY_SESSION_COOKIE_NAME)?.value));
   if (session) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
