@@ -2,11 +2,21 @@ import type { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
-  verifySessionCookie: vi.fn(async () => null),
+  verifySessionCookie: vi.fn(
+    async (
+      _value?: string,
+    ): Promise<{
+      userId: string;
+      sessionVersion: number;
+      issuedAt: number;
+      expiresAt: number;
+    } | null> => null,
+  ),
 }));
 
 vi.mock("@/lib/auth", () => ({
-  SESSION_COOKIE_NAME: "flavorpress_session",
+  LEGACY_SESSION_COOKIE_NAME: "flavorpress_session",
+  SESSION_COOKIE_NAME: "__Host-flavorpress_session",
   isAllowedMutationOrigin: () => true,
   isMutationMethod: (method: string) => !["GET", "HEAD", "OPTIONS"].includes(method),
   safeRedirectPath: (path: string) => path,
@@ -32,13 +42,33 @@ describe("middleware cron routes", () => {
   });
 });
 
-function requestFor(pathname: string): NextRequest {
+describe("middleware session cookies", () => {
+  it("accepts the legacy session cookie name during migration", async () => {
+    authMocks.verifySessionCookie.mockImplementation(async (value) =>
+      value === "legacy-session"
+        ? { userId: "u1", sessionVersion: 0, issuedAt: 1, expiresAt: 2 }
+        : null,
+    );
+
+    const res = await middleware(requestFor("/", { flavorpress_session: "legacy-session" }));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(authMocks.verifySessionCookie).toHaveBeenCalledWith(undefined);
+    expect(authMocks.verifySessionCookie).toHaveBeenCalledWith("legacy-session");
+  });
+});
+
+function requestFor(pathname: string, cookieValues: Record<string, string> = {}): NextRequest {
   const url = new URL(`http://localhost${pathname}`);
   return {
     method: "GET",
     headers: new Headers(),
     cookies: {
-      get: () => undefined,
+      get: (name: string) => {
+        const value = cookieValues[name];
+        return value ? { value } : undefined;
+      },
     },
     nextUrl: {
       pathname: url.pathname,

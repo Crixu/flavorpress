@@ -1,7 +1,12 @@
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, verifySessionCookie } from "./auth";
+import {
+  LEGACY_SESSION_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  getSessionTtlSeconds,
+  verifySessionCookie,
+} from "./auth";
 import { createUser, getUserById } from "./users";
 
 export class AuthRequiredError extends Error {
@@ -99,17 +104,51 @@ async function loadSessionUncached(
 
 export const loadSession = cache(loadSessionUncached);
 
+async function readSessionCookieValue(migrateLegacy: boolean): Promise<string | null> {
+  const cookieStore = await cookies();
+  const current = cookieStore.get(SESSION_COOKIE_NAME)?.value ?? null;
+  if (current) return current;
+
+  const legacy = cookieStore.get(LEGACY_SESSION_COOKIE_NAME)?.value ?? null;
+  if (!legacy || !migrateLegacy) return legacy;
+
+  const verified = await verifySessionCookie(legacy);
+  if (!verified) return legacy;
+
+  try {
+    cookieStore.set(SESSION_COOKIE_NAME, legacy, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: getSessionTtlSeconds(),
+      expires: new Date(verified.expiresAt),
+    });
+    cookieStore.set(LEGACY_SESSION_COOKIE_NAME, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    });
+  } catch {
+    // Some read-only render paths cannot mutate cookies. They still accept
+    // the legacy cookie for this release.
+  }
+
+  return legacy;
+}
+
 export async function getSession(): Promise<Session | null> {
   if (isLocalAuthMode()) return loadSession(null);
-  const cookieStore = await cookies();
-  const value = cookieStore.get(SESSION_COOKIE_NAME)?.value ?? null;
+  const value = await readSessionCookieValue(true);
   return loadSession(value);
 }
 
 export async function hasSessionCookieForShell(): Promise<boolean> {
   if (isLocalAuthMode()) return true;
-  const cookieStore = await cookies();
-  const value = cookieStore.get(SESSION_COOKIE_NAME)?.value ?? null;
+  const value = await readSessionCookieValue(false);
   return Boolean(await verifySessionCookie(value));
 }
 

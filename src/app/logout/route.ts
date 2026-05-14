@@ -1,6 +1,11 @@
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE_NAME, isAllowedMutationOrigin, requestOriginFromHeaders } from "@/lib/auth";
+import {
+  LEGACY_SESSION_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  isAllowedMutationOrigin,
+  requestOriginFromHeaders,
+} from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,13 +18,16 @@ export async function POST() {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0,
-  });
+  for (const name of [SESSION_COOKIE_NAME, LEGACY_SESSION_COOKIE_NAME]) {
+    cookieStore.set(name, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    });
+  }
 
   return NextResponse.redirect(new URL("/login", requestOrigin ?? "http://localhost:3000"), 303);
 }

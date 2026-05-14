@@ -5,7 +5,7 @@ import {
   seedOutletForUser,
   seedSourceForUser,
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
-import { createSessionCookie } from "@/lib/auth";
+import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
 
 let cookieJar: Map<string, string>;
 
@@ -39,7 +39,7 @@ afterEach(() => {
 
 async function loginAs(userId: string): Promise<void> {
   const c = await createSessionCookie({ userId, sessionVersion: 0, secret: SECRET });
-  cookieJar.set("flavorpress_session", c.value);
+  cookieJar.set(SESSION_COOKIE_NAME, c.value);
 }
 
 describe("GET /api/export isolation", () => {

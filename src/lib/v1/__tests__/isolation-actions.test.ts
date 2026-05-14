@@ -16,7 +16,7 @@ import {
   seedDraftForUser,
   seedFolderForUser,
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
-import { createSessionCookie } from "@/lib/auth";
+import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
 
 let cookieJar: Map<string, string>;
 
@@ -53,7 +53,7 @@ const SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
 
 async function loginAs(userId: string): Promise<void> {
   const cookie = await createSessionCookie({ userId, sessionVersion: 0, secret: SECRET });
-  cookieJar.set("flavorpress_session", cookie.value);
+  cookieJar.set(SESSION_COOKIE_NAME, cookie.value);
 }
 
 async function callAction(name: string, form: Record<string, string>): Promise<void> {

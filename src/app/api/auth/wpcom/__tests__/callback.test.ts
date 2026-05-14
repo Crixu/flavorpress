@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type * as NextServer from "next/server";
 import { db, ensureSchema } from "@/lib/db";
+import { SESSION_COOKIE_NAME } from "@/lib/auth";
 import {
   issueWpcomState,
   resetWpcomStateCacheForTests,
@@ -102,7 +103,7 @@ describe("wpcom callback signup", () => {
     expect(u?.wpcomId).toBe("12345");
     expect(u?.wpcomUsername).toBe("lucas");
     expect(u?.emailVerifiedAt).not.toBeNull();
-    expect(cookieJar.get("flavorpress_session")).toMatch(/^v2\./);
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
     expect(cookieJar.get(WPCOM_OAUTH_STATE_COOKIE)).toBe("");
   });
 
@@ -142,7 +143,7 @@ describe("wpcom callback login", () => {
     const res = await call(state, "fake-code");
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("http://localhost:3000/");
-    expect(cookieJar.get("flavorpress_session")).toMatch(/^v2\./);
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
   });
 
   it("rejects login with unknown wpcom_id", async () => {

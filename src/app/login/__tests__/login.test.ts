@@ -1,9 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
+import { SESSION_COOKIE_NAME } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { createUser, setStatus } from "@/lib/users";
 
 let cookieJar: Map<string, string>;
+let cookieOptions: Map<string, CookieOptions>;
+
+interface CookieOptions {
+  httpOnly?: boolean;
+  sameSite?: "lax" | "strict" | "none";
+  secure?: boolean;
+  path?: string;
+  maxAge?: number;
+  expires?: Date;
+  domain?: string;
+}
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -11,8 +23,9 @@ vi.mock("next/headers", () => ({
       const v = cookieJar.get(name);
       return v ? { value: v } : undefined;
     },
-    set: (name: string, value: string) => {
+    set: (name: string, value: string, options?: CookieOptions) => {
       cookieJar.set(name, value);
+      if (options) cookieOptions.set(name, options);
     },
   }),
   headers: async () => ({
@@ -36,6 +49,7 @@ beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM users");
   cookieJar = new Map();
+  cookieOptions = new Map();
   redirectCalls.length = 0;
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
   process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
@@ -65,7 +79,14 @@ describe("loginAction", () => {
       password: "correct horse battery staple",
     });
     expect(to).toBe("/");
-    expect(cookieJar.get("flavorpress_session")).toMatch(/^v2\./);
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
+    expect(cookieOptions.get(SESSION_COOKIE_NAME)).toMatchObject({
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+    });
+    expect(cookieOptions.get(SESSION_COOKIE_NAME)).not.toHaveProperty("domain");
   });
 
   it("rejects wrong password", async () => {
@@ -76,7 +97,7 @@ describe("loginAction", () => {
       password: "wrong-but-long-enough",
     });
     expect(to).toMatch(/error=credentials/);
-    expect(cookieJar.get("flavorpress_session")).toBeUndefined();
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toBeUndefined();
   });
 
   it("rejects unknown email with the same error code (no enumeration)", async () => {
@@ -109,7 +130,7 @@ describe("loginAction", () => {
       email: "a@example.com",
       password: "correct horse battery staple",
     });
-    const cookieValue = cookieJar.get("flavorpress_session");
+    const cookieValue = cookieJar.get(SESSION_COOKIE_NAME);
     const parts = (cookieValue ?? "").split(".");
     const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
     expect(payload.v).toBe(5);

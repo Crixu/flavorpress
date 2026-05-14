@@ -10,17 +10,21 @@ vi.mock("next/headers", () => ({
       const value = cookieJar.get(name);
       return value ? { value } : undefined;
     },
+    set: (name: string, value: string) => {
+      cookieJar.set(name, value);
+    },
   }),
 }));
 
 import { db, ensureSchema } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { createUser, setStatus, bumpSessionVersion } from "@/lib/users";
-import { createSessionCookie } from "@/lib/auth";
+import { LEGACY_SESSION_COOKIE_NAME, SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
 import {
   loadSession,
   AuthRequiredError,
   canAccessSettings,
+  getSession,
   isLocalAuthMode,
   isLocalAdminDebugMode,
   hasSessionCookieForShell,
@@ -108,14 +112,28 @@ describe("hasSessionCookieForShell", () => {
       sessionVersion: 0,
       secret: SECRET,
     });
-    cookieJar.set("flavorpress_session", c.value);
+    cookieJar.set(SESSION_COOKIE_NAME, c.value);
 
     expect(await hasSessionCookieForShell()).toBe(true);
   });
 
   it("returns false without a valid signed cookie", async () => {
-    cookieJar.set("flavorpress_session", "garbage");
+    cookieJar.set(SESSION_COOKIE_NAME, "garbage");
     expect(await hasSessionCookieForShell()).toBe(false);
+  });
+});
+
+describe("getSession", () => {
+  it("accepts a legacy session cookie once and replaces it with the __Host name", async () => {
+    const u = await makeUser("legacy@example.com");
+    const c = await createSessionCookie({ userId: u.id, sessionVersion: 0, secret: SECRET });
+    cookieJar.set(LEGACY_SESSION_COOKIE_NAME, c.value);
+
+    const s = await getSession();
+
+    expect(s?.userId).toBe(u.id);
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toBe(c.value);
+    expect(cookieJar.get(LEGACY_SESSION_COOKIE_NAME)).toBe("");
   });
 });
 
