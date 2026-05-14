@@ -58,23 +58,26 @@ describe("cron route auth", () => {
     expect(cronMocks.runDuePolls).not.toHaveBeenCalled();
   });
 
-  it.each(routes)("runs $path with the configured bearer token", async ({ path: routePath, GET }) => {
-    const res = await GET(
-      new Request(`http://localhost${routePath}`, {
-        headers: { authorization: "Bearer configured-cron-secret" },
-      }),
-    );
-    const body = await res.json();
+  it.each(routes)(
+    "runs $path with the configured bearer token",
+    async ({ path: routePath, GET }) => {
+      const res = await GET(
+        new Request(`http://localhost${routePath}`, {
+          headers: { authorization: "Bearer configured-cron-secret" },
+        }),
+      );
+      const body = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ ok: true });
-    expect(cronMocks.ensureRegisteredCapabilities).toHaveBeenCalledTimes(1);
-    expect(cronMocks.runDuePolls).toHaveBeenCalledWith({
-      wait: true,
-      throwOnError: true,
-      maxBatch: undefined,
-    });
-  });
+      expect(res.status).toBe(200);
+      expect(body).toEqual({ ok: true });
+      expect(cronMocks.ensureRegisteredCapabilities).toHaveBeenCalledTimes(1);
+      expect(cronMocks.runDuePolls).toHaveBeenCalledWith({
+        wait: true,
+        throwOnError: true,
+        maxBatch: undefined,
+      });
+    },
+  );
 
   it("rejects an empty bearer token without running polls", async () => {
     const res = await handlePollCron(
