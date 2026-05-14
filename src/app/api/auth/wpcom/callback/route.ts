@@ -5,7 +5,13 @@ import { SESSION_COOKIE_NAME, createSessionCookie, getSessionTtlSeconds } from "
 import { db } from "@/lib/db";
 import { consumeInvite, InviteError } from "@/lib/invites";
 import { notifySignupWithEmail } from "@/lib/notifications";
-import { consumeWpcomState, exchangeCodeForUser, isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
+import {
+  consumeWpcomState,
+  exchangeCodeForUser,
+  isWpcomOAuthConfigured,
+  WPCOM_OAUTH_STATE_COOKIE,
+  wpcomStateCookieOptions,
+} from "@/lib/wpcom-oauth";
 import { createUser, getUserByEmail, hasAdmin } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -42,83 +48,100 @@ async function setSessionCookie(userId: string, sessionVersion: number): Promise
   });
 }
 
+async function clearStateCookie(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(WPCOM_OAUTH_STATE_COOKIE, "", {
+    ...wpcomStateCookieOptions(0),
+    expires: new Date(0),
+  });
+}
+
 export async function GET(req: Request) {
   if (!isWpcomOAuthConfigured()) {
     return NextResponse.json({ error: "WP.com OAuth is not configured." }, { status: 501 });
   }
 
-  const url = new URL(req.url);
-  const code = url.searchParams.get("code");
-  const stateToken = url.searchParams.get("state");
-  if (!code || !stateToken) return loginErr("oauth_state");
-
-  const state = await consumeWpcomState(stateToken);
-  if (!state) return loginErr("oauth_state");
-  if (state.mode !== "signup" && state.mode !== "login") return loginErr("oauth_state");
-
-  let wp;
   try {
-    wp = await exchangeCodeForUser({
-      code,
-      redirectUri: `${origin()}/api/auth/wpcom/callback`,
-    });
-  } catch {
-    return state.mode === "signup" ? signupErr(state.invite, "oauth") : loginErr("oauth");
-  }
+    const url = new URL(req.url);
+    const code = url.searchParams.get("code");
+    const stateToken = url.searchParams.get("state");
+    if (!code || !stateToken) return loginErr("oauth_state");
 
-  if (state.mode === "login") {
+    const cookieStore = await cookies();
+    const cookieNonce = cookieStore.get(WPCOM_OAUTH_STATE_COOKIE)?.value;
+    if (!cookieNonce) return loginErr("oauth_state");
+
+    const state = await consumeWpcomState(stateToken);
+    if (!state) return loginErr("oauth_state");
+    if (state.nonce !== cookieNonce) return loginErr("oauth_state");
+    if (state.mode !== "signup" && state.mode !== "login") return loginErr("oauth_state");
+
+    let wp;
+    try {
+      wp = await exchangeCodeForUser({
+        code,
+        redirectUri: `${origin()}/api/auth/wpcom/callback`,
+      });
+    } catch {
+      return state.mode === "signup" ? signupErr(state.invite, "oauth") : loginErr("oauth");
+    }
+
+    if (state.mode === "login") {
+      const byWpcom = await db.execute({
+        sql: "SELECT id, status, session_version FROM users WHERE wpcom_id = ?",
+        args: [wp.id],
+      });
+      const row = byWpcom.rows[0];
+      if (!row) return loginErr("credentials");
+      if (String(row.status) !== "active") return loginErr("credentials");
+      await setSessionCookie(String(row.id), Number(row.session_version));
+      return NextResponse.redirect(new URL("/", origin()), 302);
+    }
+
+    if (!state.invite) return signupErr(undefined, "invite");
+
+    const collide = await getUserByEmail(wp.email);
+    if (collide) return signupErr(state.invite, "account");
+
     const byWpcom = await db.execute({
-      sql: "SELECT id, status, session_version FROM users WHERE wpcom_id = ?",
+      sql: "SELECT id FROM users WHERE wpcom_id = ?",
       args: [wp.id],
     });
-    const row = byWpcom.rows[0];
-    if (!row) return loginErr("credentials");
-    if (String(row.status) !== "active") return loginErr("credentials");
-    await setSessionCookie(String(row.id), Number(row.session_version));
+    if (byWpcom.rows.length > 0) return signupErr(state.invite, "account");
+
+    const adminEmail = (process.env.FLAVORPRESS_ADMIN_EMAIL ?? "").trim().toLowerCase();
+    const isFirstAdmin =
+      adminEmail.length > 0 && wp.email.toLowerCase() === adminEmail && !(await hasAdmin());
+
+    const userId = newUserId();
+    try {
+      await consumeInvite(state.invite, userId);
+    } catch (err) {
+      if (err instanceof InviteError) return signupErr(state.invite, "invite");
+      throw err;
+    }
+
+    try {
+      await createUser({
+        id: userId,
+        email: wp.email,
+        passwordHash: null,
+        wpcomId: wp.id,
+        wpcomUsername: wp.username,
+        isAdmin: isFirstAdmin,
+      });
+      await db.execute({
+        sql: "UPDATE users SET email_verified_at = ? WHERE id = ?",
+        args: [Date.now(), userId],
+      });
+    } catch {
+      return signupErr(state.invite, "account");
+    }
+
+    await setSessionCookie(userId, 0);
+    after(() => notifySignupWithEmail({ userId, email: wp.email, method: "wpcom" }));
     return NextResponse.redirect(new URL("/", origin()), 302);
+  } finally {
+    await clearStateCookie();
   }
-
-  if (!state.invite) return signupErr(undefined, "invite");
-
-  const collide = await getUserByEmail(wp.email);
-  if (collide) return signupErr(state.invite, "account");
-
-  const byWpcom = await db.execute({
-    sql: "SELECT id FROM users WHERE wpcom_id = ?",
-    args: [wp.id],
-  });
-  if (byWpcom.rows.length > 0) return signupErr(state.invite, "account");
-
-  const adminEmail = (process.env.FLAVORPRESS_ADMIN_EMAIL ?? "").trim().toLowerCase();
-  const isFirstAdmin =
-    adminEmail.length > 0 && wp.email.toLowerCase() === adminEmail && !(await hasAdmin());
-
-  const userId = newUserId();
-  try {
-    await consumeInvite(state.invite, userId);
-  } catch (err) {
-    if (err instanceof InviteError) return signupErr(state.invite, "invite");
-    throw err;
-  }
-
-  try {
-    await createUser({
-      id: userId,
-      email: wp.email,
-      passwordHash: null,
-      wpcomId: wp.id,
-      wpcomUsername: wp.username,
-      isAdmin: isFirstAdmin,
-    });
-    await db.execute({
-      sql: "UPDATE users SET email_verified_at = ? WHERE id = ?",
-      args: [Date.now(), userId],
-    });
-  } catch {
-    return signupErr(state.invite, "account");
-  }
-
-  await setSessionCookie(userId, 0);
-  after(() => notifySignupWithEmail({ userId, email: wp.email, method: "wpcom" }));
-  return NextResponse.redirect(new URL("/", origin()), 302);
 }
