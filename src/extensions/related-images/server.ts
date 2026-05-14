@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Related-images extension — server half. Searches Openverse for
+ * Related-images extension - server half. Searches Openverse for
  * licensed photographs/illustrations the writer can attach to a draft,
  * filtered by the license codes they have opted into.
  *
@@ -53,8 +53,14 @@ interface OpenverseResponse {
   results?: OpenverseHit[];
 }
 
-export async function getLicenseFilter(): Promise<LicenseCode[]> {
-  const raw = await getSetting(SETTING_KEYS.relatedImagesLicenseFilter);
+function licenseFilterSettingKey(userId: string): string {
+  return `${SETTING_KEYS.relatedImagesLicenseFilter}:${userId}`;
+}
+
+export async function getLicenseFilter(userId: string): Promise<LicenseCode[]> {
+  const raw =
+    (await getSetting(licenseFilterSettingKey(userId))) ??
+    (await getSetting(SETTING_KEYS.relatedImagesLicenseFilter));
   if (!raw) return [...DEFAULT_LICENSE_FILTER];
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -79,7 +85,7 @@ export async function setLicenseFilter(
   // An empty filter would match nothing; treat it as "fall back to default"
   // so the user can't accidentally lock themselves out of search results.
   const effective = cleaned.length > 0 ? cleaned : [...DEFAULT_LICENSE_FILTER];
-  await setSetting(SETTING_KEYS.relatedImagesLicenseFilter, JSON.stringify(effective));
+  await setSetting(licenseFilterSettingKey(userId), JSON.stringify(effective));
   // Prune the caller's cached results whose license is no longer
   // permitted. Without this, narrowing the filter would leave stale rows
   // in the panel that the chips claim are excluded; the reuse guidance
@@ -113,7 +119,7 @@ export async function runRelatedImageSearch(
     throw new Error("Draft has no headline or body to search from yet.");
   }
 
-  const licenseFilter = await getLicenseFilter();
+  const licenseFilter = await getLicenseFilter(session.userId);
 
   const url = new URL(OPENVERSE_ENDPOINT);
   url.searchParams.set("q", query);
@@ -233,7 +239,7 @@ export async function loadRelatedImages(
       sql: `SELECT searched_at, license_filter FROM related_image_runs WHERE draft_id = ?`,
       args: [draftId],
     }),
-    getLicenseFilter(),
+    getLicenseFilter(session.userId),
   ]);
   const results: RelatedImageResult[] = r.rows.map((row) => ({
     id: String(row.id),

@@ -18,13 +18,14 @@ import {
   seedDraftForUser,
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
 import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
-import { setSetting } from "@/lib/v1/settings";
+import { getSetting, setSetting } from "@/lib/v1/settings";
 
 // ---------------------------------------------------------------------------
 // Mock layer
 // ---------------------------------------------------------------------------
 
 let cookieJar: Map<string, string>;
+const settingStore = vi.hoisted(() => new Map<string, string>());
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -83,8 +84,11 @@ vi.mock("@/lib/anthropic", () => ({
 vi.mock("@/lib/v1/settings", () => ({
   getAnthropicDraftModel: vi.fn().mockResolvedValue("claude-3-5-sonnet-20241022"),
   getAnthropicApiKey: vi.fn().mockResolvedValue("sk-test-fake-key"),
-  getSetting: vi.fn().mockResolvedValue(null),
-  setSetting: vi.fn().mockResolvedValue(undefined),
+  getSetting: vi.fn(async (key: string) => settingStore.get(key) ?? null),
+  setSetting: vi.fn(async (key: string, value: string | null) => {
+    if (value === null) settingStore.delete(key);
+    else settingStore.set(key, value);
+  }),
   SETTING_KEYS: { relatedImagesLicenseFilter: "related_images_license_filter" },
 }));
 
@@ -187,6 +191,7 @@ beforeEach(async () => {
   process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
   process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
   delete process.env.FLAVORPRESS_AUTH;
+  settingStore.clear();
   vi.clearAllMocks();
   // Re-apply the fetch mock after clearAllMocks.
   global.fetch = vi.fn().mockResolvedValue({
@@ -611,5 +616,47 @@ describe("setLicenseFilterAction - cross-user isolation", () => {
       args: [draftB],
     });
     expect(userBResults.rows.length).toBe(1);
+  });
+
+  it("does not change user B's license filter when user A narrows theirs", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const outletA = await seedOutletForUser(userA.id);
+    const clusterA = await seedClusterForUser(userA.id);
+    const draftA = await seedDraftForUser(userA.id, { clusterId: clusterA, outletId: outletA });
+    await seedRelatedImage(draftA, { licenseCode: "by" });
+
+    const outletB = await seedOutletForUser(userB.id);
+    const clusterB = await seedClusterForUser(userB.id);
+    const draftB = await seedDraftForUser(userB.id, { clusterId: clusterB, outletId: outletB });
+    await seedRelatedImage(draftB, { licenseCode: "by" });
+
+    await loginAs(userA.id);
+
+    const { loadRelatedImagesAction, setLicenseFilterAction } = await import(
+      "../related-images/actions"
+    );
+
+    const setFormData = new FormData();
+    setFormData.set("draftId", draftA);
+    setFormData.set("codes", "cc0");
+    const setResult = await setLicenseFilterAction(setFormData);
+
+    expect(setResult.ok).toBe(true);
+    expect(vi.mocked(setSetting)).toHaveBeenCalledWith(
+      `related_images_license_filter:${userA.id}`,
+      JSON.stringify(["cc0"]),
+    );
+    expect(vi.mocked(getSetting)).not.toHaveBeenCalledWith("related_images_license_filter");
+
+    await loginAs(userB.id);
+
+    const loadFormData = new FormData();
+    loadFormData.set("draftId", draftB);
+    const loadResult = await loadRelatedImagesAction(loadFormData);
+
+    expect(loadResult.ok).toBe(true);
+    if (!loadResult.ok) return;
+    expect(loadResult.payload.licenseFilter).toContain("by");
+    expect(loadResult.payload.results).toHaveLength(1);
   });
 });

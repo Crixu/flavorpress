@@ -30,9 +30,10 @@ export interface RunError {
 export async function loadRelatedImagesAction(formData: FormData): Promise<RunOk | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
+  const session = await requireSession();
   const [{ results, ranAt }, licenseFilter] = await Promise.all([
     loadRelatedImages(draftId),
-    getLicenseFilter(),
+    getLicenseFilter(session.userId),
   ]);
   return { ok: true, payload: { results, ranAt, licenseFilter } };
 }
