@@ -78,6 +78,7 @@ describe("origin and redirects", () => {
   });
 
   it("checks mutation origins where browsers provide them", () => {
+    expect(isAllowedMutationOrigin(new Headers(), "https://flavorpress.example.com")).toBe(false);
     expect(
       isAllowedMutationOrigin(
         new Headers({ origin: "https://flavorpress.example.com" }),
@@ -96,12 +97,32 @@ describe("origin and redirects", () => {
         "https://flavorpress.example.com",
       ),
     ).toBe(false);
+    expect(
+      isAllowedMutationOrigin(
+        new Headers({ "sec-fetch-site": "same-origin" }),
+        "https://flavorpress.example.com",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedMutationOrigin(
+        new Headers({ "sec-fetch-site": "none" }),
+        "https://flavorpress.example.com",
+      ),
+    ).toBe(true);
   });
 
   it("keeps redirects app-local", () => {
     expect(safeRedirectPath("/sources?folder=abc")).toBe("/sources?folder=abc");
+    expect(safeRedirectPath("/foo/bar?x=1#a")).toBe("/foo/bar?x=1#a");
+    expect(safeRedirectPath("/foo")).toBe("/foo");
     expect(safeRedirectPath("https://evil.example.com")).toBe("/");
     expect(safeRedirectPath("//evil.example.com/path")).toBe("/");
+    expect(safeRedirectPath("\\\\evil.example.com")).toBe("/");
+    expect(safeRedirectPath("/\\evil.example.com")).toBe("/");
+    expect(safeRedirectPath("/%5Cevil.example.com")).toBe("/");
+    expect(safeRedirectPath("/%5c%5cevil.example.com")).toBe("/");
+    expect(safeRedirectPath("/＼evil.example.com")).toBe("/");
+    expect(safeRedirectPath("/﹨evil.example.com")).toBe("/");
   });
 
   it("uses browser origin before host fallback", () => {

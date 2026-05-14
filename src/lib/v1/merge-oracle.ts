@@ -20,6 +20,7 @@
 import { db } from "../db";
 import { createAnthropicClient, extractJson, extractText } from "../anthropic";
 import { getAnthropicDraftModel } from "./settings";
+import { newSourceNonce, renderUntrustedSource, untrustedSourceContract } from "./prompt-safety";
 
 export const ORACLE_PROMPT_VERSION = "2026-05-05.v1";
 
@@ -78,6 +79,13 @@ export async function askMergeOracle(input: MergeOracleInput): Promise<MergeOrac
   // identical regardless of which side called the oracle. This makes
   // identical pairs hit cache in either order.
   const [aSide, bSide] = orderItems(input);
+  const sourceNonce = newSourceNonce();
+  const itemA = renderUntrustedSource({ title: aSide.title, lede: aSide.lede }, sourceNonce, {
+    index: 1,
+  });
+  const itemB = renderUntrustedSource({ title: bSide.title, lede: bSide.lede }, sourceNonce, {
+    index: 2,
+  });
 
   try {
     const message = await client.messages.create({
@@ -87,7 +95,15 @@ export async function askMergeOracle(input: MergeOracleInput): Promise<MergeOrac
       messages: [
         {
           role: "user",
-          content: `ITEM A:\nTitle: ${aSide.title}\nLede: ${aSide.lede}\n\nITEM B:\nTitle: ${bSide.title}\nLede: ${bSide.lede}\n\nReturn the JSON now.`,
+          content: `${untrustedSourceContract(sourceNonce)}
+
+ITEM A:
+${itemA}
+
+ITEM B:
+${itemB}
+
+Return the JSON now.`,
         },
       ],
     });

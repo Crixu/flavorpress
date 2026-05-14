@@ -7,6 +7,9 @@ import {
   isWpcomOAuthConfigured,
   resolveWpcomSiteBlogId,
   resetWpcomStateCacheForTests,
+  WPCOM_OAUTH_STATE_COOKIE,
+  WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS,
+  wpcomStateCookieOptions,
 } from "@/lib/wpcom-oauth";
 
 beforeEach(() => {
@@ -149,5 +152,19 @@ describe("isWpcomOAuthConfigured", () => {
         WPCOM_OAUTH_CLIENT_ID: "x",
       } as Record<string, string | undefined>),
     ).toBe(false);
+  });
+});
+
+describe("wpcom state cookie", () => {
+  it("uses a short-lived HttpOnly Lax cookie shared by OAuth callbacks", () => {
+    expect(WPCOM_OAUTH_STATE_COOKIE).toBe("fp_wpcom_state");
+    expect(WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS).toBe(600);
+    expect(wpcomStateCookieOptions(600)).toEqual({
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/api",
+      maxAge: 600,
+    });
   });
 });

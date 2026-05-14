@@ -25,6 +25,7 @@ import { db } from "../db";
 import { createAnthropicClient, extractJson, extractText } from "../anthropic";
 import { extractEntities as regexExtractEntities } from "./cluster-engine";
 import { getAnthropicDraftModel } from "./settings";
+import { newSourceNonce, renderUntrustedSource, untrustedSourceContract } from "./prompt-safety";
 
 export const PROMPT_VERSION = "2026-05-05.v1";
 
@@ -113,6 +114,11 @@ async function runLLMExtraction(
   const { client } = await createAnthropicClient();
   if (!client) return null;
 
+  const sourceNonce = newSourceNonce();
+  const sourceBlock = renderUntrustedSource({ title: input.title, lede: input.lede }, sourceNonce, {
+    index: 1,
+  });
+
   try {
     const message = await client.messages.create({
       model,
@@ -121,7 +127,11 @@ async function runLLMExtraction(
       messages: [
         {
           role: "user",
-          content: `TITLE: ${input.title}\n\nLEDE: ${input.lede}\n\nReturn the JSON now.`,
+          content: `${untrustedSourceContract(sourceNonce)}
+
+${sourceBlock}
+
+Return the JSON now.`,
         },
       ],
     });

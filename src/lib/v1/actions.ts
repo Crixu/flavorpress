@@ -5,6 +5,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db, ensureSchema } from "../db";
@@ -76,6 +77,9 @@ import {
   isWpcomOAuthConfigured,
   issueWpcomState,
   resolveWpcomSiteBlogId,
+  WPCOM_OAUTH_STATE_COOKIE,
+  WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS,
+  wpcomStateCookieOptions,
 } from "../wpcom-oauth";
 import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
@@ -243,6 +247,7 @@ export async function startWpcomOutletAuthorizeAction(formData: FormData) {
     redirectPlanLimit(err);
     throw err;
   }
+  const nonce = crypto.randomUUID();
   let expectedBlogId: string | null = null;
   try {
     expectedBlogId = await resolveWpcomSiteBlogId(siteUrl);
@@ -251,13 +256,18 @@ export async function startWpcomOutletAuthorizeAction(formData: FormData) {
   }
   await setOutletWpcomExpectedBlogId(outletId, session.userId, expectedBlogId);
   const state = await issueWpcomState({
-    nonce: crypto.randomUUID(),
+    nonce,
     mode: "outlet",
     userId: session.userId,
     outletId,
     expectedSiteUrl: siteUrl,
   });
   const redirectUri = `${await getOrigin()}/api/wpcom/outlet-callback`;
+  (await cookies()).set(
+    WPCOM_OAUTH_STATE_COOKIE,
+    nonce,
+    wpcomStateCookieOptions(WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS),
+  );
   redirect(buildSiteAuthorizeUrl({ redirectUri, state, siteUrl }));
 }
 

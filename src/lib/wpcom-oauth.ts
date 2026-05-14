@@ -4,6 +4,9 @@ import { timingSafeEqual } from "node:crypto";
 const STATE_TTL_MS = 10 * 60 * 1000;
 let warnedFallbackSecret = false;
 
+export const WPCOM_OAUTH_STATE_COOKIE = "fp_wpcom_state";
+export const WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS = STATE_TTL_MS / 1000;
+
 export interface WpcomOAuthState {
   nonce: string;
   mode: "signup" | "login" | "outlet";
@@ -23,6 +26,16 @@ const encoder = new TextEncoder();
 
 // Set of consumed nonces. Bounded by the TTL window; cleared on test reset.
 const consumedNonces = new Set<string>();
+
+export function wpcomStateCookieOptions(maxAgeSec: number) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/api",
+    maxAge: maxAgeSec,
+  };
+}
 
 export function resetWpcomStateCacheForTests(): void {
   consumedNonces.clear();
