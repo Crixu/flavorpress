@@ -18,6 +18,7 @@ import {
   seedDraftForUser,
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
 import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
+import { setSetting } from "@/lib/v1/settings";
 
 // ---------------------------------------------------------------------------
 // Mock layer
@@ -150,16 +151,21 @@ async function seedFactCheckClaim(draftId: string): Promise<string> {
 /**
  * Seed a related-image result row directly (bypasses the Openverse HTTP call).
  */
-async function seedRelatedImage(draftId: string): Promise<string> {
+async function seedRelatedImage(
+  draftId: string,
+  opts?: { licenseCode?: string; resultIndex?: number },
+): Promise<string> {
   const id = crypto.randomUUID();
   const ranAt = Date.now();
+  const licenseCode = opts?.licenseCode ?? "cc0";
+  const resultIndex = opts?.resultIndex ?? 0;
   await db.execute({
     sql: `INSERT INTO related_image_results
           (id, draft_id, result_index, image_url, thumbnail_url, source_url,
            license_code, searched_at)
-          VALUES (?, ?, 0, 'https://example.com/img.jpg', 'https://example.com/thumb.jpg',
-                  'https://example.com/source', 'cc0', ?)`,
-    args: [id, draftId, ranAt],
+          VALUES (?, ?, ?, 'https://example.com/img.jpg', 'https://example.com/thumb.jpg',
+                  'https://example.com/source', ?, ?)`,
+    args: [id, draftId, resultIndex, licenseCode, ranAt],
   });
   await db.execute({
     sql: `INSERT INTO related_image_runs (draft_id, searched_at, license_filter)
@@ -546,8 +552,64 @@ describe("clearRelatedImages - cross-user isolation", () => {
 // ---------------------------------------------------------------------------
 // related-images: getLicenseFilter / setLicenseFilter
 // ---------------------------------------------------------------------------
-// SKIP: app_settings has no user_id column; the license filter is a global
-// setting shared across users. This is a known single-user prototype artifact.
-// When the SaaS multi-user schema lands, app_settings will need a user_id FK
-// and these functions will need session-scoped reads and writes.
-// See db.ts CREATE TABLE app_settings (key TEXT PRIMARY KEY, ...).
+
+describe("setLicenseFilterAction - cross-user isolation", () => {
+  it("returns an auth error and does not write when called without a session", async () => {
+    const { userA } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+    const clusterId = await seedClusterForUser(userA.id);
+    const draftId = await seedDraftForUser(userA.id, { clusterId, outletId });
+    await seedRelatedImage(draftId, { licenseCode: "by" });
+
+    const { setLicenseFilterAction } = await import("../related-images/actions");
+
+    const formData = new FormData();
+    formData.set("codes", "cc0");
+    const result = await setLicenseFilterAction(formData);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/authentication required/i);
+    expect(vi.mocked(setSetting)).not.toHaveBeenCalled();
+
+    const r = await db.execute({
+      sql: `SELECT id FROM related_image_results WHERE draft_id = ?`,
+      args: [draftId],
+    });
+    expect(r.rows.length).toBe(1);
+  });
+
+  it("does not delete user B's image results when user A narrows their filter", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const outletA = await seedOutletForUser(userA.id);
+    const clusterA = await seedClusterForUser(userA.id);
+    const draftA = await seedDraftForUser(userA.id, { clusterId: clusterA, outletId: outletA });
+    await seedRelatedImage(draftA, { licenseCode: "by" });
+
+    const outletB = await seedOutletForUser(userB.id);
+    const clusterB = await seedClusterForUser(userB.id);
+    const draftB = await seedDraftForUser(userB.id, { clusterId: clusterB, outletId: outletB });
+    await seedRelatedImage(draftB, { licenseCode: "by" });
+
+    await loginAs(userA.id);
+
+    const { setLicenseFilterAction } = await import("../related-images/actions");
+
+    const formData = new FormData();
+    formData.set("codes", "cc0");
+    const result = await setLicenseFilterAction(formData);
+
+    expect(result.ok).toBe(true);
+
+    const userAResults = await db.execute({
+      sql: `SELECT id FROM related_image_results WHERE draft_id = ?`,
+      args: [draftA],
+    });
+    expect(userAResults.rows.length).toBe(0);
+
+    const userBResults = await db.execute({
+      sql: `SELECT id FROM related_image_results WHERE draft_id = ?`,
+      args: [draftB],
+    });
+    expect(userBResults.rows.length).toBe(1);
+  });
+});

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireSession } from "@/lib/session";
 import {
   clearRelatedImages,
   getLicenseFilter,
@@ -65,22 +66,30 @@ export async function clearRelatedImagesAction(
 }
 
 export async function setLicenseFilterAction(formData: FormData): Promise<RunOk | RunError> {
-  const draftId = String(formData.get("draftId") ?? "");
-  const raw = String(formData.get("codes") ?? "");
-  const codes = raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter((s): s is LicenseCode => (LICENSE_CODES as readonly string[]).includes(s));
-  const licenseFilter = await setLicenseFilter(codes);
-  if (draftId) {
-    const { results, ranAt } = await loadRelatedImages(draftId);
+  try {
+    const session = await requireSession();
+    const draftId = String(formData.get("draftId") ?? "");
+    const raw = String(formData.get("codes") ?? "");
+    const codes = raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s): s is LicenseCode => (LICENSE_CODES as readonly string[]).includes(s));
+    const licenseFilter = await setLicenseFilter(codes, session.userId);
+    if (draftId) {
+      const { results, ranAt } = await loadRelatedImages(draftId);
+      return {
+        ok: true,
+        payload: { results, ranAt, licenseFilter },
+      };
+    }
     return {
       ok: true,
-      payload: { results, ranAt, licenseFilter },
+      payload: { results: [], ranAt: null, licenseFilter },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
     };
   }
-  return {
-    ok: true,
-    payload: { results: [], ranAt: null, licenseFilter },
-  };
 }
