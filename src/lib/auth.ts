@@ -138,6 +138,13 @@ export function isAllowedOrigin(
 
 export function safeRedirectPath(value: FormDataEntryValue | string | null | undefined): string {
   const raw = typeof value === "string" ? value : "";
+  let decoded: string | null = null;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    decoded = null;
+  }
+  if (hasRedirectBackslash(raw) || (decoded !== null && hasRedirectBackslash(decoded))) return "/";
   if (!raw.startsWith("/") || raw.startsWith("//")) return "/";
   try {
     const parsed = new URL(raw, "http://flavorpress.local");
@@ -167,6 +174,10 @@ export function requestOriginFromHeaders(headers: HeaderLike): string | null {
   const proto =
     (headers.get("x-forwarded-proto") ?? fallbackProto).split(",")[0]?.trim() || fallbackProto;
   return `${proto}://${host.split(",")[0]?.trim()}`;
+}
+
+function hasRedirectBackslash(value: string): boolean {
+  return /[\\﹨＼]/.test(value);
 }
 
 function parsePayload(payloadPart: string): SessionPayload | null {
