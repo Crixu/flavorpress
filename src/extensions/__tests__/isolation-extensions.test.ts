@@ -632,9 +632,8 @@ describe("setLicenseFilterAction - cross-user isolation", () => {
 
     await loginAs(userA.id);
 
-    const { loadRelatedImagesAction, setLicenseFilterAction } = await import(
-      "../related-images/actions"
-    );
+    const { loadRelatedImagesAction, setLicenseFilterAction } =
+      await import("../related-images/actions");
 
     const setFormData = new FormData();
     setFormData.set("draftId", draftA);
