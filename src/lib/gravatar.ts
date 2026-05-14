@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export function gravatarUrl(email: string, size = 80, defaultImage = "mp"): string {
-  const hash = createHash("md5").update(email.trim().toLowerCase()).digest("hex");
+  const hash = createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
   const params = new URLSearchParams({
     s: String(size),
     d: defaultImage,

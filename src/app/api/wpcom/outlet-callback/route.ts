@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { AuthRequiredError, requireSession } from "@/lib/session";
-import { commitOutletWpcomOAuthCredentials, recordOutletError } from "@/lib/v1/outlets";
+import { commitOutletWpcomOAuthCredentials, getOutlet, recordOutletError } from "@/lib/v1/outlets";
 import { getOrigin } from "@/lib/v1/origin";
 import {
   consumeWpcomState,
@@ -65,10 +65,13 @@ export async function GET(req: Request) {
     }
 
     try {
+      const outlet = await getOutlet(state.outletId, session.userId);
+      if (!outlet) throw new Error("Outlet not found.");
       const connection = await exchangeCodeForSiteConnection({
         code,
         redirectUri: `${await getOrigin()}/api/wpcom/outlet-callback`,
         expectedSiteUrl: state.expectedSiteUrl,
+        expectedBlogId: outlet.wpcomExpectedBlogId,
       });
       await commitOutletWpcomOAuthCredentials({
         outletId: state.outletId,

@@ -101,7 +101,7 @@ export async function GET(req: Request) {
     if (!state.invite) return signupErr(undefined, "invite");
 
     const collide = await getUserByEmail(wp.email);
-    if (collide) return signupErr(state.invite, "account");
+    if (collide) return NextResponse.redirect(new URL("/signup/check-email", origin()), 302);
 
     const byWpcom = await db.execute({
       sql: "SELECT id FROM users WHERE wpcom_id = ?",

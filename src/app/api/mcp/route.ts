@@ -16,7 +16,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { getRegistry } from "@/lib/v1/capability-registry";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 
@@ -190,8 +190,8 @@ function authenticateMcpRequest(
 }
 
 function tokenMatches(token: string, configuredToken: string): boolean {
-  const tokenBytes = new TextEncoder().encode(token);
-  const configuredBytes = new TextEncoder().encode(configuredToken);
+  const tokenBytes = createHash("sha256").update(token).digest();
+  const configuredBytes = createHash("sha256").update(configuredToken).digest();
   if (tokenBytes.byteLength !== configuredBytes.byteLength) return false;
   return timingSafeEqual(tokenBytes, configuredBytes);
 }

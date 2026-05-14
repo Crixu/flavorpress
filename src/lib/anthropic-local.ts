@@ -344,6 +344,27 @@ let cachedClaudePath: string | null = null;
  */
 export async function resolveClaudeBinary(): Promise<string | null> {
   if (cachedClaudePath) return cachedClaudePath;
+  const fs = await import("node:fs");
+  const { homedir } = await import("node:os");
+  const home = homedir();
+  const override = process.env.FLAVORPRESS_CLAUDE_BIN?.trim();
+  const candidates: string[] = [];
+  if (override) candidates.push(override);
+  candidates.push(
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude",
+    `${home}/.local/bin/claude`,
+    `${home}/.claude/local/claude`,
+  );
+  for (const candidate of candidates) {
+    try {
+      await fs.promises.access(candidate, fs.constants.X_OK);
+      cachedClaudePath = candidate;
+      return candidate;
+    } catch {
+      // try next
+    }
+  }
   let resolved: string | null = null;
   try {
     const { spawn } = await import("node:child_process");

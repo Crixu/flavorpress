@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   requireSession: vi.fn(),
   getOrigin: vi.fn(),
   commitOutletWpcomOAuthCredentials: vi.fn(),
+  getOutlet: vi.fn(),
   recordOutletError: vi.fn(),
 }));
 
@@ -36,6 +37,7 @@ vi.mock("@/lib/v1/origin", () => ({
 
 vi.mock("@/lib/v1/outlets", () => ({
   commitOutletWpcomOAuthCredentials: mocks.commitOutletWpcomOAuthCredentials,
+  getOutlet: mocks.getOutlet,
   recordOutletError: mocks.recordOutletError,
 }));
 
@@ -49,6 +51,7 @@ beforeEach(() => {
     mocks.requireSession,
     mocks.getOrigin,
     mocks.commitOutletWpcomOAuthCredentials,
+    mocks.getOutlet,
     mocks.recordOutletError,
   ]) {
     mock.mockReset();
@@ -61,6 +64,7 @@ beforeEach(() => {
   mocks.requireSession.mockResolvedValue({ userId: "u1" });
   mocks.getOrigin.mockResolvedValue("http://localhost:3000");
   mocks.commitOutletWpcomOAuthCredentials.mockResolvedValue(undefined);
+  mocks.getOutlet.mockResolvedValue({ wpcomExpectedBlogId: "123" });
   mocks.recordOutletError.mockResolvedValue(undefined);
   resetWpcomStateCacheForTests();
 });

@@ -20,6 +20,7 @@
     "auth:reset": "tsx --env-file=.env --conditions=react-server scripts/reset-password.ts",
     "auth:claim": "tsx --env-file=.env --conditions=react-server scripts/claim-default-user.ts",
     "auth:promote": "tsx --env-file=.env --conditions=react-server scripts/promote-admin.ts",
+    "gen-session-secret": "tsx scripts/gen-session-secret.ts",
     "mac:build": "macos/build.sh",
     "mac:run": "macos/build.sh && open macos/build/FlavorPress.app",
     "mac:dmg": "macos/build.sh && macos/dmg.sh"

@@ -89,6 +89,10 @@ export const rssConnectorExpanded: SourceConnector<RawItem> = {
 
     if (!looksLikeTeaser(item.body)) return [item];
 
+    if (!ctx.extractionBudget.take()) {
+      await ctx.log.info("connector.enrich", "budget_exhausted", { url: item.url });
+      return [item];
+    }
     const article = await extractor(item.url);
     if (!article) {
       await ctx.log.info("connector.enrich", "extraction failed; kept feed body", {
@@ -161,20 +165,29 @@ async function expandSegments(
     let storyLede: string;
 
     if (decision.action === "crawl" && decision.targetUrl) {
-      const sub = await extractor(decision.targetUrl);
-      if (sub && sub.length > seg.body.length) {
-        storyUrl = decision.targetUrl;
-        storyBody = sub.textContent;
-        storyTitle = seg.title || sub.title || `${item.title} — story ${i + 1}`;
-        storyExternalId = decision.targetUrl;
-        storyLede = sub.excerpt?.slice(0, 500).trim() || seg.body.slice(0, 500).trim();
-      } else {
-        // Crawl failed or returned less than the inline summary. Use inline.
+      if (!ctx.extractionBudget.take()) {
+        await ctx.log.info("connector.enrich", "budget_exhausted", { url: decision.targetUrl });
         storyUrl = decision.targetUrl;
         storyBody = seg.body;
         storyTitle = seg.title || `${item.title} — story ${i + 1}`;
         storyExternalId = decision.targetUrl;
         storyLede = seg.body.slice(0, 500).trim();
+      } else {
+        const sub = await extractor(decision.targetUrl);
+        if (sub && sub.length > seg.body.length) {
+          storyUrl = decision.targetUrl;
+          storyBody = sub.textContent;
+          storyTitle = seg.title || sub.title || `${item.title} — story ${i + 1}`;
+          storyExternalId = decision.targetUrl;
+          storyLede = sub.excerpt?.slice(0, 500).trim() || seg.body.slice(0, 500).trim();
+        } else {
+          // Crawl failed or returned less than the inline summary. Use inline.
+          storyUrl = decision.targetUrl;
+          storyBody = seg.body;
+          storyTitle = seg.title || `${item.title} — story ${i + 1}`;
+          storyExternalId = decision.targetUrl;
+          storyLede = seg.body.slice(0, 500).trim();
+        }
       }
     } else {
       storyUrl = decision.targetUrl ?? appendStoryParam(item.url, i + 1);

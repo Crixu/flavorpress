@@ -25,6 +25,7 @@ import {
   looksLikeTeaser,
   parseArticle,
 } from "../extract-article";
+import { createExtractionBudget } from "../source-connector";
 import type { ConnectorContext, RawItem } from "../source-connector";
 
 function makeCtx(): ConnectorContext {
@@ -52,6 +53,7 @@ function makeCtx(): ConnectorContext {
       error: async () => {},
       debug: async () => {},
     } as unknown as ConnectorContext["log"],
+    extractionBudget: createExtractionBudget(1000),
   };
 }
 

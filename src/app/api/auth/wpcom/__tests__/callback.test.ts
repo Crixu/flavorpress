@@ -106,7 +106,7 @@ describe("wpcom callback signup", () => {
     expect(cookieJar.get(WPCOM_OAUTH_STATE_COOKIE)).toBe("");
   });
 
-  it("refuses email collision on signup", async () => {
+  it("redirects to generic check-email on email collision without leaking existence", async () => {
     await createUser({
       email: "lucas@wordpress.test",
       passwordHash: await hashPassword("the existing password long"),
@@ -116,7 +116,7 @@ describe("wpcom callback signup", () => {
     mockWpcomFlow({ ID: 12345, username: "lucas", email: "lucas@wordpress.test" });
     const res = await call(state, "fake-code");
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toMatch(/\/signup\?.*error=account/);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/signup/check-email");
     const r = await db.execute("SELECT COUNT(*) AS n FROM users");
     expect(Number(r.rows[0]!.n)).toBe(1);
   });

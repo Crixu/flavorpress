@@ -3,6 +3,7 @@ import { db, ensureSchema } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createUser, getUserByEmail } from "@/lib/users";
 import { issuePasswordResetToken } from "@/lib/email-tokens";
+import { hashToken } from "@/lib/token-hash";
 
 let cookieJar: Map<string, string>;
 
@@ -104,7 +105,7 @@ describe("confirmPasswordResetAction", () => {
 
     const used = await db.execute({
       sql: "SELECT used_at FROM password_reset_tokens WHERE token = ?",
-      args: [token],
+      args: [hashToken(token)],
     });
     expect(used.rows[0]!.used_at).toBeNull();
   });

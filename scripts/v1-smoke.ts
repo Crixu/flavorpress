@@ -14,7 +14,7 @@ import { ensureRegisteredCapabilities } from "../src/lib/v1/bootstrap";
 import { getBus } from "../src/lib/v1/event-bus";
 import { getRegistry } from "../src/lib/v1/capability-registry";
 import { rankCluster } from "../src/lib/v1/ranker";
-import { getTrace } from "../src/lib/v1/trace";
+import { getTraceForAdmin } from "../src/lib/v1/trace";
 import { canonicalize, hashContent } from "../src/lib/v1/source-connector";
 import type { ItemIngestedPayload } from "../src/lib/v1/types";
 
@@ -166,7 +166,7 @@ async function main() {
   console.log(`✓ ${eventCount.rows[0]!.n} events persisted in event_log`);
 
   // 7. Verify trace logs.
-  const trace = await getTrace("tr_smoke_2");
+  const trace = await getTraceForAdmin("tr_smoke_2");
   console.log(`✓ trace tr_smoke_2 has ${trace.length} log span(s)`);
 
   // 8. Verify capability registry.

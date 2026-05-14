@@ -14,9 +14,79 @@ export function extractText(message: Anthropic.Messages.Message): string {
 }
 
 export function extractJson<T>(text: string): T {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error(`Model did not return JSON. Got: ${text.slice(0, 200)}`);
-  return JSON.parse(match[0]) as T;
+  const trimmed = text.trim();
+  const direct = tryParse<T>(trimmed);
+  if (direct !== undefined) return direct;
+  if (trimmed.length > 0 && trimmed[0] !== "{") {
+    const prefilled = tryParse<T>(`{${trimmed}`);
+    if (prefilled !== undefined) return prefilled;
+  }
+  const block = findFirstBalancedJsonObject(text);
+  if (!block) {
+    throw new Error(`Model did not return a balanced JSON object. Got: ${text.slice(0, 200)}`);
+  }
+  return JSON.parse(block) as T;
+}
+
+function tryParse<T>(text: string): T | undefined {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Scan `text` for the first balanced `{ ... }` block, respecting string
+ * literals and escape sequences. Returns the substring, or null when no
+ * balanced object is found.
+ */
+function findFirstBalancedJsonObject(text: string): string | null {
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      if (depth === 0) continue;
+      depth--;
+      if (depth === 0 && start !== -1) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Append an assistant prefill of `{` so the model continues a JSON object
+ * from a known opening brace. Call sites concatenate the literal `{` back
+ * onto the model's response before parsing via `extractJson`.
+ */
+export function withJsonPrefill(
+  messages: Anthropic.Messages.MessageParam[],
+): Anthropic.Messages.MessageParam[] {
+  return [...messages, { role: "assistant", content: "{" }];
 }
 
 export type AuthMode = "api" | "cli" | "none";

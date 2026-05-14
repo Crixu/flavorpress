@@ -125,7 +125,7 @@ describe("signupAction", () => {
     expect(to).toMatch(/error=password/);
   });
 
-  it("rejects duplicate email", async () => {
+  it("returns generic check-email on duplicate email without leaking existence", async () => {
     const t1 = (await issueInvite({})).token;
     await callSignup({
       invite: t1,
@@ -138,7 +138,9 @@ describe("signupAction", () => {
       email: "a@example.com",
       password: "correct horse battery staple",
     });
-    expect(to).toMatch(/error=account/);
+    expect(to).toBe("/signup/check-email");
+    const remaining = await readInvite(t2);
+    expect(remaining).not.toBeNull();
   });
 
   it("promotes admin on first signup matching FLAVORPRESS_ADMIN_EMAIL", async () => {

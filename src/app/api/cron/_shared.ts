@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { runDuePolls } from "@/lib/v1/scheduler";
@@ -12,8 +12,8 @@ function readMaxBatch(): number | undefined {
 }
 
 function tokenMatches(token: string, configuredToken: string): boolean {
-  const tokenBytes = new TextEncoder().encode(token);
-  const configuredBytes = new TextEncoder().encode(configuredToken);
+  const tokenBytes = createHash("sha256").update(token).digest();
+  const configuredBytes = createHash("sha256").update(configuredToken).digest();
   if (tokenBytes.byteLength !== configuredBytes.byteLength) return false;
   return timingSafeEqual(tokenBytes, configuredBytes);
 }

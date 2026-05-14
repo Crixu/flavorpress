@@ -10,7 +10,7 @@ afterEach(() => {
 describe("gravatarUrl", () => {
   it("normalizes the email before hashing", () => {
     expect(gravatarUrl("  MyEmailAddress@example.com  ")).toContain(
-      "0bc83cb571cd1c50ba6f3e8a78ef1346",
+      "84059b07d4be67b806386c0aad8070a23f18836bbaae342275dc0a83414c32ee",
     );
   });
 });

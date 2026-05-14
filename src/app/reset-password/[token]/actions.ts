@@ -13,8 +13,15 @@ import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { consumePasswordResetToken } from "@/lib/email-tokens";
 import { getUserById, updatePassword } from "@/lib/users";
 
+function safeToken(raw: string): string {
+  if (raw.length > 128) return "";
+  return /^[A-Za-z0-9_-]+$/.test(raw) ? raw : "";
+}
+
 function errorPath(token: string, error: string): string {
-  return `/reset-password/${encodeURIComponent(token)}?error=${error}`;
+  const safe = safeToken(token);
+  if (!safe) return `/reset-password?error=${error}`;
+  return `/reset-password/${encodeURIComponent(safe)}?error=${error}`;
 }
 
 export async function confirmPasswordResetAction(formData: FormData) {

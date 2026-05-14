@@ -70,11 +70,13 @@ import {
   getOutletCredentials,
   setSourceOutlets,
   getDefaultOutlet,
+  setOutletWpcomExpectedBlogId,
 } from "./outlets";
 import {
   buildSiteAuthorizeUrl,
   isWpcomOAuthConfigured,
   issueWpcomState,
+  resolveWpcomSiteBlogId,
   WPCOM_OAUTH_STATE_COOKIE,
   WPCOM_OAUTH_STATE_COOKIE_TTL_SECONDS,
   wpcomStateCookieOptions,
@@ -89,6 +91,7 @@ import { getAnthropicDraftModel, getDisabledExtensionIds } from "./settings";
 import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 import { recordSourceAdded, recordWordPressPushed } from "./analytics";
+import { safeLogValue } from "../safe-log";
 
 function redirectPlanLimit(error: unknown): void {
   if (!(error instanceof PlanLimitError)) return;
@@ -245,6 +248,13 @@ export async function startWpcomOutletAuthorizeAction(formData: FormData) {
     throw err;
   }
   const nonce = crypto.randomUUID();
+  let expectedBlogId: string | null = null;
+  try {
+    expectedBlogId = await resolveWpcomSiteBlogId(siteUrl);
+  } catch {
+    expectedBlogId = null;
+  }
+  await setOutletWpcomExpectedBlogId(outletId, session.userId, expectedBlogId);
   const state = await issueWpcomState({
     nonce,
     mode: "outlet",
@@ -430,7 +440,7 @@ export async function addSourceAction(formData: FormData) {
       if (claimer) {
         throw new Error(message);
       }
-      console.warn(`addSource: ${input}: ${message}`);
+      console.warn(`addSource: ${safeLogValue(input)}: ${safeLogValue(message)}`);
       continue;
     }
     const id = crypto.randomUUID();
@@ -464,7 +474,8 @@ export async function addSourceAction(formData: FormData) {
       if (!claimedByExtension) titleJobs.push({ id, url });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("UNIQUE")) console.warn(`addSource: ${url}: ${msg}`);
+      if (!msg.includes("UNIQUE"))
+        console.warn(`addSource: ${safeLogValue(url)}: ${safeLogValue(msg)}`);
     }
   }
 
@@ -665,7 +676,8 @@ export async function importOpmlSelectionAction(formData: FormData) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("UNIQUE")) console.warn(`importOpml: ${url}: ${msg}`);
+      if (!msg.includes("UNIQUE"))
+        console.warn(`importOpml: ${safeLogValue(url)}: ${safeLogValue(msg)}`);
     }
   }
 
@@ -721,7 +733,9 @@ async function runBackgroundAutoTitling(
           args: [title, id, userId, placeholder],
         });
       } catch (err) {
-        console.warn(`autoTitle ${url}: ${err}`);
+        console.warn(
+          `autoTitle ${safeLogValue(url)}: ${safeLogValue(err instanceof Error ? err.message : String(err))}`,
+        );
       }
     }),
   );
@@ -1511,7 +1525,9 @@ async function runBackgroundPolls(
       const task = queue.addUnique(sourceId, host, () => invokePoll(sourceId, info.kind, userId));
       if (!task) return Promise.resolve();
       return task.catch((err) => {
-        console.warn(`${label} source ${sourceId}: ${err}`);
+        console.warn(
+          `${label} source ${safeLogValue(sourceId)}: ${safeLogValue(err instanceof Error ? err.message : String(err))}`,
+        );
       });
     }),
   );

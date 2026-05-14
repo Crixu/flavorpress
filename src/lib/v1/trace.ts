@@ -13,22 +13,18 @@
  *   log.info("cluster", "fired", { sourceCount: 4, fit: 0.84 });
  */
 
+import { randomUUID } from "node:crypto";
 import { db, ensureSchema } from "../db";
 import type { TraceSpan } from "./types";
 
 const TRACE_PREFIX = "tr_";
 
 /**
- * Generate a trace ID. Format: tr_<10 url-safe base62 chars>.
- * Stable enough for human reference in URLs and logs.
+ * Generate a trace ID. Format: tr_<32 hex chars> derived from crypto.randomUUID.
+ * The tr_ prefix keeps log greps stable.
  */
 export function newTraceId(): string {
-  const chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  let out = TRACE_PREFIX;
-  for (let i = 0; i < 10; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+  return TRACE_PREFIX + randomUUID().replace(/-/g, "");
 }
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -70,20 +66,8 @@ export function traceLogger(traceId: string, userId: string | null = null): Trac
   };
 }
 
-/**
- * Pull the full trace for a draft by trace_id. Used for per-draft debugging
- * surfaces ("my draft was bad today, why?").
- */
-export async function getTrace(traceId: string): Promise<TraceSpan[]> {
-  await ensureSchema();
-  const r = await db.execute({
-    sql: `SELECT id, trace_id, user_id, span, level, message, data, occurred_at
-          FROM trace_log
-          WHERE trace_id = ?
-          ORDER BY occurred_at ASC, id ASC`,
-    args: [traceId],
-  });
-  return r.rows.map((row) => ({
+function mapTraceRow(row: Record<string, unknown>): TraceSpan {
+  return {
     id: Number(row.id),
     traceId: String(row.trace_id),
     userId: row.user_id ? String(row.user_id) : null,
@@ -92,5 +76,39 @@ export async function getTrace(traceId: string): Promise<TraceSpan[]> {
     message: String(row.message),
     data: row.data ? JSON.parse(String(row.data)) : null,
     occurredAt: Number(row.occurred_at),
-  }));
+  };
+}
+
+/**
+ * Pull the full trace for a draft by trace_id, scoped to the requesting user.
+ * Rows with `user_id IS NULL` (system traces from cron) are not returned here;
+ * use {@link getTraceForAdmin} for those.
+ */
+export async function getTrace(traceId: string, userId: string): Promise<TraceSpan[]> {
+  await ensureSchema();
+  const r = await db.execute({
+    sql: `SELECT id, trace_id, user_id, span, level, message, data, occurred_at
+          FROM trace_log
+          WHERE trace_id = ?
+            AND user_id = ?
+          ORDER BY occurred_at ASC, id ASC`,
+    args: [traceId, userId],
+  });
+  return r.rows.map((row) => mapTraceRow(row as Record<string, unknown>));
+}
+
+/**
+ * Admin-only trace fetch. Returns all rows for the trace_id, including
+ * system traces with `user_id IS NULL`. Callers must gate on admin auth.
+ */
+export async function getTraceForAdmin(traceId: string): Promise<TraceSpan[]> {
+  await ensureSchema();
+  const r = await db.execute({
+    sql: `SELECT id, trace_id, user_id, span, level, message, data, occurred_at
+          FROM trace_log
+          WHERE trace_id = ?
+          ORDER BY occurred_at ASC, id ASC`,
+    args: [traceId],
+  });
+  return r.rows.map((row) => mapTraceRow(row as Record<string, unknown>));
 }

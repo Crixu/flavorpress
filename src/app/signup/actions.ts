@@ -20,9 +20,15 @@ import { sendEmail } from "@/lib/email";
 import { verificationEmail } from "@/lib/email-templates";
 import { notifySignupWithEmail } from "@/lib/notifications";
 
+function safeInvite(raw: string): string {
+  if (raw.length > 64) return "";
+  return /^[A-Za-z0-9_-]+$/.test(raw) ? raw : "";
+}
+
 function signupErrorPath(invite: string, error: string): string {
   const params = new URLSearchParams();
-  if (invite) params.set("invite", invite);
+  const safe = safeInvite(invite);
+  if (safe) params.set("invite", safe);
   params.set("error", error);
   return `/signup?${params.toString()}`;
 }
@@ -32,7 +38,7 @@ function newUserId(): string {
 }
 
 export async function signupAction(formData: FormData) {
-  const invite = String(formData.get("invite") ?? "").trim();
+  const invite = safeInvite(String(formData.get("invite") ?? "").trim());
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
@@ -54,7 +60,7 @@ export async function signupAction(formData: FormData) {
   }
 
   const existing = await getUserByEmail(email);
-  if (existing) redirect(signupErrorPath(invite, "account"));
+  if (existing) redirect("/signup/check-email");
 
   const hash = await hashPassword(password);
   const adminEmail = (process.env.FLAVORPRESS_ADMIN_EMAIL ?? "").trim().toLowerCase();
