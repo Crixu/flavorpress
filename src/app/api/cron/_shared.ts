@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { runDuePolls } from "@/lib/v1/scheduler";
 
@@ -8,6 +8,14 @@ function readMaxBatch(): number | undefined {
   if (!raw) return undefined;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.floor(n);
+}
+
+function readTimeBudgetMs(): number {
+  const raw = process.env.FLAVORPRESS_CRON_TIME_BUDGET_MS;
+  if (!raw) return 45_000;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 45_000;
   return Math.floor(n);
 }
 
@@ -45,6 +53,8 @@ export async function handlePollCron(req: Request): Promise<NextResponse> {
     wait: true,
     throwOnError: true,
     maxBatch: readMaxBatch(),
+    timeBudgetMs: readTimeBudgetMs(),
+    deferTimedOutTask: (task) => after(() => task),
   });
   return NextResponse.json(result, {
     headers: {

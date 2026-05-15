@@ -71,11 +71,15 @@ describe("cron route auth", () => {
       expect(res.status).toBe(200);
       expect(body).toEqual({ ok: true });
       expect(cronMocks.ensureRegisteredCapabilities).toHaveBeenCalledTimes(1);
-      expect(cronMocks.runDuePolls).toHaveBeenCalledWith({
-        wait: true,
-        throwOnError: true,
-        maxBatch: undefined,
-      });
+      expect(cronMocks.runDuePolls).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wait: true,
+          throwOnError: true,
+          maxBatch: undefined,
+          timeBudgetMs: 45_000,
+          deferTimedOutTask: expect.any(Function),
+        }),
+      );
     },
   );
 
