@@ -71,7 +71,7 @@ describe("outlet secret storage", () => {
       ],
     });
 
-    const credentials = await getOutletCredentials("outlet-1");
+    const credentials = await getOutletCredentials("outlet-1", "user-1");
 
     expect(credentials).toEqual({
       authType: "application-password",
@@ -80,6 +80,9 @@ describe("outlet secret storage", () => {
       appPassword,
     });
     expect(executeMock).toHaveBeenCalledTimes(1);
+    const read = executeMock.mock.calls[0]![0] as { sql: string; args: unknown[] };
+    expect(read.sql).toContain("WHERE id = ? AND user_id = ?");
+    expect(read.args).toEqual(["outlet-1", "user-1"]);
   });
 
   it("migrates legacy plaintext credential blobs on read", async () => {
@@ -95,18 +98,30 @@ describe("outlet secret storage", () => {
       })
       .mockResolvedValueOnce({ rows: [] });
 
-    const credentials = await getOutletCredentials("outlet-1");
+    const credentials = await getOutletCredentials("outlet-1", "user-1");
 
     expect(credentials?.username).toBe("author");
     expect(credentials?.authType).toBe("application-password");
     if (credentials?.authType !== "wpcom-oauth") {
       expect(credentials?.appPassword).toBe(appPassword);
     }
-    const rewrite = executeMock.mock.calls[1]![0] as { args: unknown[] };
+    const rewrite = executeMock.mock.calls[1]![0] as { sql: string; args: unknown[] };
     const stored = Buffer.from(rewrite.args[0] as Uint8Array).toString("utf8");
     expect(isEncryptedSecret(stored)).toBe(true);
     expect(stored).not.toContain("author");
     expect(stored).not.toContain(appPassword);
+    expect(rewrite.sql).toContain("WHERE id = ? AND user_id = ?");
+    expect(rewrite.args.slice(1)).toEqual(["outlet-1", "user-1"]);
+  });
+
+  it("returns null when the outlet belongs to another user", async () => {
+    executeMock.mockResolvedValueOnce({ rows: [] });
+
+    await expect(getOutletCredentials("outlet-2", "user-1")).resolves.toBeNull();
+
+    const read = executeMock.mock.calls[0]![0] as { sql: string; args: unknown[] };
+    expect(read.sql).toContain("WHERE id = ? AND user_id = ?");
+    expect(read.args).toEqual(["outlet-2", "user-1"]);
   });
 
   it("decrypts WordPress.com OAuth credentials for publish", async () => {
@@ -144,7 +159,7 @@ describe("outlet secret storage", () => {
       ],
     });
 
-    await expect(getOutletCredentials("outlet-1")).resolves.toEqual({
+    await expect(getOutletCredentials("outlet-1", "user-1")).resolves.toEqual({
       authType: "wpcom-oauth",
       baseUrl: "https://example.wordpress.com",
       accessToken: "tok_123",
@@ -185,7 +200,7 @@ describe("outlet secret storage", () => {
       })
       .mockResolvedValueOnce({ rows: [] });
 
-    await expect(getOutletCredentials("outlet-1")).resolves.toEqual({
+    await expect(getOutletCredentials("outlet-1", "user-1")).resolves.toEqual({
       authType: "wpcom-oauth",
       baseUrl: "https://example.wordpress.com",
       accessToken: "tok_new",
@@ -195,13 +210,15 @@ describe("outlet secret storage", () => {
     });
 
     expect(refreshWpcomAccessTokenMock).toHaveBeenCalledWith("refresh_old");
-    const refreshUpdate = executeMock.mock.calls[1]![0] as { args: unknown[] };
+    const refreshUpdate = executeMock.mock.calls[1]![0] as { sql: string; args: unknown[] };
     const storedAccess = Buffer.from(refreshUpdate.args[0] as Uint8Array).toString("utf8");
     const storedRefresh = Buffer.from(refreshUpdate.args[2] as Uint8Array).toString("utf8");
     expect(decryptSecret(storedAccess)).toContain("tok_new");
     expect(decryptSecret(storedRefresh)).toBe("refresh_new");
     expect(refreshUpdate.args[1]).toBe(1_900_000_000_000);
     expect(refreshUpdate.args[3]).toBe("v1");
+    expect(refreshUpdate.sql).toContain("WHERE id = ? AND user_id = ?");
+    expect(refreshUpdate.args.slice(4)).toEqual(["outlet-1", "user-1"]);
   });
 
   it("revokes WordPress.com OAuth tokens before disconnecting", async () => {
