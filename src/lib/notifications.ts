@@ -147,15 +147,38 @@ async function sendNotificationOnce(
       data,
     };
 
-    const inserted = await db.execute({
-      sql: `INSERT OR IGNORE INTO notification_webhook_deliveries
-            (event_key, user_id, event_type, payload, created_at)
-            VALUES (?, ?, ?, ?, ?)`,
-      args: [eventKey, userId, event, JSON.stringify(payload), occurredAt],
+    const payloadJson = JSON.stringify(payload);
+    const existing = await db.execute({
+      sql: "SELECT status FROM notification_webhook_deliveries WHERE event_key = ?",
+      args: [eventKey],
     });
-    if (Number(inserted.rowsAffected ?? 0) === 0) return;
+    if (existing.rows.length > 0) {
+      const status = existing.rows[0]?.status;
+      if (isDeliveredStatus(status)) return;
+      await db.execute({
+        sql: `UPDATE notification_webhook_deliveries
+              SET user_id = ?, event_type = ?, payload = ?,
+                  status = NULL, error = NULL, delivered_at = NULL
+              WHERE event_key = ?`,
+        args: [userId, event, payloadJson, eventKey],
+      });
+    } else {
+      await db.execute({
+        sql: `INSERT INTO notification_webhook_deliveries
+              (event_key, user_id, event_type, payload, created_at)
+              VALUES (?, ?, ?, ?, ?)`,
+        args: [eventKey, userId, event, payloadJson, occurredAt],
+      });
+    }
 
     const result = await deliverWebhook(url, payload);
+    if (result.error) {
+      console.warn(`[notifications] ${event} delivery failed`, {
+        eventKey,
+        status: result.status,
+        error: result.error,
+      });
+    }
     await db.execute({
       sql: `UPDATE notification_webhook_deliveries
             SET status = ?, error = ?, delivered_at = ?
@@ -165,6 +188,11 @@ async function sendNotificationOnce(
   } catch (err) {
     console.warn(`[notifications] failed to send ${event}`, err);
   }
+}
+
+function isDeliveredStatus(status: unknown): boolean {
+  const n = Number(status);
+  return Number.isInteger(n) && n >= 200 && n < 300;
 }
 
 function notificationWebhookUrl(): URL | null {

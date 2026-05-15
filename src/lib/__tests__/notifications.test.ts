@@ -53,6 +53,32 @@ describe("notification webhooks", () => {
     expect(deliveries.rows[0]?.error).toBeNull();
   });
 
+  it("retries a previously failed delivery for the same event key", async () => {
+    vi.stubEnv("FLAVORPRESS_NOTIFICATION_WEBHOOK_URL", "https://hooks.example/flavorpress");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("nope", { status: 500 }))
+      .mockResolvedValueOnce(new Response("accepted", { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = await createUser({
+      id: "u_retry_hook",
+      email: "retry@example.com",
+      passwordHash: null,
+    });
+
+    await notifySignupWithEmail({ userId: user.id, email: user.email, method: "email" });
+    await notifySignupWithEmail({ userId: user.id, email: user.email, method: "email" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const deliveries = await db.execute({
+      sql: "SELECT status, error FROM notification_webhook_deliveries WHERE event_key = ?",
+      args: ["signup.email:u_retry_hook"],
+    });
+    expect(deliveries.rows[0]?.status).toBe(202);
+    expect(deliveries.rows[0]?.error).toBeNull();
+  });
+
   it("does nothing when the webhook env var is unset", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
