@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __resetEncryptionKeyForTests,
+  __setEncryptionKeyForTests,
+  assertEncryptionKeyAtBoot,
   decryptSecret,
   encryptSecret,
   hasEncryptionKeyConfigured,
@@ -9,13 +12,16 @@ import {
 
 describe("secret-crypto", () => {
   beforeEach(() => {
+    __resetEncryptionKeyForTests();
     vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
     vi.stubEnv("NODE_ENV", "test");
   });
 
   afterEach(() => {
+    __resetEncryptionKeyForTests();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    __setEncryptionKeyForTests(Buffer.alloc(32, 1));
   });
 
   it("encrypts and decrypts AES-GCM envelopes", () => {
@@ -27,6 +33,16 @@ describe("secret-crypto", () => {
     expect(decryptSecret(encrypted)).toBe(plaintext);
   });
 
+  it("encrypts and decrypts with an injected test key", () => {
+    vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
+    __setEncryptionKeyForTests(Buffer.alloc(32, 13));
+
+    const encrypted = encryptSecret("test-secret");
+
+    expect(isEncryptedSecret(encrypted)).toBe(true);
+    expect(decryptSecret(encrypted)).toBe("test-secret");
+  });
+
   it("requires an explicit key in production", () => {
     vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
     vi.stubEnv("NODE_ENV", "production");
@@ -35,14 +51,12 @@ describe("secret-crypto", () => {
     expect(() => encryptSecret("value")).toThrow(SecretCryptoError);
   });
 
-  it("keeps the local development fallback stable across copied workspaces", () => {
+  it("requires an explicit key in development", () => {
     vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
     vi.stubEnv("NODE_ENV", "development");
-    vi.spyOn(process, "cwd").mockReturnValue("/tmp/flavorpress-a");
-    const encrypted = encryptSecret("portable-secret");
 
-    vi.spyOn(process, "cwd").mockReturnValue("/tmp/flavorpress-b");
-    expect(decryptSecret(encrypted)).toBe("portable-secret");
+    expect(hasEncryptionKeyConfigured()).toBe(false);
+    expect(() => encryptSecret("value")).toThrow(SecretCryptoError);
   });
 
   it("accepts explicit 32-byte keys in supported formats", () => {
@@ -78,5 +92,27 @@ describe("secret-crypto", () => {
     vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
     vi.stubEnv("NODE_ENV", "production");
     expect(() => encryptSecret("value"), "empty production key").toThrow(SecretCryptoError);
+  });
+
+  it("passes boot assertion with an injected test key", () => {
+    vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
+    __setEncryptionKeyForTests(Buffer.alloc(32, 14));
+
+    expect(() => assertEncryptionKeyAtBoot()).not.toThrow();
+  });
+
+  it("throws at boot when key is unset outside tests", () => {
+    vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
+    vi.stubEnv("NODE_ENV", "development");
+
+    expect(() => assertEncryptionKeyAtBoot()).toThrow(SecretCryptoError);
+  });
+
+  it("refuses to import the database module with no boot key outside tests", async () => {
+    vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
+    vi.stubEnv("NODE_ENV", "development");
+    vi.resetModules();
+
+    await expect(import("../db")).rejects.toThrow(/FLAVORPRESS_ENCRYPTION_KEY is required/);
   });
 });
