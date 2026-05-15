@@ -129,18 +129,24 @@ function dedupeKeys(keys: Buffer[]): Buffer[] {
 
 function parseConfiguredKey(value: string): Buffer {
   if (value.startsWith("base64:")) {
-    const decoded = Buffer.from(value.slice("base64:".length), "base64");
-    return requireAesKey(decoded);
+    return requireAesKey(parseBase64Key(value.slice("base64:".length)));
+  }
+
+  if (value.startsWith("hex:")) {
+    return requireAesKey(parseHexKey(value.slice("hex:".length)));
   }
 
   if (/^[a-f0-9]{64}$/i.test(value)) {
-    return Buffer.from(value, "hex");
+    return requireAesKey(parseHexKey(value));
   }
 
-  const base64Decoded = Buffer.from(value, "base64");
-  if (base64Decoded.length === 32) return base64Decoded;
+  if (isBase64Key(value)) {
+    return requireAesKey(parseBase64Key(value));
+  }
 
-  return createHash("sha256").update(value).digest();
+  throw new SecretCryptoError(
+    "FLAVORPRESS_ENCRYPTION_KEY must be one of: base64:<32-byte base64>, hex:<64 hex chars>, unprefixed 64-hex, or unprefixed 32-byte base64. Generate one with scripts/gen-encryption-key.ts.",
+  );
 }
 
 function requireAesKey(value: Buffer): Buffer {
@@ -148,6 +154,27 @@ function requireAesKey(value: Buffer): Buffer {
     throw new SecretCryptoError("FLAVORPRESS_ENCRYPTION_KEY must decode to exactly 32 bytes.");
   }
   return value;
+}
+
+function parseHexKey(value: string): Buffer {
+  if (!/^[a-f0-9]{64}$/i.test(value)) {
+    throw new SecretCryptoError("FLAVORPRESS_ENCRYPTION_KEY hex values must contain 64 hex chars.");
+  }
+  return Buffer.from(value, "hex");
+}
+
+function parseBase64Key(value: string): Buffer {
+  if (!isBase64Key(value)) {
+    throw new SecretCryptoError(
+      "FLAVORPRESS_ENCRYPTION_KEY base64 values must decode to exactly 32 bytes.",
+    );
+  }
+  return Buffer.from(value, "base64");
+}
+
+function isBase64Key(value: string): boolean {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(value)) return false;
+  return Buffer.from(value, "base64").length === 32;
 }
 
 function toBase64Url(value: Buffer): string {
