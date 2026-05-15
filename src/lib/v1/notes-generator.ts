@@ -68,7 +68,7 @@ export async function generateNotes(input: NotesInput): Promise<NotesOutput> {
   const log = traceLogger(traceId, input.userId);
   await log.info("notes.generate", "starting", { clusterId: input.clusterId });
 
-  const items = await getClusterItems(input.clusterId);
+  const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
   const prompt = buildPrompt(items);
@@ -157,7 +157,7 @@ export async function remixIdeas(input: {
   const log = traceLogger(traceId, input.userId);
   await log.info("notes.remix-ideas", "starting", { clusterId: input.clusterId });
 
-  const items = await getClusterItems(input.clusterId);
+  const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
   const apiKey = await getAnthropicApiKey();
@@ -237,7 +237,7 @@ export async function extendQuotes(input: {
     return input.current.quotes;
   }
 
-  const items = await getClusterItems(input.clusterId);
+  const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
   const apiKey = await getAnthropicApiKey();

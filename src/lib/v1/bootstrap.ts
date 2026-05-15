@@ -87,12 +87,12 @@ export async function ensureRegisteredCapabilities(): Promise<void> {
     emits: ["draft.rendered"],
     costClass: "expensive",
     tags: ["pipeline.draft", "agent.editor"],
-    invoke: async (input) => {
+    invoke: async (input, ctx) => {
       // v1.0.0 skeleton: ranks the cluster, returns a placeholder. The real
       // streaming Anthropic call lives in src/lib/v1/draft-generator.ts in
       // the next pass; this lets the registry and event flow ship today.
       const { clusterId } = input as { clusterId: string };
-      const items = await getClusterItems(clusterId);
+      const items = await getClusterItems(clusterId, ctx.userId);
       const sample = items
         .map((i) => i.title)
         .join(" / ")

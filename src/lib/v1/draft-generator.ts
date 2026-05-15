@@ -111,7 +111,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   const log = traceLogger(traceId, input.userId);
   await log.info("draft.generate", "starting", { clusterId: input.clusterId });
 
-  const items = await getClusterItems(input.clusterId);
+  const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
   const voiceProfile = await loadVoiceProfile(input.outletId, input.userId);

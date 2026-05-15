@@ -27,7 +27,7 @@ vi.mock("../merge-oracle", () => ({
   askMergeOracle: vi.fn().mockResolvedValue(null),
 }));
 
-import { handleItemIngested } from "../cluster-engine";
+import { getClusterItems, handleItemIngested } from "../cluster-engine";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -302,5 +302,28 @@ describe("handleItemIngested - single-source firing", () => {
     );
 
     expect(emitMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("getClusterItems", () => {
+  beforeEach(() => {
+    executeMock.mockReset();
+    ensureSchemaMock.mockReset();
+  });
+
+  it("scopes cluster source reads to the caller user", async () => {
+    const ownItem = makeItemRow({ id: "item-own", user_id: "user-1", cluster_id: "cluster-1" });
+    executeMock.mockResolvedValue({ rows: [ownItem] });
+
+    const items = await getClusterItems("cluster-1", "user-1");
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.id).toBe("item-own");
+    expect(executeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sql: expect.stringContaining("WHERE cluster_id = ? AND user_id = ?"),
+        args: ["cluster-1", "user-1"],
+      }),
+    );
   });
 });
