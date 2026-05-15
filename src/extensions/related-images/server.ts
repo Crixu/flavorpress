@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Related-images extension — server half. Searches Openverse for
+ * Related-images extension - server half. Searches Openverse for
  * licensed photographs/illustrations the writer can attach to a draft,
  * filtered by the license codes they have opted into.
  *
@@ -53,8 +53,14 @@ interface OpenverseResponse {
   results?: OpenverseHit[];
 }
 
-export async function getLicenseFilter(): Promise<LicenseCode[]> {
-  const raw = await getSetting(SETTING_KEYS.relatedImagesLicenseFilter);
+function licenseFilterSettingKey(userId: string): string {
+  return `${SETTING_KEYS.relatedImagesLicenseFilter}:${userId}`;
+}
+
+export async function getLicenseFilter(userId: string): Promise<LicenseCode[]> {
+  const raw =
+    (await getSetting(licenseFilterSettingKey(userId))) ??
+    (await getSetting(SETTING_KEYS.relatedImagesLicenseFilter));
   if (!raw) return [...DEFAULT_LICENSE_FILTER];
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -69,23 +75,27 @@ export async function getLicenseFilter(): Promise<LicenseCode[]> {
   }
 }
 
-export async function setLicenseFilter(codes: LicenseCode[]): Promise<LicenseCode[]> {
+export async function setLicenseFilter(
+  codes: LicenseCode[],
+  userId: string,
+): Promise<LicenseCode[]> {
   const cleaned = Array.from(new Set(codes)).filter((x): x is LicenseCode =>
     (LICENSE_CODES as readonly string[]).includes(x),
   );
   // An empty filter would match nothing; treat it as "fall back to default"
   // so the user can't accidentally lock themselves out of search results.
   const effective = cleaned.length > 0 ? cleaned : [...DEFAULT_LICENSE_FILTER];
-  await setSetting(SETTING_KEYS.relatedImagesLicenseFilter, JSON.stringify(effective));
-  // Prune cached results whose license is no longer permitted. Without
-  // this, narrowing the filter would leave stale rows in the panel that
-  // the chips claim are excluded; the reuse guidance the panel renders
-  // would then be wrong. License filter is global, so we sweep all
-  // drafts here, not just the active one.
+  await setSetting(licenseFilterSettingKey(userId), JSON.stringify(effective));
+  // Prune the caller's cached results whose license is no longer
+  // permitted. Without this, narrowing the filter would leave stale rows
+  // in the panel that the chips claim are excluded; the reuse guidance
+  // the panel renders would then be wrong.
   const placeholders = effective.map(() => "?").join(",");
   await db.execute({
-    sql: `DELETE FROM related_image_results WHERE license_code NOT IN (${placeholders})`,
-    args: effective,
+    sql: `DELETE FROM related_image_results
+          WHERE license_code NOT IN (${placeholders})
+          AND draft_id IN (SELECT id FROM drafts WHERE user_id = ?)`,
+    args: [...effective, userId],
   });
   return effective;
 }
@@ -109,7 +119,7 @@ export async function runRelatedImageSearch(
     throw new Error("Draft has no headline or body to search from yet.");
   }
 
-  const licenseFilter = await getLicenseFilter();
+  const licenseFilter = await getLicenseFilter(session.userId);
 
   const url = new URL(OPENVERSE_ENDPOINT);
   url.searchParams.set("q", query);
@@ -229,7 +239,7 @@ export async function loadRelatedImages(
       sql: `SELECT searched_at, license_filter FROM related_image_runs WHERE draft_id = ?`,
       args: [draftId],
     }),
-    getLicenseFilter(),
+    getLicenseFilter(session.userId),
   ]);
   const results: RelatedImageResult[] = r.rows.map((row) => ({
     id: String(row.id),
