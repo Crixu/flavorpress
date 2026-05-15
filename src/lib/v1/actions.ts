@@ -40,7 +40,11 @@ import {
   renderNotesBodyHtml,
   type Notes,
 } from "./notes-generator";
-import { parseResearchBoardState, type ResearchBoardState } from "./research-board";
+import {
+  parseResearchBoardState,
+  renderResearchBoardHandoffHtml,
+  type ResearchBoardState,
+} from "./research-board";
 import { extractFullArticle } from "./extract-article";
 import { canonicalize, hashContent } from "./source-connector";
 import { getRegistry } from "./capability-registry";
@@ -2789,7 +2793,7 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
 
   const r = await db.execute({
     sql: `SELECT id, mode, outlet_id, cluster_id, headline, notes,
-                 wp_post_id, wp_edit_link
+                 research_board, wp_post_id, wp_edit_link
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, session.userId],
   });
@@ -2853,13 +2857,14 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
       // gets the source list and can write from scratch in WP.
     }
   }
+  const researchBoard = parseResearchBoardState(String(row.research_board ?? ""));
 
   const sources = itemsR.rows.map((s) => ({
     title: String(s.title),
     canonicalUrl: String(s.canonical_url ?? s.source_url),
     displayName: s.display_name === null ? null : String(s.display_name),
   }));
-  const handoffHtml = renderNotesHandoffHtml(notes, sources);
+  const handoffHtml = renderNotesHandoffHtml(notes, sources, researchBoard);
   const headline = notes.topic || fallbackTopic;
   const isFirstPostPush = !(await hasWordPressPush(session.userId));
 
@@ -2930,7 +2935,11 @@ interface HandoffSource {
   displayName: string | null;
 }
 
-function renderNotesHandoffHtml(notes: Notes, sources: HandoffSource[]): string {
+function renderNotesHandoffHtml(
+  notes: Notes,
+  sources: HandoffSource[],
+  researchBoard?: ResearchBoardState | null,
+): string {
   const parts: string[] = [];
   parts.push(
     `<p><em>Source notes from FlavorPress. Replace this paragraph with your draft and lift quotes, leads, and links from the sections below.</em></p>`,
@@ -2965,6 +2974,8 @@ function renderNotesHandoffHtml(notes: Notes, sources: HandoffSource[]): string 
       );
     }
   }
+  const boardHtml = renderResearchBoardHandoffHtml(researchBoard);
+  if (boardHtml) parts.push(boardHtml);
   if (sources.length > 0) {
     parts.push(`<p><strong>Sources</strong></p>`);
     for (const s of sources) {

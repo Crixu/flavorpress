@@ -131,6 +131,8 @@ export function ResearchBoard({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<Record<string, HTMLElement | null>>({});
   const pastePointRef = useRef({ x: 520, y: 620 });
+  // Keep autosave and handoff saves in order so an older write cannot win last.
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const dragRef = useRef<{
     id: string;
     pointerId: number;
@@ -148,18 +150,22 @@ export function ResearchBoard({
   } | null>(null);
 
   const saveBoardNow = useCallback(async () => {
-    const fd = new FormData();
-    fd.set("draftId", draftId);
-    fd.set(
-      "board",
-      JSON.stringify({
-        layout: "lanes-v1",
-        cards,
-        connections,
-        seenIds: Array.from(knownIdsRef.current),
-      }),
-    );
-    await saveResearchBoardAction(fd);
+    const payload = JSON.stringify({
+      layout: "lanes-v1",
+      cards,
+      connections,
+      seenIds: Array.from(knownIdsRef.current),
+    });
+    const run = saveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const fd = new FormData();
+        fd.set("draftId", draftId);
+        fd.set("board", payload);
+        await saveResearchBoardAction(fd);
+      });
+    saveQueueRef.current = run;
+    await run;
   }, [cards, connections, draftId]);
 
   const measureCenters = useCallback(() => {
@@ -269,7 +275,7 @@ export function ResearchBoard({
 
   function startDrag(event: PointerEvent<HTMLElement>, card: ResearchBoardCard) {
     if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest("a, button")) return;
+    if ((event.target as HTMLElement).closest("a, button, input, textarea")) return;
     const board = boardRef.current;
     const node = cardRefs.current[card.id];
     if (!board || !node) return;
@@ -315,7 +321,7 @@ export function ResearchBoard({
 
   function startPan(event: PointerEvent<HTMLElement>) {
     if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest("[data-card], a, button, input")) return;
+    if ((event.target as HTMLElement).closest("[data-card], a, button, input, textarea")) return;
     const board = boardRef.current;
     if (!board) return;
     panRef.current = {
@@ -410,6 +416,23 @@ export function ResearchBoard({
     });
     setSelectedCardId(id);
     setStatus(`${input.title} added. Shift-click from another card to connect it.`);
+  }
+
+  function addStickyNote() {
+    addCard({
+      kind: "note",
+      title: "Sticky",
+      body: "",
+      meta: "manual note",
+    });
+  }
+
+  function updateCard(cardId: string, patch: Partial<Pick<ResearchBoardCard, "body" | "comment">>) {
+    hasUserEditedRef.current = true;
+    setCards((current) =>
+      current.map((card) => (card.id === cardId ? { ...card, ...patch } : card)),
+    );
+    requestAnimationFrame(measureCenters);
   }
 
   function updateZoom(next: number) {
@@ -546,6 +569,9 @@ export function ResearchBoard({
           </button>
           <button type="button" onClick={() => updateZoom(0.75)}>
             Fit
+          </button>
+          <button type="button" onClick={addStickyNote}>
+            Sticky
           </button>
           <button type="button" onClick={tidyBoard}>
             Tidy
@@ -684,6 +710,8 @@ export function ResearchBoard({
                     }}
                     onSelect={(shiftKey) => selectCard(card.id, shiftKey)}
                     onDelete={() => deleteCard(card.id)}
+                    onUpdateBody={(body) => updateCard(card.id, { body })}
+                    onUpdateComment={(comment) => updateCard(card.id, { comment })}
                     onPointerDown={(event) => startDrag(event, card)}
                     onImageLoad={measureCenters}
                   />
@@ -796,6 +824,8 @@ function BoardCardView({
   setRef,
   onSelect,
   onDelete,
+  onUpdateBody,
+  onUpdateComment,
   onPointerDown,
   onImageLoad,
 }: {
@@ -804,6 +834,8 @@ function BoardCardView({
   setRef: (node: HTMLElement | null) => void;
   onSelect: (shiftKey: boolean) => void;
   onDelete: () => void;
+  onUpdateBody: (body: string) => void;
+  onUpdateComment: (comment: string) => void;
   onPointerDown: (event: PointerEvent<HTMLElement>) => void;
   onImageLoad: () => void;
 }) {
@@ -841,7 +873,18 @@ function BoardCardView({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={card.imageUrl} alt="" className="fp-research-card-media" onLoad={onImageLoad} />
       ) : null}
-      {card.kind === "quote" || card.kind === "note" ? (
+      {card.kind === "note" ? (
+        <textarea
+          className="fp-research-card-textarea"
+          value={card.body}
+          placeholder="Write a sticky note"
+          rows={4}
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onChange={(event) => onUpdateBody(event.target.value)}
+          aria-label="Sticky note text"
+        />
+      ) : card.kind === "quote" ? (
         <blockquote>{card.body}</blockquote>
       ) : (
         <>
@@ -854,6 +897,16 @@ function BoardCardView({
           {card.sourceLabel ?? hostFromUrl(card.sourceUrl)}
         </a>
       ) : null}
+      <textarea
+        className="fp-research-card-comment"
+        value={card.comment ?? ""}
+        placeholder="Comment"
+        rows={2}
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onChange={(event) => onUpdateComment(event.target.value)}
+        aria-label={`Comment on ${labelForKind(card.kind)}`}
+      />
     </article>
   );
 }
@@ -927,7 +980,7 @@ function ListView({ cards }: { cards: ResearchBoardCard[] }) {
               <td>
                 {card.sourceLabel ?? (card.sourceUrl ? hostFromUrl(card.sourceUrl) : "board")}
               </td>
-              <td>{card.meta}</td>
+              <td>{card.comment ? `Comment: ${card.comment}` : card.meta}</td>
             </tr>
           ))}
         </tbody>
