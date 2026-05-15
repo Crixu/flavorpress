@@ -75,6 +75,7 @@ describe("confirmPasswordResetAction", () => {
 
     const after = (await getUserByEmail("a@example.com"))!;
     expect(after.sessionVersion).toBe(before + 1);
+    expect(after.emailVerifiedAt).not.toBeNull();
     expect(await verifyPassword("fresh strong new password", after.passwordHash!)).toBe(true);
     expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
   });

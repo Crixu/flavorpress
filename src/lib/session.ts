@@ -93,6 +93,7 @@ async function loadSessionUncached(
   if (!user) return null;
   if (user.status !== "active") return null;
   if (user.sessionVersion !== verified.sessionVersion) return null;
+  if (user.passwordHash && user.emailVerifiedAt == null) return null;
   return {
     userId: user.id,
     email: user.email,

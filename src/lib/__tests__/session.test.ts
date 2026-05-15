@@ -51,7 +51,7 @@ afterEach(() => {
 
 async function makeUser(email: string) {
   const hash = await hashPassword("correct horse battery staple");
-  return createUser({ email, passwordHash: hash });
+  return createUser({ email, passwordHash: hash, emailVerifiedAt: Date.now() });
 }
 
 describe("loadSession", () => {
@@ -85,6 +85,25 @@ describe("loadSession", () => {
     const c = await createSessionCookie({ userId: u.id, sessionVersion: 0, secret: SECRET });
     await setStatus(u.id, "suspended");
     expect(await loadSession(c.value)).toBeNull();
+  });
+
+  it("returns null for an unverified password user", async () => {
+    const hash = await hashPassword("correct horse battery staple");
+    const u = await createUser({ email: "unverified@example.com", passwordHash: hash });
+    const c = await createSessionCookie({ userId: u.id, sessionVersion: 0, secret: SECRET });
+    expect(await loadSession(c.value)).toBeNull();
+  });
+
+  it("allows legacy WP.com SSO users without email_verified_at", async () => {
+    const u = await createUser({
+      email: "wpcom@example.com",
+      passwordHash: null,
+      wpcomId: "12345",
+      wpcomUsername: "wpcom",
+    });
+    const c = await createSessionCookie({ userId: u.id, sessionVersion: 0, secret: SECRET });
+    const s = await loadSession(c.value);
+    expect(s?.userId).toBe(u.id);
   });
 
   it("returns null for malformed cookie", async () => {

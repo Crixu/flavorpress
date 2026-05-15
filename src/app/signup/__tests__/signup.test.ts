@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
 import { issueInvite, readInvite } from "@/lib/invites";
 import { getUserByEmail } from "@/lib/users";
+import { SESSION_COOKIE_NAME } from "@/lib/auth";
 
 let cookieJar: Map<string, string>;
 
@@ -40,7 +41,10 @@ vi.mock("next/server", () => ({
   },
 }));
 
-const emailSendCalls: { to: string; subject: string }[] = [];
+const emailMock = vi.hoisted(() => ({
+  sendCalls: [] as { to: string; subject: string }[],
+  shouldFail: false,
+}));
 vi.mock("@/lib/email", async () => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   type EmailModule = typeof import("@/lib/email");
@@ -48,7 +52,8 @@ vi.mock("@/lib/email", async () => {
   return {
     ...actual,
     sendEmail: async (msg: { to: string; subject: string; html: string; text: string }) => {
-      emailSendCalls.push({ to: msg.to, subject: msg.subject });
+      if (emailMock.shouldFail) throw new Error("email provider unavailable");
+      emailMock.sendCalls.push({ to: msg.to, subject: msg.subject });
     },
   };
 });
@@ -58,12 +63,13 @@ beforeEach(async () => {
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM invites");
   await db.execute("DELETE FROM email_verification_tokens");
+  await db.execute("DELETE FROM deployment_state");
   cookieJar = new Map();
   redirectCalls.length = 0;
-  emailSendCalls.length = 0;
+  emailMock.sendCalls.length = 0;
+  emailMock.shouldFail = false;
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
   process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
-  delete process.env.FLAVORPRESS_ADMIN_EMAIL;
 });
 
 async function callSignup(form: Record<string, string>): Promise<string> {
@@ -89,9 +95,11 @@ describe("signupAction", () => {
       email: "a@example.com",
       password: "correct horse battery staple",
     });
-    expect(to).toBe("/");
+    expect(to).toBe("/signup/check-email");
     const u = await getUserByEmail("a@example.com");
     expect(u?.email).toBe("a@example.com");
+    expect(u?.emailVerifiedAt).toBeNull();
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toBeUndefined();
     const after = await readInvite(token);
     expect(after).toBeNull();
   });
@@ -143,38 +151,35 @@ describe("signupAction", () => {
     expect(remaining).not.toBeNull();
   });
 
-  it("promotes admin on first signup matching FLAVORPRESS_ADMIN_EMAIL", async () => {
-    process.env.FLAVORPRESS_ADMIN_EMAIL = "lucas@example.com";
+  it("promotes the first signup to admin", async () => {
     const { token } = await issueInvite({});
     await callSignup({
       invite: token,
-      email: "lucas@example.com",
+      email: "first@example.com",
       password: "correct horse battery staple",
     });
-    const u = await getUserByEmail("lucas@example.com");
+    const u = await getUserByEmail("first@example.com");
     expect(u?.isAdmin).toBe(true);
   });
 
   it("does not promote subsequent admins", async () => {
-    process.env.FLAVORPRESS_ADMIN_EMAIL = "lucas@example.com";
     const t1 = (await issueInvite({})).token;
     await callSignup({
       invite: t1,
-      email: "lucas@example.com",
+      email: "first@example.com",
       password: "correct horse battery staple",
     });
     const t2 = (await issueInvite({})).token;
     await callSignup({
       invite: t2,
-      email: "lucas@example.com.attacker",
+      email: "second@example.com",
       password: "correct horse battery staple",
     });
-    const v = await getUserByEmail("lucas@example.com.attacker");
+    const v = await getUserByEmail("second@example.com");
     expect(v?.isAdmin).toBe(false);
   });
 
-  it("re-keys default-user when admin signs up and default-user exists", async () => {
-    process.env.FLAVORPRESS_ADMIN_EMAIL = "lucas@example.com";
+  it("does not re-key default-user during signup", async () => {
     await db.execute({
       sql: `INSERT INTO users (id, email, status, is_admin, session_version, created_at)
             VALUES ('default-user', 'you@flavorpress.local', 'active', 0, 0, ?)`,
@@ -191,11 +196,10 @@ describe("signupAction", () => {
       email: "lucas@example.com",
       password: "correct horse battery staple",
     });
-    const u = await getUserByEmail("lucas@example.com");
     const o = await db.execute({ sql: "SELECT user_id FROM outlets WHERE id = 'o_seed'" });
-    expect(String(o.rows[0]?.user_id)).toBe(u?.id);
+    expect(String(o.rows[0]?.user_id)).toBe("default-user");
     const orphan = await db.execute({ sql: "SELECT 1 FROM users WHERE id = 'default-user'" });
-    expect(orphan.rows.length).toBe(0);
+    expect(orphan.rows.length).toBe(1);
   });
 
   it("sends a verification email on successful signup", async () => {
@@ -205,8 +209,24 @@ describe("signupAction", () => {
       email: "verify@example.com",
       password: "correct horse battery staple",
     });
-    expect(emailSendCalls).toHaveLength(1);
-    expect(emailSendCalls[0]!.to).toBe("verify@example.com");
-    expect(emailSendCalls[0]!.subject).toMatch(/verify/i);
+    expect(emailMock.sendCalls).toHaveLength(1);
+    expect(emailMock.sendCalls[0]!.to).toBe("verify@example.com");
+    expect(emailMock.sendCalls[0]!.subject).toMatch(/verify/i);
+  });
+
+  it("rolls back signup when the verification email cannot be sent", async () => {
+    emailMock.shouldFail = true;
+    const { token } = await issueInvite({});
+    const to = await callSignup({
+      invite: token,
+      email: "failed-send@example.com",
+      password: "correct horse battery staple",
+    });
+
+    expect(to).toMatch(/error=account/);
+    expect(await getUserByEmail("failed-send@example.com")).toBeNull();
+    expect(await readInvite(token)).not.toBeNull();
+    const tokens = await db.execute("SELECT COUNT(*) AS n FROM email_verification_tokens");
+    expect(Number(tokens.rows[0]!.n)).toBe(0);
   });
 });

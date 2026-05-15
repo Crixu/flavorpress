@@ -1,6 +1,5 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { type InValue } from "@libsql/client";
 import { db } from "./db";
 
 export interface User {
@@ -47,12 +46,14 @@ export async function createUser(opts: {
   wpcomId?: string | null;
   wpcomUsername?: string | null;
   isAdmin?: boolean;
+  claimFirstAdmin?: boolean;
+  emailVerifiedAt?: number | null;
   id?: string;
 }): Promise<User> {
   const id = opts.id ?? generateUserId();
   const email = normalizeEmail(opts.email);
   const now = Date.now();
-  await db.execute({
+  const insertUser = {
     sql: `INSERT INTO users (
             id, email, password_hash, wpcom_id, wpcom_username,
             email_verified_at, status, is_admin, session_version,
@@ -64,12 +65,42 @@ export async function createUser(opts: {
       opts.passwordHash,
       opts.wpcomId ?? null,
       opts.wpcomUsername ?? null,
-      null,
+      opts.emailVerifiedAt ?? null,
       opts.isAdmin ? 1 : 0,
       now,
       now,
     ],
-  });
+  };
+  if (opts.claimFirstAdmin) {
+    await db.batch([
+      insertUser,
+      {
+        sql: `INSERT OR IGNORE INTO deployment_state (key, value)
+              VALUES ('first_admin_user_id', NULL)`,
+        args: [],
+      },
+      {
+        sql: `UPDATE deployment_state
+              SET value = ?
+              WHERE key = 'first_admin_user_id'
+                AND value IS NULL
+                AND EXISTS (SELECT 1 FROM users WHERE id = ?)`,
+        args: [id, id],
+      },
+      {
+        sql: `UPDATE users
+              SET is_admin = CASE
+                WHEN (SELECT value FROM deployment_state WHERE key = 'first_admin_user_id') = ?
+                THEN 1
+                ELSE is_admin
+              END
+              WHERE id = ?`,
+        args: [id, id],
+      },
+    ]);
+  } else {
+    await db.execute(insertUser);
+  }
   const u = await getUserById(id);
   if (!u) throw new Error("createUser: row not found after insert");
   return u;
@@ -102,6 +133,15 @@ export async function updatePassword(userId: string, passwordHash: string): Prom
   });
 }
 
+export async function markEmailVerified(userId: string, verifiedAt = Date.now()): Promise<void> {
+  await db.execute({
+    sql: `UPDATE users
+          SET email_verified_at = COALESCE(email_verified_at, ?)
+          WHERE id = ?`,
+    args: [verifiedAt, userId],
+  });
+}
+
 export async function setStatus(userId: string, status: "active" | "suspended"): Promise<void> {
   await db.execute({
     sql: "UPDATE users SET status = ?, session_version = session_version + 1 WHERE id = ?",
@@ -116,9 +156,36 @@ export async function bumpSessionVersion(userId: string): Promise<void> {
   });
 }
 
-export async function hasAdmin(): Promise<boolean> {
-  const r = await db.execute("SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1");
-  return r.rows.length > 0;
+export async function claimFirstAdmin(userId: string): Promise<boolean> {
+  await db.batch([
+    {
+      sql: `INSERT OR IGNORE INTO deployment_state (key, value)
+            VALUES ('first_admin_user_id', NULL)`,
+      args: [],
+    },
+    {
+      sql: `UPDATE deployment_state
+            SET value = ?
+            WHERE key = 'first_admin_user_id'
+              AND value IS NULL
+              AND EXISTS (SELECT 1 FROM users WHERE id = ?)`,
+      args: [userId, userId],
+    },
+    {
+      sql: `UPDATE users
+            SET is_admin = CASE
+              WHEN (SELECT value FROM deployment_state WHERE key = 'first_admin_user_id') = ?
+              THEN 1
+              ELSE is_admin
+            END
+            WHERE id = ?`,
+      args: [userId, userId],
+    },
+  ]);
+  const r = await db.execute({
+    sql: "SELECT value FROM deployment_state WHERE key = 'first_admin_user_id'",
+  });
+  return r.rows.length > 0 && String(r.rows[0]!.value) === userId;
 }
 
 /**
@@ -141,43 +208,3 @@ export const USER_TENANCY_TABLES = [
   "trace_log",
   "user_plans",
 ] as const;
-
-export interface MigrateDefaultUserOptions {
-  newId: string;
-  email: string;
-  passwordHash: string;
-  isAdmin?: boolean;
-}
-
-export interface MigrateDefaultUserResult {
-  migrated: boolean;
-}
-
-export async function migrateDefaultUser(
-  opts: MigrateDefaultUserOptions,
-): Promise<MigrateDefaultUserResult> {
-  const existing = await db.execute({
-    sql: "SELECT 1 FROM users WHERE id = 'default-user'",
-  });
-  if (existing.rows.length === 0) return { migrated: false };
-
-  const email = normalizeEmail(opts.email);
-  const stmts: { sql: string; args: InValue[] }[] = [];
-
-  for (const table of USER_TENANCY_TABLES) {
-    stmts.push({
-      sql: `UPDATE ${table} SET user_id = ? WHERE user_id = 'default-user'`,
-      args: [opts.newId],
-    });
-  }
-
-  stmts.push({
-    sql: `UPDATE users
-          SET id = ?, email = ?, password_hash = ?, is_admin = ?, status = 'active', session_version = 0, last_active_at = ?
-          WHERE id = 'default-user'`,
-    args: [opts.newId, email, opts.passwordHash, opts.isAdmin ? 1 : 0, Date.now()],
-  });
-
-  await db.batch(stmts);
-  return { migrated: true };
-}

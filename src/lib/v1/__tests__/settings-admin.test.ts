@@ -46,6 +46,7 @@ async function makeUser(opts: { email: string; isAdmin?: boolean }): Promise<str
     email: opts.email,
     passwordHash: await hashPassword("correct horse battery staple"),
     isAdmin: opts.isAdmin ?? false,
+    emailVerifiedAt: Date.now(),
   });
   return user.id;
 }

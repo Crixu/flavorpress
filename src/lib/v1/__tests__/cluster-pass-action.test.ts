@@ -61,6 +61,7 @@ async function seedAndLogin(): Promise<void> {
   const u = await createUser({
     email: "test@example.com",
     passwordHash: await hashPassword("correct horse battery staple"),
+    emailVerifiedAt: Date.now(),
   });
   userId = u.id;
   // Log in so the session cookie is present for requireSession().

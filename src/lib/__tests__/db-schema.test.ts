@@ -55,6 +55,13 @@ describe("auth-foundation schema", () => {
     expect(cols.has("poll_all_enabled")).toBe(true);
   });
 
+  it("creates deployment_state table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("deployment_state");
+    expect(cols.has("key")).toBe(true);
+    expect(cols.has("value")).toBe(true);
+  });
+
   it("creates notification_webhook_deliveries table", async () => {
     await ensureSchema();
     const cols = await tableInfo("notification_webhook_deliveries");
