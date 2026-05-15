@@ -428,11 +428,13 @@ function trigramCosine(a: Map<string, number>, b: Map<string, number>): number {
  * Fetch items for a cluster. Used by the draft generator to assemble the
  * source bundle.
  */
-export async function getClusterItems(clusterId: string): Promise<Item[]> {
+export async function getClusterItems(clusterId: string, userId: string): Promise<Item[]> {
   await ensureSchema();
   const r = await db.execute({
-    sql: `SELECT * FROM items WHERE cluster_id = ? ORDER BY published_at ASC`,
-    args: [clusterId],
+    sql: `SELECT * FROM items
+          WHERE cluster_id = ? AND user_id = ?
+          ORDER BY published_at ASC`,
+    args: [clusterId, userId],
   });
   return r.rows.map((row) => rowToItem(row as unknown as ItemRow));
 }

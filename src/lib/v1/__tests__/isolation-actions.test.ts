@@ -281,6 +281,34 @@ describe("dismissClusterAction - cross-user isolation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// generateDraftAction
+// ---------------------------------------------------------------------------
+
+describe("generateDraftAction - cross-user isolation", () => {
+  it("rejects a foreign cluster before creating a draft", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const clusterA = await seedClusterForUser(userA.id, { state: "fired" });
+    const outletB = await seedOutletForUser(userB.id);
+
+    await loginAs(userB.id);
+    const fd = new FormData();
+    fd.set("clusterId", clusterA);
+    fd.set("outletId", outletB);
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+    await expect(mod.generateDraftAction!(fd)).rejects.toThrow(/not found/i);
+
+    const drafts = await db.execute({
+      sql: `SELECT id FROM drafts WHERE user_id = ?`,
+      args: [userB.id],
+    });
+    expect(drafts.rows.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // deleteSourceAction
 // ---------------------------------------------------------------------------
 

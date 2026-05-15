@@ -92,6 +92,13 @@ import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 import { recordSourceAdded, recordWordPressPushed } from "./analytics";
 import { safeLogValue } from "../safe-log";
+import {
+  assertOwnsCluster,
+  assertOwnsDraft,
+  assertOwnsOutlet,
+  assertOwnsSource,
+  assertOwnsFolder,
+} from "./ownership";
 
 function redirectPlanLimit(error: unknown): void {
   if (!(error instanceof PlanLimitError)) return;
@@ -277,6 +284,7 @@ export async function disconnectOutletAction(formData: FormData) {
   const outletId = String(formData.get("outletId") ?? "");
   const purge = formData.get("purge") === "1";
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   await disconnectOutlet(outletId, { purge }, session.userId);
   revalidatePath("/voice");
   revalidatePath("/");
@@ -289,6 +297,7 @@ export async function setDefaultOutletAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   await setDefaultOutlet(outletId, session.userId);
   revalidatePath("/voice");
   revalidatePath("/");
@@ -299,6 +308,7 @@ export async function updateOutletFormatAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   await updateOutletFormat({
     outletId,
     userId: session.userId,
@@ -315,6 +325,7 @@ export async function addPresetOutletFormatAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   await addPresetOutletFormat({
     outletId,
     userId: session.userId,
@@ -329,6 +340,7 @@ export async function addCustomOutletFormatAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   await addCustomOutletFormat({
     outletId,
     userId: session.userId,
@@ -344,6 +356,7 @@ export async function removeOutletFormatAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   await removeOutletFormat({
     outletId,
     userId: session.userId,
@@ -358,6 +371,7 @@ export async function restoreDefaultOutletFormatsAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   await restoreDefaultOutletFormats({ outletId, userId: session.userId });
   revalidatePath(`/voice/${outletId}`);
   revalidatePath("/");
@@ -824,6 +838,7 @@ export async function renameFolderAction(formData: FormData) {
   const folderId = String(formData.get("folderId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!folderId || !name) throw new Error("Folder id and name required.");
+  await assertOwnsFolder(folderId, session.userId);
   await db.execute({
     sql: `UPDATE source_folders SET name = ? WHERE id = ? AND user_id = ?`,
     args: [name, folderId, session.userId],
@@ -841,6 +856,7 @@ export async function deleteFolderAction(formData: FormData) {
   const session = await requireSession();
   const folderId = String(formData.get("folderId") ?? "");
   if (!folderId) throw new Error("Folder id required.");
+  await assertOwnsFolder(folderId, session.userId);
   await db.execute({
     sql: `UPDATE sources SET folder_id = NULL WHERE folder_id = ? AND user_id = ?`,
     args: [folderId, session.userId],
@@ -858,6 +874,7 @@ export async function assignSourceToFolderAction(formData: FormData) {
   const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("Source id required.");
+  await assertOwnsSource(sourceId, session.userId);
   const folderId = await resolveFolderIdField(formData, session.userId);
   await db.execute({
     sql: `UPDATE sources SET folder_id = ? WHERE id = ? AND user_id = ?`,
@@ -896,6 +913,7 @@ export async function dismissClusterAction(formData: FormData) {
   const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
+  await assertOwnsCluster(clusterId, session.userId);
   // The trust penalty represents "skipped without drafting", so only the
   // fired→dismissed transition counts. A stale Today tab that submits Not
   // now after the cluster was already drafted must not re-penalize.
@@ -926,6 +944,8 @@ export async function flagClusterMismatchAction(formData: FormData) {
   const clusterId = String(formData.get("clusterId") ?? "");
   const draftId = String(formData.get("draftId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
+  await assertOwnsCluster(clusterId, session.userId);
+  if (draftId) await assertOwnsDraft(draftId, session.userId);
 
   await db.execute({
     sql: `UPDATE clusters SET state = 'dismissed' WHERE id = ? AND user_id = ?`,
@@ -1064,6 +1084,8 @@ export async function addSourceToClusterAction(formData: FormData) {
   const rawUrl = String(formData.get("url") ?? "").trim();
   if (!clusterId) throw new Error("clusterId required.");
   if (!rawUrl) throw new Error("url required.");
+  await assertOwnsCluster(clusterId, session.userId);
+  if (draftId) await assertOwnsDraft(draftId, session.userId);
 
   let parsedUrl: URL;
   try {
@@ -1186,6 +1208,7 @@ export async function pollFolderAction(
   const session = await requireSession();
   const folderId = String(formData.get("folderId") ?? "");
   const now = Date.now();
+  if (folderId) await assertOwnsFolder(folderId, session.userId);
   // Empty string means "ungrouped" — poll all sources with folder_id NULL.
   // Paused sources are skipped in bulk polls (the user can still hit
   // "Poll now" on a paused row to override).
@@ -1454,14 +1477,7 @@ export async function pollSourceAction(formData: FormData): Promise<{ sourceCoun
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
 
-  // Tenancy: verify the source belongs to this user before enqueueing.
-  // The background runner loads sources by id without filtering, so a
-  // cross-user poll would otherwise mutate another user's source row.
-  const owner = await db.execute({
-    sql: `SELECT 1 FROM sources WHERE id = ? AND user_id = ?`,
-    args: [sourceId, session.userId],
-  });
-  if (owner.rows.length === 0) throw new Error("Source not found.");
+  await assertOwnsSource(sourceId, session.userId);
 
   after(() => runBackgroundPolls([sourceId], "pollSource", session.userId));
   return { sourceCount: 1 };
@@ -1571,6 +1587,7 @@ export async function pauseSourceAction(formData: FormData) {
   const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
+  await assertOwnsSource(sourceId, session.userId);
 
   const preset = String(formData.get("durationHours") ?? "");
   const hours = preset === "custom" ? Number(formData.get("customHours") ?? 0) : Number(preset);
@@ -1593,6 +1610,7 @@ export async function resumeSourceAction(formData: FormData) {
   const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
+  await assertOwnsSource(sourceId, session.userId);
   await db.execute({
     sql: `UPDATE sources SET paused_until = NULL WHERE id = ? AND user_id = ?`,
     args: [sourceId, session.userId],
@@ -1607,6 +1625,7 @@ export async function deleteSourceAction(formData: FormData) {
   const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
+  await assertOwnsSource(sourceId, session.userId);
   await db.execute({
     sql: `DELETE FROM sources WHERE id = ? AND user_id = ?`,
     args: [sourceId, session.userId],
@@ -1635,6 +1654,7 @@ export async function boostSourceTrustAction(formData: FormData) {
   const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
+  await assertOwnsSource(sourceId, session.userId);
   const delta = Number(formData.get("delta") ?? 0);
   if (!Number.isFinite(delta) || delta === 0) {
     throw new Error("Non-zero delta required.");
@@ -1738,6 +1758,7 @@ export async function buildVoiceProfileAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
   if (!outlet.connected) throw new Error("Connect this outlet first.");
@@ -1787,6 +1808,7 @@ export async function seedVoiceFromSamplesAction(formData: FormData) {
   const method: "paste" | "freewrite" = methodInput === "freewrite" ? "freewrite" : "paste";
   if (!outletId) throw new Error("outletId required.");
   if (!samples) throw new Error("Paste at least one sample of your writing.");
+  await assertOwnsOutlet(outletId, session.userId);
 
   const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
@@ -1825,6 +1847,7 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
 
   const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
@@ -1877,6 +1900,7 @@ export async function saveBlogDescriptionAction(formData: FormData) {
   const outletId = String(formData.get("outletId") ?? "");
   const description = String(formData.get("description") ?? "").trim();
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   const r = await db.execute({
     sql: `SELECT 1 FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
     args: [outletId, session.userId],
@@ -1901,6 +1925,7 @@ export async function deriveBlogDescriptionAction(formData: FormData) {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  await assertOwnsOutlet(outletId, session.userId);
   const outlet = await getOutlet(outletId, session.userId);
   if (!outlet) throw new Error("Outlet not found.");
   const r = await db.execute({
@@ -2031,6 +2056,7 @@ export async function assignSourceOutletsAction(formData: FormData) {
   const session = await requireSession();
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
+  await assertOwnsSource(sourceId, session.userId);
   const outletIds = formData
     .getAll("outletIds")
     .map((v) => String(v))
@@ -2055,6 +2081,7 @@ export async function addVoiceTermAction(formData: FormData) {
   if (list !== "banned" && list !== "signature") {
     throw new Error("list must be 'banned' or 'signature'.");
   }
+  await assertOwnsOutlet(outletId, session.userId);
   if (!term) {
     revalidatePath(`/voice/${outletId}`);
     return;
@@ -2091,6 +2118,7 @@ export async function removeVoiceTermAction(formData: FormData) {
   if (list !== "banned" && list !== "signature") {
     throw new Error("list must be 'banned' or 'signature'.");
   }
+  await assertOwnsOutlet(outletId, session.userId);
   const column = list === "banned" ? "banned_terms" : "signature_terms";
   const r = await db.execute({
     sql: `SELECT ${column} AS terms FROM voice_profiles WHERE outlet_id = ? AND user_id = ?`,
@@ -2203,6 +2231,7 @@ export async function generateDraftAction(formData: FormData) {
   const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
+  await assertOwnsCluster(clusterId, session.userId);
 
   // Pick outlet: explicit > default > error.
   const explicitOutlet = String(formData.get("outletId") ?? "");
@@ -2210,6 +2239,7 @@ export async function generateDraftAction(formData: FormData) {
   if (!outletId) {
     throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
   }
+  await assertOwnsOutlet(outletId, session.userId);
 
   const mode = parseMode(formData.get("mode"));
   const wordCount = mode === "researcher" ? undefined : parseWordCount(formData.get("wordCount"));
@@ -2351,12 +2381,14 @@ export async function generateDraftAnglesAction(
   const session = await requireSession();
   const clusterId = String(formData.get("clusterId") ?? "");
   if (!clusterId) throw new Error("clusterId required.");
+  await assertOwnsCluster(clusterId, session.userId);
 
   const explicitOutlet = String(formData.get("outletId") ?? "");
   const outletId = explicitOutlet || (await getDefaultOutlet(session.userId))?.id || "";
   if (!outletId) {
     throw new Error("No outlet connected. Connect a WordPress site on /voice first.");
   }
+  await assertOwnsOutlet(outletId, session.userId);
 
   const format = await resolveOutletDraftFormat({
     outletId,
@@ -2734,8 +2766,9 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
   const itemsR = await db.execute({
     sql: `SELECT i.title, i.canonical_url, s.display_name, s.url AS source_url
           FROM items i JOIN sources s ON s.id = i.source_id
-          WHERE i.cluster_id = ? ORDER BY i.published_at DESC`,
-    args: [String(row.cluster_id ?? "")],
+          WHERE i.cluster_id = ? AND i.user_id = ?
+          ORDER BY i.published_at DESC`,
+    args: [String(row.cluster_id ?? ""), session.userId],
   });
 
   const fallbackTopic = String(row.headline ?? "Notes");

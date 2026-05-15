@@ -287,7 +287,7 @@ export async function rewriteParagraph(
     );
   }
 
-  const items = await loadClusterItems(String(row.cluster_id ?? ""));
+  const items = await loadClusterItems(String(row.cluster_id ?? ""), input.userId);
   const profile = await loadVoiceFields(String(row.outlet_id ?? ""), input.userId);
   const surrounding = buildSurroundingContext(spans, input.paragraphIndex);
 
@@ -367,9 +367,9 @@ async function loadVoiceFields(outletId: string, userId: string): Promise<VoiceF
   };
 }
 
-async function loadClusterItems(clusterId: string): Promise<Item[]> {
+async function loadClusterItems(clusterId: string, userId: string): Promise<Item[]> {
   if (!clusterId) return [];
-  return getClusterItems(clusterId);
+  return getClusterItems(clusterId, userId);
 }
 
 function buildSurroundingContext(spans: ParagraphSpan[], index: number): string {

@@ -69,7 +69,7 @@ const ARCHETYPES: { kind: AngleSuggestion["kind"]; label: string; brief: string 
 export async function generateAngleSuggestions(
   input: AngleSuggestionsInput,
 ): Promise<AngleSuggestion[]> {
-  const items = await getClusterItems(input.clusterId);
+  const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) {
     throw new Error(`cluster has no items: ${input.clusterId}`);
   }
