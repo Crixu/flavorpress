@@ -9,7 +9,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { db, ensureSchema } from "../db";
-import { notifyFirstPostPushed, notifyFirstSourceConnected } from "../notifications";
+import {
+  notifyFirstPostPushed,
+  notifyFirstSourceConnected,
+  notifyPostPushed,
+} from "../notifications";
 import {
   assertCanCreateFolders,
   assertCanCreateSources,
@@ -2738,28 +2742,24 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
     });
     await adjustClusterSourceTrust(clusterId, TRUST_DELTA.draftPublished, session.userId);
   }
-  await recordWordPressPushed(
-    {
-      draftId,
-      clusterId,
-      outletId,
-      mode: "drafter",
-      wpPostId: result.wpPostId,
-      editLink: result.editLink,
-      status,
-    },
-    { userId: session.userId },
-  );
+  const pushedPayload = {
+    draftId,
+    clusterId,
+    outletId,
+    mode: "drafter" as const,
+    wpPostId: result.wpPostId,
+    editLink: result.editLink,
+    status,
+  };
+  await recordWordPressPushed(pushedPayload, { userId: session.userId });
+  await notifyPostPushed({
+    userId: session.userId,
+    ...pushedPayload,
+  });
   if (isFirstPostPush) {
     await notifyFirstPostPushed({
       userId: session.userId,
-      draftId,
-      clusterId,
-      outletId,
-      mode: "drafter",
-      wpPostId: result.wpPostId,
-      editLink: result.editLink,
-      status,
+      ...pushedPayload,
     });
   }
 
@@ -2895,28 +2895,24 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
       session.userId,
     ],
   });
-  await recordWordPressPushed(
-    {
-      draftId,
-      clusterId: row.cluster_id ? String(row.cluster_id) : null,
-      outletId,
-      mode: "researcher",
-      wpPostId: result.wpPostId,
-      editLink: result.editLink,
-      status: "draft",
-    },
-    { userId: session.userId },
-  );
+  const pushedPayload = {
+    draftId,
+    clusterId: row.cluster_id ? String(row.cluster_id) : null,
+    outletId,
+    mode: "researcher" as const,
+    wpPostId: result.wpPostId,
+    editLink: result.editLink,
+    status: "draft" as const,
+  };
+  await recordWordPressPushed(pushedPayload, { userId: session.userId });
+  await notifyPostPushed({
+    userId: session.userId,
+    ...pushedPayload,
+  });
   if (isFirstPostPush) {
     await notifyFirstPostPushed({
       userId: session.userId,
-      draftId,
-      clusterId: row.cluster_id ? String(row.cluster_id) : null,
-      outletId,
-      mode: "researcher",
-      wpPostId: result.wpPostId,
-      editLink: result.editLink,
-      status: "draft",
+      ...pushedPayload,
     });
   }
 
