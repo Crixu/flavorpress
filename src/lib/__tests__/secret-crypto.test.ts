@@ -1,3 +1,4 @@
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetEncryptionKeyForTests,
@@ -108,6 +109,15 @@ describe("secret-crypto", () => {
     expect(() => assertEncryptionKeyAtBoot()).toThrow(SecretCryptoError);
   });
 
+  it("does not try cwd-derived legacy keys during decrypt", () => {
+    const legacyKey = createHash("sha256")
+      .update("FlavorPress local development key:/old/flavorpress/path")
+      .digest();
+    const encrypted = encryptWithRawKey("legacy-secret", legacyKey);
+
+    expect(() => decryptSecret(encrypted)).toThrow(SecretCryptoError);
+  });
+
   it("refuses to import the database module with no boot key outside tests", async () => {
     vi.stubEnv("FLAVORPRESS_ENCRYPTION_KEY", "");
     vi.stubEnv("NODE_ENV", "development");
@@ -116,3 +126,27 @@ describe("secret-crypto", () => {
     await expect(import("../db")).rejects.toThrow(/FLAVORPRESS_ENCRYPTION_KEY is required/);
   });
 });
+
+function encryptWithRawKey(plaintext: string, key: Buffer): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return (
+    "fpsec:v1:" +
+    toBase64Url(
+      Buffer.from(
+        JSON.stringify({
+          alg: "aes-256-gcm",
+          iv: toBase64Url(iv),
+          tag: toBase64Url(cipher.getAuthTag()),
+          ct: toBase64Url(ciphertext),
+        }),
+        "utf8",
+      ),
+    )
+  );
+}
+
+function toBase64Url(value: Buffer): string {
+  return value.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}

@@ -22,6 +22,7 @@
     "auth:promote": "tsx --env-file=.env --conditions=react-server scripts/promote-admin.ts",
     "gen-encryption-key": "tsx scripts/gen-encryption-key.ts",
     "gen-session-secret": "tsx scripts/gen-session-secret.ts",
+    "migrate-legacy-secret-keys": "tsx --env-file=.env scripts/migrate-legacy-secret-keys.ts",
     "mac:build": "macos/build.sh",
     "mac:run": "macos/build.sh && open macos/build/FlavorPress.app",
     "mac:dmg": "macos/build.sh && macos/dmg.sh"
