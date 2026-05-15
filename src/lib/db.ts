@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-15.v2";
+const SCHEMA_VERSION = "2026-05-15.v3";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -353,6 +353,7 @@ export async function ensureSchema(): Promise<void> {
         body TEXT NOT NULL,
         quotes TEXT,
         notes TEXT,
+        research_board TEXT,
         voice_match_score REAL NOT NULL,
         angle_archive TEXT,
         angle_gap TEXT,
@@ -776,6 +777,10 @@ async function migrateLegacyTables(): Promise<void> {
         // eslint-disable-next-line no-console
         console.info("[migrate] drafts: adding notes column");
         await db.execute("ALTER TABLE drafts ADD COLUMN notes TEXT");
+      }
+      if (!cols.includes("research_board")) {
+        console.info("[migrate] drafts: adding research_board column");
+        await db.execute("ALTER TABLE drafts ADD COLUMN research_board TEXT");
       }
       // WP round-trip sync columns. wp_synced_at is the local clock at the
       // last successful pull or push; wp_modified_at mirrors WP's post.modified

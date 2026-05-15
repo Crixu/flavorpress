@@ -19,6 +19,12 @@ import { generateDraftAction } from "@/lib/v1/actions";
 
 type Mode = "drafter" | "researcher";
 
+declare global {
+  interface Window {
+    __flavorpressSaveResearchBoard?: (draftId: string) => Promise<void>;
+  }
+}
+
 interface Props {
   clusterId: string;
   outletId: string;
@@ -41,19 +47,18 @@ export function SiblingArtifactLink({
 }: Props) {
   const [pending, startTransition] = useTransition();
   const otherMode: Mode = currentMode === "drafter" ? "researcher" : "drafter";
-  const otherLabel = otherMode === "drafter" ? "drafted version" : "notes";
+  const otherLabel = otherMode === "drafter" ? "draft" : "notes";
+  const primaryDraftAction = currentMode === "researcher" && otherMode === "drafter";
 
-  // One visual treatment regardless of state: a small text-with-arrow that
-  // either jumps to an existing sibling or commissions one. Earlier this
-  // rendered as a link in one direction and a styled button in the other,
-  // which made the same affordance look like two different things.
-  const linkClass = "text-xs underline-offset-2 hover:underline";
-  const linkStyle = { color: "var(--fg-muted)" } as const;
+  const linkClass = primaryDraftAction
+    ? "fp-btn fp-btn-secondary"
+    : "text-xs underline-offset-2 hover:underline";
+  const linkStyle = primaryDraftAction ? undefined : ({ color: "var(--fg-muted)" } as const);
 
   if (siblingDraftId) {
     return (
       <Link href={`/editor/${siblingDraftId}`} className={linkClass} style={linkStyle}>
-        Also has {otherLabel} →
+        {primaryDraftAction ? "Open draft" : `Open ${otherLabel} ->`}
       </Link>
     );
   }
@@ -70,6 +75,9 @@ export function SiblingArtifactLink({
       if (currentMode === "researcher") fd.set("seedFromDraftId", currentDraftId);
     }
     startTransition(async () => {
+      if (currentMode === "researcher" && window.__flavorpressSaveResearchBoard) {
+        await window.__flavorpressSaveResearchBoard(currentDraftId);
+      }
       // generateDraftAction redirects to /editor/[id] on success.
       await generateDraftAction(fd);
     });
@@ -81,16 +89,20 @@ export function SiblingArtifactLink({
       onClick={generate}
       disabled={pending}
       className={linkClass}
-      style={{
-        ...linkStyle,
-        background: "transparent",
-        border: "none",
-        padding: 0,
-        cursor: pending ? "wait" : "pointer",
-      }}
+      style={
+        primaryDraftAction
+          ? { cursor: pending ? "wait" : "pointer" }
+          : {
+              ...linkStyle,
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              cursor: pending ? "wait" : "pointer",
+            }
+      }
       aria-disabled={pending}
     >
-      {pending ? `Generating ${otherLabel}…` : `Generate ${otherLabel} →`}
+      {pending ? `Generating ${otherLabel}...` : `Generate ${otherLabel}`}
     </button>
   );
 }

@@ -39,6 +39,7 @@ export {
 
 import { resolveOutletDraftFormat } from "./outlet-formats";
 import type { DraftFormatOption } from "./draft-format";
+import { renderResearchBoardPrompt, type ResearchBoardState } from "./research-board";
 
 export interface DraftInput {
   clusterId: string;
@@ -73,6 +74,7 @@ export interface NotesSeed {
   topic: string;
   ideas: { angle: string; rationale: string }[];
   quotes: { text: string; speaker: string | null; sourceUrl: string }[];
+  researchBoard?: ResearchBoardState | null;
 }
 
 const DEFAULT_WORD_COUNT = 1000;
@@ -507,8 +509,9 @@ function buildPrompt(opts: {
 
   const formatGuidance = opts.format;
   const notesSeed = opts.notesSeed;
+  const boardBlock = renderResearchBoardPrompt(notesSeed?.researchBoard);
   const notesBlock =
-    notesSeed && (notesSeed.ideas.length > 0 || notesSeed.quotes.length > 0)
+    notesSeed && (notesSeed.ideas.length > 0 || notesSeed.quotes.length > 0 || boardBlock)
       ? `PRE-CURATED NOTES (the writer already vetted these in notes mode; prefer these over scanning the sources fresh):
 ${
   notesSeed.ideas.length > 0
@@ -522,7 +525,7 @@ ${
                 .map((q) => `- "${q.text}"${q.speaker ? `; ${q.speaker}` : ""} (${q.sourceUrl})`)
                 .join("\n")}`
             : ""
-        }`
+        }${boardBlock ? `\n\n${boardBlock}` : ""}`
       : "";
 
   const systemPrompt = `You are a draft writer that mimics the user's voice exactly.

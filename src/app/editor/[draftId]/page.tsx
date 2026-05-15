@@ -17,6 +17,7 @@ import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
 import { getDisabledExtensionIds } from "@/lib/v1/settings";
 import type { Notes } from "@/lib/v1/notes-generator";
+import { parseResearchBoardState } from "@/lib/v1/research-board";
 import { AnglePicker } from "./AnglePicker";
 import { HeadlineSelector } from "./HeadlineSelector";
 import { LengthPicker } from "./LengthPicker";
@@ -58,7 +59,7 @@ export default async function EditorPage({ params }: PageProps) {
       {
         sql: `SELECT id, mode, cluster_id, outlet_id, wp_post_id, wp_edit_link,
                      quotes, wp_synced_at, edited_at, created_at, body, headline,
-                     notes, headline_alternates, angle_archive, angle_gap,
+                     notes, research_board, headline_alternates, angle_archive, angle_gap,
                      angle_hint, custom_angle
               FROM drafts WHERE id = ? AND user_id = ?`,
         args: [draftId, session.userId],
@@ -70,7 +71,7 @@ export default async function EditorPage({ params }: PageProps) {
       },
       {
         sql: `SELECT i.id, i.title, i.canonical_url, i.published_at,
-                     s.display_name, s.url AS source_url
+                     s.display_name, s.url AS source_url, s.kind AS source_kind
               FROM items i JOIN sources s ON s.id = i.source_id
               WHERE i.cluster_id = (SELECT cluster_id FROM drafts WHERE id = ? AND user_id = ?)
               ORDER BY i.published_at DESC
@@ -147,6 +148,7 @@ export default async function EditorPage({ params }: PageProps) {
           display_name: row.display_name === null ? null : String(row.display_name),
           source_url: String(row.canonical_url ?? row.source_url),
           published_at: Number(row.published_at),
+          is_manual: String(row.source_kind ?? "") === "manual",
         }))}
         quotes={receiptQuotes.map((q) => ({ text: q.text, citation: q.citation }))}
         sourceCount={sourceCount}
@@ -184,7 +186,9 @@ export default async function EditorPage({ params }: PageProps) {
           // send the user to /feed/ instead of the post they wanted to read.
           source_url: String(row.canonical_url ?? row.source_url),
           published_at: Number(row.published_at),
+          is_manual: String(row.source_kind ?? "") === "manual",
         }))}
+        initialBoard={parseResearchBoardState(String(d.research_board ?? ""))}
         sourceCount={sourceCount}
         wpEditLink={d.wp_edit_link ? String(d.wp_edit_link) : null}
         sibling={sibling}
