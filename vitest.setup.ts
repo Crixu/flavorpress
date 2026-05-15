@@ -1,9 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { __setEncryptionKeyForTests } from "./src/lib/secret-crypto";
 
 const dbDir = path.join(os.tmpdir(), "flavorpress-vitest");
 fs.mkdirSync(dbDir, { recursive: true });
@@ -15,6 +17,8 @@ process.env.LIBSQL_URL =
     dbDir,
     `flavorpress-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.db`,
   )}`;
+
+__setEncryptionKeyForTests(randomBytes(32));
 
 afterEach(() => {
   cleanup();

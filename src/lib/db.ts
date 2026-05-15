@@ -21,7 +21,7 @@
 import { createClient, type Client } from "@libsql/client";
 import path from "node:path";
 import fs from "node:fs";
-import { assertProductionEncryptionKey } from "./secret-crypto";
+import { assertEncryptionKeyAtBoot } from "./secret-crypto";
 
 const dataDir = path.join(process.cwd(), ".data");
 const remoteUrl = process.env.LIBSQL_URL?.trim();
@@ -37,6 +37,8 @@ const useRemoteOnly = onVercel || isBuildPhase;
 const isRemote = Boolean(
   remoteUrl && (remoteUrl.startsWith("libsql://") || remoteUrl.startsWith("https://")),
 );
+
+assertEncryptionKeyAtBoot();
 
 if (!isRemote && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -82,8 +84,7 @@ export async function ensureSchema(): Promise<void> {
   // Fast path: a previous cold start (potentially in another lambda instance)
   // wrote a matching SCHEMA_VERSION sentinel, so the schema is already
   // current and we can skip migrateLegacyTables, the CREATE-IF-NOT-EXISTS
-  // batch, and the encryption-key audit. Costs one SELECT instead of dozens
-  // of round trips.
+  // batch. Costs one SELECT instead of dozens of round trips.
   if (await schemaSentinelMatches()) {
     initialized = true;
     return;
@@ -651,7 +652,6 @@ export async function ensureSchema(): Promise<void> {
 
   await backfillFirstAdminState();
   await backfillLegacyPasswordVerification();
-  await assertEncryptionKeyForExistingSecrets();
   await writeSchemaSentinel();
   initialized = true;
 }
@@ -712,24 +712,6 @@ async function writeSchemaSentinel(): Promise<void> {
             updated_at = excluded.updated_at`,
     args: [SCHEMA_VERSION, Date.now()],
   });
-}
-
-async function assertEncryptionKeyForExistingSecrets(): Promise<void> {
-  const [outletSecrets, appSettingSecrets] = await Promise.all([
-    db.execute("SELECT 1 FROM outlets WHERE app_password_encrypted IS NOT NULL LIMIT 1"),
-    db.execute({
-      sql: `SELECT 1 FROM app_settings
-            WHERE key = ?
-               OR lower(key) LIKE '%api_key%'
-               OR lower(key) LIKE '%password%'
-               OR lower(key) LIKE '%secret%'
-               OR lower(key) LIKE '%token%'
-               OR lower(key) LIKE '%credential%'
-            LIMIT 1`,
-      args: ["anthropic_api_key"],
-    }),
-  ]);
-  assertProductionEncryptionKey(outletSecrets.rows.length > 0 || appSettingSecrets.rows.length > 0);
 }
 
 /**
