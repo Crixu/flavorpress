@@ -40,6 +40,7 @@ import {
   renderNotesBodyHtml,
   type Notes,
 } from "./notes-generator";
+import { parseResearchBoardState, type ResearchBoardState } from "./research-board";
 import { extractFullArticle } from "./extract-article";
 import { canonicalize, hashContent } from "./source-connector";
 import { getRegistry } from "./capability-registry";
@@ -1159,6 +1160,69 @@ export async function addSourceToClusterAction(formData: FormData) {
   await recomputeClusterSourceCount(clusterId, session.userId);
   await invalidateTodayForUser(session.userId);
 
+  if (draftId) revalidatePath(`/editor/${draftId}`);
+}
+
+export async function saveResearchBoardAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  const draftId = String(formData.get("draftId") ?? "");
+  const rawBoard = String(formData.get("board") ?? "");
+  if (!draftId) throw new Error("draftId required.");
+
+  const board = parseResearchBoardState(rawBoard);
+  if (!board) throw new Error("Invalid board payload.");
+  const nextSerialized = JSON.stringify(board);
+
+  const r = await db.execute({
+    sql: `SELECT mode, research_board FROM drafts WHERE id = ? AND user_id = ?`,
+    args: [draftId, session.userId],
+  });
+  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (String(r.rows[0]!.mode ?? "") !== "researcher") {
+    throw new Error("Research boards can only be saved on notes drafts.");
+  }
+  // Skip the write when normalization yields the same JSON we already stored;
+  // otherwise the no-op save on mount would bump edited_at on every page open.
+  if (String(r.rows[0]!.research_board ?? "") === nextSerialized) return;
+
+  await db.execute({
+    sql: `UPDATE drafts SET research_board = ?, edited_at = ? WHERE id = ? AND user_id = ?`,
+    args: [nextSerialized, Date.now(), draftId, session.userId],
+  });
+}
+
+export async function deleteManualClusterSourceAction(formData: FormData) {
+  await ensureSchema();
+  const session = await requireSession();
+  const draftId = String(formData.get("draftId") ?? "");
+  const clusterId = String(formData.get("clusterId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  if (!clusterId) throw new Error("clusterId required.");
+  if (!itemId) throw new Error("itemId required.");
+  await assertOwnsCluster(clusterId, session.userId);
+  if (draftId) await assertOwnsDraft(draftId, session.userId);
+
+  const r = await db.execute({
+    sql: `SELECT i.id
+          FROM items i JOIN sources s ON s.id = i.source_id
+          WHERE i.id = ?
+            AND i.user_id = ?
+            AND i.cluster_id = ?
+            AND s.user_id = ?
+            AND s.kind = 'manual'`,
+    args: [itemId, session.userId, clusterId, session.userId],
+  });
+  if (r.rows.length === 0) {
+    throw new Error("Only manually added sources can be removed here.");
+  }
+
+  await db.execute({
+    sql: `DELETE FROM items WHERE id = ? AND user_id = ? AND cluster_id = ?`,
+    args: [itemId, session.userId, clusterId],
+  });
+  await recomputeClusterSourceCount(clusterId, session.userId);
+  await invalidateTodayForUser(session.userId);
   if (draftId) revalidatePath(`/editor/${draftId}`);
 }
 
@@ -2338,11 +2402,12 @@ async function loadNotesSeed(
       topic: string;
       ideas: { angle: string; rationale: string }[];
       quotes: { text: string; speaker: string | null; sourceUrl: string }[];
+      researchBoard?: ResearchBoardState | null;
     }
   | undefined
 > {
   const r = await db.execute({
-    sql: `SELECT cluster_id, outlet_id, mode, notes, headline FROM drafts
+    sql: `SELECT cluster_id, outlet_id, mode, notes, headline, research_board FROM drafts
           WHERE id = ? AND user_id = ?`,
     args: [seedDraftId, userId],
   });
@@ -2362,6 +2427,7 @@ async function loadNotesSeed(
       topic: parsed.topic,
       ideas: parsed.ideas ?? [],
       quotes: parsed.quotes ?? [],
+      researchBoard: parseResearchBoardState(String(row.research_board ?? "")),
     };
   } catch {
     return undefined;

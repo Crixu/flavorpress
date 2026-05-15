@@ -15,6 +15,7 @@ import { useState, useTransition } from "react";
 import {
   addMoreNotesQuotesAction,
   addSourceToClusterAction,
+  deleteManualClusterSourceAction,
   flagClusterMismatchAction,
   remixNotesIdeasAction,
 } from "@/lib/v1/actions";
@@ -133,6 +134,31 @@ export function AddSourceForm({ draftId, clusterId }: CommonProps) {
         ) : null}
       </div>
     </form>
+  );
+}
+
+export function DeleteManualSourceButton({
+  draftId,
+  clusterId,
+  itemId,
+}: CommonProps & { itemId: string }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const fd = new FormData();
+        fd.set("draftId", draftId);
+        fd.set("clusterId", clusterId);
+        fd.set("itemId", itemId);
+        startTransition(() => deleteManualClusterSourceAction(fd));
+      }}
+      disabled={pending}
+      className="fp-research-source-delete"
+      aria-label="Remove manually added source"
+    >
+      {pending ? "Removing" : "Remove"}
+    </button>
   );
 }
 
