@@ -63,6 +63,7 @@ beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM invites");
+  await db.execute("DELETE FROM deployment_state");
   cookieJar = new Map();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
@@ -70,13 +71,14 @@ beforeEach(async () => {
   process.env.WPCOM_OAUTH_CLIENT_ID = "test-client";
   process.env.WPCOM_OAUTH_CLIENT_SECRET = "test-secret";
   process.env.FLAVORPRESS_ORIGIN = "http://localhost:3000";
-  delete process.env.FLAVORPRESS_ADMIN_EMAIL;
   resetWpcomStateCacheForTests();
 });
 
 async function call(state: string, code: string): Promise<Response> {
   const { GET } = await import("@/app/api/auth/wpcom/callback/route");
-  const url = `http://localhost:3000/api/auth/wpcom/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`;
+  const url = `http://localhost:3000/api/auth/wpcom/callback?state=${encodeURIComponent(
+    state,
+  )}&code=${encodeURIComponent(code)}`;
   return GET(new Request(url));
 }
 
@@ -103,6 +105,7 @@ describe("wpcom callback signup", () => {
     expect(u?.wpcomId).toBe("12345");
     expect(u?.wpcomUsername).toBe("lucas");
     expect(u?.emailVerifiedAt).not.toBeNull();
+    expect(u?.isAdmin).toBe(true);
     expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
     expect(cookieJar.get(WPCOM_OAUTH_STATE_COOKIE)).toBe("");
   });

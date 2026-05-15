@@ -73,7 +73,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-14.v2";
+const SCHEMA_VERSION = "2026-05-15.v2";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -623,6 +623,11 @@ export async function ensureSchema(): Promise<void> {
         updated_at INTEGER NOT NULL
       )`,
 
+      `CREATE TABLE IF NOT EXISTS deployment_state (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )`,
+
       `CREATE TABLE IF NOT EXISTS email_verification_tokens (
         token TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -644,9 +649,46 @@ export async function ensureSchema(): Promise<void> {
     "write",
   );
 
+  await backfillFirstAdminState();
+  await backfillLegacyPasswordVerification();
   await assertEncryptionKeyForExistingSecrets();
   await writeSchemaSentinel();
   initialized = true;
+}
+
+async function backfillFirstAdminState(): Promise<void> {
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO deployment_state (key, value)
+          VALUES (
+            'first_admin_user_id',
+            (SELECT id FROM users WHERE is_admin = 1 ORDER BY created_at ASC LIMIT 1)
+          )`,
+  });
+}
+
+export async function backfillLegacyPasswordVerification(): Promise<void> {
+  const backfillKey = "legacy_password_email_verification_backfilled_at";
+  const existing = await db.execute({
+    sql: "SELECT 1 FROM deployment_state WHERE key = ?",
+    args: [backfillKey],
+  });
+  if (existing.rows.length > 0) return;
+
+  const cutoff = Date.now();
+  await db.batch([
+    {
+      sql: `UPDATE users
+            SET email_verified_at = created_at
+            WHERE password_hash IS NOT NULL
+              AND email_verified_at IS NULL
+              AND created_at < ?`,
+      args: [cutoff],
+    },
+    {
+      sql: "INSERT OR IGNORE INTO deployment_state (key, value) VALUES (?, ?)",
+      args: [backfillKey, String(cutoff)],
+    },
+  ]);
 }
 
 async function schemaSentinelMatches(): Promise<boolean> {

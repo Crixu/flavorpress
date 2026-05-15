@@ -11,8 +11,17 @@ export async function createTwoUserFixture(): Promise<TwoUserFixture> {
   await ensureSchema();
   await db.execute("DELETE FROM users");
   const hash = await hashPassword("correct horse battery staple");
-  const a = await createUser({ email: "a@example.com", passwordHash: hash });
-  const b = await createUser({ email: "b@example.com", passwordHash: hash });
+  const verifiedAt = Date.now();
+  const a = await createUser({
+    email: "a@example.com",
+    passwordHash: hash,
+    emailVerifiedAt: verifiedAt,
+  });
+  const b = await createUser({
+    email: "b@example.com",
+    passwordHash: hash,
+    emailVerifiedAt: verifiedAt,
+  });
   return {
     userA: { id: a.id, email: a.email },
     userB: { id: b.id, email: b.email },

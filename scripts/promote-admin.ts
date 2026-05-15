@@ -16,10 +16,23 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  await db.execute({
-    sql: "UPDATE users SET is_admin = 1 WHERE id = ?",
-    args: [user.id],
-  });
+  await db.batch([
+    {
+      sql: "UPDATE users SET is_admin = 1 WHERE id = ?",
+      args: [user.id],
+    },
+    {
+      sql: `INSERT OR IGNORE INTO deployment_state (key, value)
+            VALUES ('first_admin_user_id', ?)`,
+      args: [user.id],
+    },
+    {
+      sql: `UPDATE deployment_state
+            SET value = COALESCE(value, ?)
+            WHERE key = 'first_admin_user_id'`,
+      args: [user.id],
+    },
+  ]);
   process.stdout.write(`Promoted ${email} to admin.\n`);
 }
 

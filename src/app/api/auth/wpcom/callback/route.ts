@@ -12,7 +12,7 @@ import {
   WPCOM_OAUTH_STATE_COOKIE,
   wpcomStateCookieOptions,
 } from "@/lib/wpcom-oauth";
-import { createUser, getUserByEmail, hasAdmin } from "@/lib/users";
+import { createUser, getUserByEmail } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -109,10 +109,6 @@ export async function GET(req: Request) {
     });
     if (byWpcom.rows.length > 0) return signupErr(state.invite, "account");
 
-    const adminEmail = (process.env.FLAVORPRESS_ADMIN_EMAIL ?? "").trim().toLowerCase();
-    const isFirstAdmin =
-      adminEmail.length > 0 && wp.email.toLowerCase() === adminEmail && !(await hasAdmin());
-
     const userId = newUserId();
     try {
       await consumeInvite(state.invite, userId);
@@ -128,11 +124,8 @@ export async function GET(req: Request) {
         passwordHash: null,
         wpcomId: wp.id,
         wpcomUsername: wp.username,
-        isAdmin: isFirstAdmin,
-      });
-      await db.execute({
-        sql: "UPDATE users SET email_verified_at = ? WHERE id = ?",
-        args: [Date.now(), userId],
+        emailVerifiedAt: Date.now(),
+        claimFirstAdmin: true,
       });
     } catch {
       return signupErr(state.invite, "account");

@@ -73,7 +73,11 @@ async function callLogin(form: Record<string, string>): Promise<string> {
 describe("loginAction", () => {
   it("happy path issues a session cookie", async () => {
     const hash = await hashPassword("correct horse battery staple");
-    await createUser({ email: "a@example.com", passwordHash: hash });
+    await createUser({
+      email: "a@example.com",
+      passwordHash: hash,
+      emailVerifiedAt: Date.now(),
+    });
     const to = await callLogin({
       email: "a@example.com",
       password: "correct horse battery staple",
@@ -91,7 +95,11 @@ describe("loginAction", () => {
 
   it("rejects wrong password", async () => {
     const hash = await hashPassword("correct horse battery staple");
-    await createUser({ email: "a@example.com", passwordHash: hash });
+    await createUser({
+      email: "a@example.com",
+      passwordHash: hash,
+      emailVerifiedAt: Date.now(),
+    });
     const to = await callLogin({
       email: "a@example.com",
       password: "wrong-but-long-enough",
@@ -110,7 +118,11 @@ describe("loginAction", () => {
 
   it("rejects suspended user with the same error code", async () => {
     const hash = await hashPassword("correct horse battery staple");
-    const u = await createUser({ email: "a@example.com", passwordHash: hash });
+    const u = await createUser({
+      email: "a@example.com",
+      passwordHash: hash,
+      emailVerifiedAt: Date.now(),
+    });
     await setStatus(u.id, "suspended");
     const to = await callLogin({
       email: "a@example.com",
@@ -121,7 +133,11 @@ describe("loginAction", () => {
 
   it("issues a cookie carrying the current session_version", async () => {
     const hash = await hashPassword("correct horse battery staple");
-    const u = await createUser({ email: "a@example.com", passwordHash: hash });
+    const u = await createUser({
+      email: "a@example.com",
+      passwordHash: hash,
+      emailVerifiedAt: Date.now(),
+    });
     await db.execute({
       sql: "UPDATE users SET session_version = 5 WHERE id = ?",
       args: [u.id],
@@ -135,5 +151,16 @@ describe("loginAction", () => {
     const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
     expect(payload.v).toBe(5);
     expect(payload.sub).toBe(u.id);
+  });
+
+  it("rejects an unverified password user", async () => {
+    const hash = await hashPassword("correct horse battery staple");
+    await createUser({ email: "a@example.com", passwordHash: hash });
+    const to = await callLogin({
+      email: "a@example.com",
+      password: "correct horse battery staple",
+    });
+    expect(to).toMatch(/error=credentials/);
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toBeUndefined();
   });
 });

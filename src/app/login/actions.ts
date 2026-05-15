@@ -27,7 +27,7 @@ export async function loginAction(formData: FormData) {
   const user = await getUserByEmail(email);
   const hashToVerify = user?.passwordHash ?? (await placeholderHash());
   const ok = await verifyPassword(password, hashToVerify);
-  if (!user || !user.passwordHash || !ok || user.status !== "active") {
+  if (!user || !user.passwordHash || !ok || user.status !== "active" || !user.emailVerifiedAt) {
     redirect(loginPath("credentials", next));
   }
 

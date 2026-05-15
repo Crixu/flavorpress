@@ -11,7 +11,7 @@ import {
 } from "@/lib/auth";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { consumePasswordResetToken } from "@/lib/email-tokens";
-import { getUserById, updatePassword } from "@/lib/users";
+import { getUserById, markEmailVerified, updatePassword } from "@/lib/users";
 
 function safeToken(raw: string): string {
   if (raw.length > 128) return "";
@@ -47,6 +47,7 @@ export async function confirmPasswordResetAction(formData: FormData) {
 
   const hash = await hashPassword(password);
   await updatePassword(user.id, hash);
+  await markEmailVerified(user.id);
 
   const fresh = await getUserById(user.id);
   if (!fresh) throw new Error("User vanished after password update");
