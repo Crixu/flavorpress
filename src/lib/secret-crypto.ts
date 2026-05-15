@@ -76,7 +76,11 @@ export function decryptSecret(encrypted: string): string {
   }
 
   try {
-    const decipher = createDecipheriv("aes-256-gcm", loadEncryptionKey(), fromBase64Url(envelope.iv));
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      loadEncryptionKey(),
+      fromBase64Url(envelope.iv),
+    );
     decipher.setAuthTag(fromBase64Url(envelope.tag));
     return Buffer.concat([decipher.update(fromBase64Url(envelope.ct)), decipher.final()]).toString(
       "utf8",
