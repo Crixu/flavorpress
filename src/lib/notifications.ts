@@ -10,6 +10,7 @@ export type NotificationWebhookEvent =
   | "site.first_connected"
   | "source.first_connected"
   | "draft.first_created"
+  | "post.pushed"
   | "post.first_pushed";
 
 interface NotificationPayload {
@@ -113,6 +114,32 @@ export async function notifyFirstPostPushed(input: {
   await sendNotificationOnce(
     "post.first_pushed",
     `post.first_pushed:${input.userId}`,
+    input.userId,
+    {
+      draftId: input.draftId,
+      clusterId: input.clusterId,
+      outletId: input.outletId,
+      mode: input.mode,
+      wpPostId: input.wpPostId,
+      editLink: input.editLink,
+      status: input.status,
+    },
+  );
+}
+
+export async function notifyPostPushed(input: {
+  userId: string;
+  draftId: string;
+  clusterId: string | null;
+  outletId: string;
+  mode: "drafter" | "researcher";
+  wpPostId: number;
+  editLink: string;
+  status: "draft" | "publish" | "future";
+}): Promise<void> {
+  await sendNotificationOnce(
+    "post.pushed",
+    `post.pushed:${input.draftId}:${input.wpPostId}`,
     input.userId,
     {
       draftId: input.draftId,
