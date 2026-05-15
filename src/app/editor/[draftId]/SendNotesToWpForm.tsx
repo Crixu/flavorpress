@@ -21,10 +21,19 @@ interface State {
 
 const HANDOFF_BEAT_MS = 800;
 
+declare global {
+  interface Window {
+    __flavorpressSaveResearchBoard?: (draftId: string) => Promise<void>;
+  }
+}
+
 export function SendNotesToWpForm({ draftId, topic, className, pendingLabel, children }: Props) {
   const router = useRouter();
   const [sent, setSent] = useState(false);
   const [state, formAction] = useActionState<State | null, FormData>(async (_prev, formData) => {
+    if (window.__flavorpressSaveResearchBoard) {
+      await window.__flavorpressSaveResearchBoard(draftId);
+    }
     const result = await sendNotesToWPAction(formData);
     return { editLink: result.editLink, nonce: Date.now() };
   }, null);

@@ -3,6 +3,7 @@ import {
   MAX_IMAGE_URL,
   normalizeResearchBoardState,
   parseResearchBoardState,
+  renderResearchBoardHandoffHtml,
   renderResearchBoardPrompt,
 } from "../research-board";
 
@@ -26,6 +27,7 @@ describe("research board prompt context", () => {
           title: "Accountability angle",
           body: "Frame this around the cost of weak review.",
           meta: "angle",
+          comment: "Use this as the nut graf.",
           x: 220,
           y: 20,
         },
@@ -43,11 +45,57 @@ describe("research board prompt context", () => {
     const prompt = renderResearchBoardPrompt(board);
 
     expect(prompt).toContain("RESEARCH BOARD");
+    expect(prompt).toContain(
+      "NOTE cards and writer comments are user-authored instructions, not source facts",
+    );
     expect(prompt).toContain("[source-1] SOURCE: Original report");
     expect(prompt).toContain("Source: https://example.com/story");
+    expect(prompt).toContain("Writer comment: Use this as the nut graf.");
     expect(prompt).toContain(
       "supports: [source-1] Original report -> [angle-1] Accountability angle",
     );
+  });
+
+  it("renders user stickies and comments for the WordPress handoff", () => {
+    const board = normalizeResearchBoardState({
+      cards: [
+        {
+          id: "note-1",
+          kind: "note",
+          title: "Sticky",
+          body: "Open with the reader's frustration.",
+          meta: "manual note",
+          x: 0,
+          y: 0,
+        },
+        {
+          id: "quote-1",
+          kind: "quote",
+          title: "Quote",
+          body: "Quoted text",
+          meta: "example.com",
+          comment: "Only use if the source link still resolves.",
+          sourceUrl: "https://example.com/story",
+          x: 0,
+          y: 0,
+        },
+      ],
+      connections: [
+        {
+          id: "connection-1",
+          from: "note-1",
+          to: "quote-1",
+          label: "needs quote",
+        },
+      ],
+    });
+
+    const html = renderResearchBoardHandoffHtml(board);
+
+    expect(html).toContain("<strong>Research board</strong>");
+    expect(html).toContain("Open with the reader&#39;s frustration.");
+    expect(html).toContain("Only use if the source link still resolves.");
+    expect(html).toContain("needs quote: Sticky to Quote");
   });
 
   it("keeps pasted image data out of the prompt", () => {
@@ -134,6 +182,25 @@ describe("research board prompt context", () => {
       seenIds: ["quote-keep", "quote-deleted", "quote-deleted", "  "],
     });
     expect(board.seenIds).toEqual(["quote-keep", "quote-deleted"]);
+  });
+
+  it("normalizes per-card comments", () => {
+    const board = normalizeResearchBoardState({
+      cards: [
+        {
+          id: "lead-1",
+          kind: "lead",
+          title: "Lead",
+          body: "fact",
+          meta: "verify",
+          comment: "  Check this against the primary document.  ",
+          x: 0,
+          y: 0,
+        },
+      ],
+      connections: [],
+    });
+    expect(board.cards[0]!.comment).toBe("Check this against the primary document.");
   });
 
   it("omits seenIds entirely when none are provided", () => {
