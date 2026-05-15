@@ -398,13 +398,16 @@ export async function disconnectOutlet(
 /**
  * Decrypt outlet credentials for the publish capability.
  */
-export async function getOutletCredentials(outletId: string): Promise<WPCredentials | null> {
+export async function getOutletCredentials(
+  outletId: string,
+  userId: string,
+): Promise<WPCredentials | null> {
   await ensureSchema();
   const r = await db.execute({
     sql: `SELECT base_url, app_password_encrypted, wpcom_token_expires_at,
                  wpcom_refresh_token_encrypted
-          FROM outlets WHERE id = ?`,
-    args: [outletId],
+          FROM outlets WHERE id = ? AND user_id = ?`,
+    args: [outletId, userId],
   });
   if (r.rows.length === 0) return null;
   const blob = r.rows[0]!.app_password_encrypted as ArrayBuffer | Uint8Array | null;
@@ -417,13 +420,13 @@ export async function getOutletCredentials(outletId: string): Promise<WPCredenti
 
   if (wasLegacyPlaintext) {
     await db.execute({
-      sql: `UPDATE outlets SET app_password_encrypted = ? WHERE id = ?`,
-      args: [secretStringToBlob(encryptSecret(payload)), outletId],
+      sql: `UPDATE outlets SET app_password_encrypted = ? WHERE id = ? AND user_id = ?`,
+      args: [secretStringToBlob(encryptSecret(payload)), outletId, userId],
     });
   }
 
   if (parsed.authType === "wpcom-oauth") {
-    return maybeRefreshWpcomCredentials(outletId, parsed, r.rows[0]!);
+    return maybeRefreshWpcomCredentials(outletId, userId, parsed, r.rows[0]!);
   }
 
   return parsed;
@@ -431,6 +434,7 @@ export async function getOutletCredentials(outletId: string): Promise<WPCredenti
 
 async function maybeRefreshWpcomCredentials(
   outletId: string,
+  userId: string,
   credentials: Extract<WPCredentials, { authType: "wpcom-oauth" }>,
   row: Record<string, unknown>,
 ): Promise<WPCredentials | null> {
@@ -441,6 +445,7 @@ async function maybeRefreshWpcomCredentials(
   if (!refreshToken) {
     await recordOutletRefreshError(
       outletId,
+      userId,
       "WordPress.com token is expiring and no refresh token is available. Reconnect this outlet.",
     );
     return null;
@@ -461,13 +466,14 @@ async function maybeRefreshWpcomCredentials(
                 wpcom_refresh_token_encrypted = ?,
                 wpcom_token_kid = ?,
                 last_error = NULL
-            WHERE id = ?`,
+            WHERE id = ? AND user_id = ?`,
       args: [
         secretStringToBlob(encryptSecret(`wpcom-oauth:${payload}`)),
         refreshed.expiresAt,
         secretStringToBlob(encryptSecret(nextRefreshToken)),
         WPCOM_TOKEN_KID,
         outletId,
+        userId,
       ],
     });
     return nextCredentials;
@@ -476,15 +482,19 @@ async function maybeRefreshWpcomCredentials(
       err instanceof Error
         ? `WordPress.com token refresh failed: ${err.message}`
         : "WordPress.com token refresh failed.";
-    await recordOutletRefreshError(outletId, message);
+    await recordOutletRefreshError(outletId, userId, message);
     return null;
   }
 }
 
-async function recordOutletRefreshError(outletId: string, message: string): Promise<void> {
+async function recordOutletRefreshError(
+  outletId: string,
+  userId: string,
+  message: string,
+): Promise<void> {
   await db.execute({
-    sql: `UPDATE outlets SET last_error = ? WHERE id = ?`,
-    args: [message, outletId],
+    sql: `UPDATE outlets SET last_error = ? WHERE id = ? AND user_id = ?`,
+    args: [message, outletId, userId],
   });
 }
 

@@ -18,6 +18,18 @@ import {
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
 import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
 
+const { publishToWordPressMock } = vi.hoisted(() => ({
+  publishToWordPressMock: vi.fn(),
+}));
+
+vi.mock("@/lib/wordpress", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    publishToWordPress: publishToWordPressMock,
+  };
+});
+
 let cookieJar: Map<string, string>;
 
 vi.mock("next/headers", () => ({
@@ -80,8 +92,10 @@ async function callAction(name: string, form: Record<string, string>): Promise<v
 
 beforeEach(async () => {
   cookieJar = new Map();
+  publishToWordPressMock.mockReset();
   process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
   process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
+  process.env.FLAVORPRESS_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
   delete process.env.FLAVORPRESS_AUTH;
 });
 
@@ -257,6 +271,48 @@ describe("deleteDraftAction - cross-user isolation", () => {
       args: [draftId],
     });
     expect(r.rows.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// publishDraftToWPAction
+// ---------------------------------------------------------------------------
+
+describe("publishDraftToWPAction - outlet isolation", () => {
+  it("does not publish a user B draft through user A's outlet", async () => {
+    const { userA, userB } = await createTwoUserFixture();
+    const outletA = await seedOutletForUser(userA.id);
+    await db.execute({
+      sql: `UPDATE outlets
+            SET username = ?, app_password_encrypted = ?, connected_at = ?
+            WHERE id = ?`,
+      args: [
+        "alice",
+        new Uint8Array(Buffer.from("alice:application-password", "utf8")),
+        Date.now(),
+        outletA,
+      ],
+    });
+    const clusterB = await seedClusterForUser(userB.id);
+    const draftB = await seedDraftForUser(userB.id, { clusterId: clusterB, outletId: outletA });
+
+    await loginAs(userB.id);
+    const fd = new FormData();
+    fd.set("draftId", draftB);
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+
+    await expect(mod.publishDraftToWPAction!(fd)).rejects.toThrow(/stored credentials/i);
+    expect(publishToWordPressMock).not.toHaveBeenCalled();
+
+    const r = await db.execute({
+      sql: `SELECT wp_post_id, wp_edit_link FROM drafts WHERE id = ?`,
+      args: [draftB],
+    });
+    expect(r.rows[0]!.wp_post_id).toBeNull();
+    expect(r.rows[0]!.wp_edit_link).toBeNull();
   });
 });
 

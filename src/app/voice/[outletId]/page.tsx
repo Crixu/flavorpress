@@ -87,7 +87,7 @@ export default async function VoiceDetailPage({ params, searchParams }: PageProp
     Number.isFinite(thinOverride) && thinOverride >= 0 ? thinOverride : null;
 
   if (!row && outlet.connected && archivePostCount === null) {
-    const creds = await getOutletCredentials(outletId);
+    const creds = await getOutletCredentials(outletId, session.userId);
     if (creds) {
       try {
         archivePostCount = await getOutletPostCount(creds);

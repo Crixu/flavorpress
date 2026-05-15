@@ -1763,7 +1763,7 @@ export async function buildVoiceProfileAction(formData: FormData) {
   if (!outlet) throw new Error("Outlet not found.");
   if (!outlet.connected) throw new Error("Connect this outlet first.");
 
-  const creds = await getOutletCredentials(outletId);
+  const creds = await getOutletCredentials(outletId, session.userId);
   if (!creds) throw new Error("Outlet credentials missing.");
 
   const wpPosts = await listRecentPosts(creds, 50);
@@ -2620,7 +2620,7 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
 
   const outletId = String(row.outlet_id ?? "");
   if (!outletId) throw new Error("Draft is not bound to an outlet.");
-  const creds = await getOutletCredentials(outletId);
+  const creds = await getOutletCredentials(outletId, session.userId);
   if (!creds) {
     throw new Error(
       "Outlet has no stored credentials. Reconnect the outlet on /voice and try again.",
@@ -2756,7 +2756,7 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
 
   const outletId = String(row.outlet_id ?? "");
   if (!outletId) throw new Error("Draft is not bound to an outlet.");
-  const creds = await getOutletCredentials(outletId);
+  const creds = await getOutletCredentials(outletId, session.userId);
   if (!creds) {
     throw new Error(
       "Outlet has no stored credentials. Reconnect the outlet on /voice and try again.",
