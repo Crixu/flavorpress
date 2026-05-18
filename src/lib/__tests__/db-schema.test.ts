@@ -66,6 +66,16 @@ describe("auth-foundation schema", () => {
     expect(cols.has("poll_all_enabled")).toBe(true);
   });
 
+  it("creates user_ai_budget table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("user_ai_budget");
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("day_utc")).toBe(true);
+    expect(cols.has("tokens_remaining")).toBe(true);
+    expect(cols.has("tokens_limit")).toBe(true);
+    expect(cols.has("updated_at")).toBe(true);
+  });
+
   it("creates deployment_state table", async () => {
     await ensureSchema();
     const cols = await tableInfo("deployment_state");

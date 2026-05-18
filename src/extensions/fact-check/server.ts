@@ -11,10 +11,10 @@ import "server-only";
  * fragile DOM offsets.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { db, ensureSchema } from "@/lib/db";
 import { requireSession } from "@/lib/session";
-import { extractText, extractJson } from "@/lib/anthropic";
+import { createAnthropicApiClient, extractText, extractJson } from "@/lib/anthropic";
 import { sanitizeDraftHtml } from "@/lib/draft-html-sanitizer";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "@/lib/v1/settings";
 import { wrapUntrustedSource } from "@/lib/v1/prompt-safety";
@@ -76,7 +76,7 @@ export async function runFactCheck(
     );
   }
   const model = await getAnthropicDraftModel();
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropicApiClient(apiKey, session.userId);
 
   // Cap web_search at MAX_CLAIMS. The model still needs one lookup per
   // checkable claim; doubling that budget gave a hostile body room to
@@ -310,7 +310,7 @@ export async function suggestFactCheckFix(
     );
   }
   const model = await getAnthropicDraftModel();
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropicApiClient(apiKey, session.userId);
 
   // The source URL/title is shown only for citation context. We do NOT
   // give the model a fetcher or web_search here, so it has no way to

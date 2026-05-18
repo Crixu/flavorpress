@@ -143,7 +143,7 @@ export async function rerollHeadlines(input: RerollInput): Promise<RerollResult>
     rejected,
   });
 
-  const generated = await callModel(prompt);
+  const generated = await callModel(input.userId, prompt);
   const fresh = dedupeKeepOrder(
     generated.headlines
       .map((h) => h.trim())
@@ -217,11 +217,14 @@ interface ModelResult {
   isStub: boolean;
 }
 
-async function callModel(prompt: {
-  systemPrompt: string;
-  userMessage: string;
-}): Promise<ModelResult> {
-  const { client } = await createAnthropicClient();
+async function callModel(
+  userId: string,
+  prompt: {
+    systemPrompt: string;
+    userMessage: string;
+  },
+): Promise<ModelResult> {
+  const { client } = await createAnthropicClient(userId);
   if (!client) return stub();
 
   const model = await getAnthropicDraftModel();

@@ -76,7 +76,7 @@ export async function generateAngleSuggestions(
 
   const archiveDescription = await loadOutletDescription(input.outletId, input.userId);
 
-  const { client } = await createAnthropicClient();
+  const { client } = await createAnthropicClient(input.userId);
   if (!client) {
     return stubAngles(input.format);
   }

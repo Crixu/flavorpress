@@ -117,19 +117,21 @@ export async function runReextractEntitiesJob(userId: string): Promise<JobStartR
     contentHash: String(row.content_hash ?? ""),
   }));
 
-  after(() => runReextractInBackground(jobId, items));
+  after(() => runReextractInBackground(jobId, items, userId));
   return { jobId, total };
 }
 
 async function runReextractInBackground(
   jobId: string,
   items: { id: string; title: string; lede: string; contentHash: string }[],
+  userId: string,
 ): Promise<void> {
   try {
     const queue = items.slice();
     const inflight = new Set<Promise<void>>();
     const work = async (it: (typeof items)[number]): Promise<void> => {
       const extracted = await extractItemEntities({
+        userId,
         title: it.title,
         lede: it.lede,
         contentHash: it.contentHash,

@@ -301,7 +301,7 @@ export async function rewriteParagraph(
     surroundingContext: surrounding,
   });
 
-  const generated = await callModel(prompt);
+  const generated = await callModel(input.userId, prompt);
   const fresh = generated.paragraph.trim();
 
   // No-op cases: empty model output, or the no-auth stub. Headlines can
@@ -405,11 +405,14 @@ interface ModelResult {
   isStub: boolean;
 }
 
-async function callModel(prompt: {
-  systemPrompt: string;
-  userMessage: string;
-}): Promise<ModelResult> {
-  const { client } = await createAnthropicClient();
+async function callModel(
+  userId: string,
+  prompt: {
+    systemPrompt: string;
+    userMessage: string;
+  },
+): Promise<ModelResult> {
+  const { client } = await createAnthropicClient(userId);
   if (!client) return stub();
 
   const model = await getAnthropicDraftModel();

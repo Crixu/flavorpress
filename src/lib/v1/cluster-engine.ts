@@ -164,6 +164,7 @@ export async function handleItemIngested(
   for (const c of shortlist) {
     const w = c.item;
     const verdict = await askMergeOracle({
+      userId: item.userId,
       aHash: item.contentHash,
       aTitle: item.title,
       aLede: item.lede,

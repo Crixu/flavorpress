@@ -37,6 +37,7 @@ export interface EntityExtraction {
 }
 
 interface ExtractionInput {
+  userId: string;
   title: string;
   lede: string;
   contentHash: string;
@@ -111,7 +112,7 @@ async function runLLMExtraction(
   input: ExtractionInput,
   model: string,
 ): Promise<{ entities: string[]; primarySubject: string | null; beatTag: string | null } | null> {
-  const { client } = await createAnthropicClient();
+  const { client } = await createAnthropicClient(input.userId);
   if (!client) return null;
 
   const sourceNonce = newSourceNonce();

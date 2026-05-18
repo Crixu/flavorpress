@@ -219,6 +219,7 @@ export async function runConnector<TRaw>(
       // set degrades gracefully rather than blocking ingest.
       try {
         const extracted = await extractItemEntities({
+          userId: source.userId,
           title: item.title,
           lede: item.lede,
           contentHash,

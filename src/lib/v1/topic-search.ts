@@ -76,7 +76,7 @@ export async function topicSearch(userId: string, topic: string): Promise<TopicS
   const trimmed = topic.trim();
   if (trimmed.length < 3) throw new Error("Topic is too short.");
 
-  const { client, mode } = await createAnthropicClient();
+  const { client, mode } = await createAnthropicClient(userId);
   if (!client) {
     throw new Error(
       "Topic search needs Anthropic credentials. Sign in to Claude Code, or add an API key on /settings.",

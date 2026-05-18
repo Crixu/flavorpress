@@ -38,7 +38,7 @@ export function hostFromUrl(url: string): string {
   }
 }
 
-export async function generateSourceTitle(url: string): Promise<string> {
+export async function generateSourceTitle(url: string, userId: string): Promise<string> {
   const host = hostFromUrl(url);
   const xml = await tryFetchXml(url);
   const signals = xml ? extractFeedSignals(xml) : null;
@@ -52,7 +52,7 @@ export async function generateSourceTitle(url: string): Promise<string> {
   // failure should silently fall back rather than 500 the source-add
   // flow it runs from.
   try {
-    const { client } = await createAnthropicClient();
+    const { client } = await createAnthropicClient(userId);
     if (!client) return fallback;
     const model = await getAnthropicDraftModel();
     const sourceNonce = newSourceNonce();
