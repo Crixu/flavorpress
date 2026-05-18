@@ -1,11 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type * as EmailModule from "@/lib/email";
 import { db, ensureSchema } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
+import { rateLimitKey } from "@/lib/rate-limit";
 import { createUser } from "@/lib/users";
 
 const sendCalls: { to: string; subject: string }[] = [];
+let forwardedFor = "198.51.101.1";
+let ipCounter = 1;
 vi.mock("@/lib/email", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/email")>("@/lib/email");
+  const actual = await vi.importActual<typeof EmailModule>("@/lib/email");
   return {
     ...actual,
     sendEmail: async (msg: { to: string; subject: string; html: string; text: string }) => {
@@ -31,6 +35,7 @@ vi.mock("next/headers", () => ({
     get: (name: string) => {
       if (name === "origin") return "http://localhost:3000";
       if (name === "x-forwarded-host") return "localhost:3000";
+      if (name === "x-forwarded-for") return forwardedFor;
       return null;
     },
   }),
@@ -40,6 +45,9 @@ beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM password_reset_tokens");
+  await db.execute("DELETE FROM rate_buckets");
+  forwardedFor = `198.51.101.${ipCounter}`;
+  ipCounter += 1;
   sendCalls.length = 0;
   redirectCalls.length = 0;
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
@@ -95,4 +103,55 @@ describe("requestPasswordResetAction", () => {
     const tokens = await db.execute("SELECT COUNT(*) AS n FROM password_reset_tokens");
     expect(Number(tokens.rows[0]!.n)).toBe(0);
   });
+
+  it("rate-limits reset requests by IP before issuing a token for a known user", async () => {
+    await createUser({
+      email: "known-rate@example.com",
+      passwordHash: await hashPassword("correct horse battery staple"),
+    });
+    await seedExhaustedBucket("reset", rateLimitKey("ip", forwardedFor));
+
+    const to = await callRequest("known-rate@example.com");
+
+    expect(to).toMatch(/error=rate/);
+    expect(sendCalls).toHaveLength(0);
+    const tokens = await db.execute("SELECT COUNT(*) AS n FROM password_reset_tokens");
+    expect(Number(tokens.rows[0]!.n)).toBe(0);
+  });
+
+  it("honors the normalized submitted email bucket before user lookup", async () => {
+    await seedExhaustedBucket("reset", rateLimitKey("account", "reset-me@example.com"));
+    await createUser({
+      email: "reset-me@example.com",
+      passwordHash: await hashPassword("correct horse battery staple"),
+    });
+    const to = await callRequest(" Reset-Me@Example.COM ");
+
+    expect(to).toMatch(/check=1/);
+    expect(sendCalls).toHaveLength(0);
+    const tokens = await db.execute("SELECT COUNT(*) AS n FROM password_reset_tokens");
+    expect(Number(tokens.rows[0]!.n)).toBe(0);
+  });
+
+  it("returns the same generic path for an unknown email with an exhausted submitted-email bucket", async () => {
+    await seedExhaustedBucket("reset", rateLimitKey("account", "ghost@example.com"));
+
+    const to = await callRequest(" Ghost@Example.COM ");
+
+    expect(to).toMatch(/check=1/);
+    expect(sendCalls).toHaveLength(0);
+    const tokens = await db.execute("SELECT COUNT(*) AS n FROM password_reset_tokens");
+    expect(Number(tokens.rows[0]!.n)).toBe(0);
+  });
 });
+
+async function seedExhaustedBucket(scope: string, key: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO rate_buckets (scope, key, tokens, refilled_at)
+          VALUES (?, ?, 0, ?)
+          ON CONFLICT(scope, key) DO UPDATE SET
+            tokens = excluded.tokens,
+            refilled_at = excluded.refilled_at`,
+    args: [scope, key, Math.floor(Date.now() / 60_000) * 60_000],
+  });
+}

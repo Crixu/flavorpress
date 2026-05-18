@@ -20,6 +20,7 @@ const errorMessages: Record<string, string> = {
   origin: "This sign-in request did not come from this FlavorPress app.",
   oauth_state: "The sign-in link expired or was tampered with. Try again.",
   oauth: "WordPress.com sign-in failed. Try again.",
+  rate: "Too many sign-in attempts. Try again in a minute.",
 };
 
 export default async function LoginPage({ searchParams }: PageProps) {

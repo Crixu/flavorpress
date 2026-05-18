@@ -3,8 +3,11 @@ import { db, ensureSchema } from "@/lib/db";
 import { issueInvite, readInvite } from "@/lib/invites";
 import { getUserByEmail } from "@/lib/users";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
+import { rateLimitKey } from "@/lib/rate-limit";
 
 let cookieJar: Map<string, string>;
+let forwardedFor = "198.51.104.1";
+let ipCounter = 1;
 
 vi.mock("next/headers", () => {
   return {
@@ -21,6 +24,7 @@ vi.mock("next/headers", () => {
       get: (name: string) => {
         if (name === "origin") return "http://localhost:3000";
         if (name === "x-forwarded-host") return "localhost:3000";
+        if (name === "x-forwarded-for") return forwardedFor;
         return null;
       },
     }),
@@ -64,7 +68,10 @@ beforeEach(async () => {
   await db.execute("DELETE FROM invites");
   await db.execute("DELETE FROM email_verification_tokens");
   await db.execute("DELETE FROM deployment_state");
+  await db.execute("DELETE FROM rate_buckets");
   cookieJar = new Map();
+  forwardedFor = `198.51.104.${ipCounter}`;
+  ipCounter += 1;
   redirectCalls.length = 0;
   emailMock.sendCalls.length = 0;
   emailMock.shouldFail = false;
@@ -214,6 +221,24 @@ describe("signupAction", () => {
     expect(emailMock.sendCalls[0]!.subject).toMatch(/verify/i);
   });
 
+  it("rate-limits signup by IP before consuming the invite or sending verification", async () => {
+    const { token } = await issueInvite({});
+    await seedExhaustedBucket("signup", rateLimitKey("ip", forwardedFor));
+
+    const to = await callSignup({
+      invite: token,
+      email: "rate@example.com",
+      password: "correct horse battery staple",
+    });
+
+    expect(to).toMatch(/\/signup\?.*error=rate/);
+    expect(await readInvite(token)).not.toBeNull();
+    expect(await getUserByEmail("rate@example.com")).toBeNull();
+    expect(emailMock.sendCalls).toHaveLength(0);
+    const tokens = await db.execute("SELECT COUNT(*) AS n FROM email_verification_tokens");
+    expect(Number(tokens.rows[0]!.n)).toBe(0);
+  });
+
   it("rolls back signup when the verification email cannot be sent", async () => {
     emailMock.shouldFail = true;
     const { token } = await issueInvite({});
@@ -230,3 +255,14 @@ describe("signupAction", () => {
     expect(Number(tokens.rows[0]!.n)).toBe(0);
   });
 });
+
+async function seedExhaustedBucket(scope: string, key: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO rate_buckets (scope, key, tokens, refilled_at)
+          VALUES (?, ?, 0, ?)
+          ON CONFLICT(scope, key) DO UPDATE SET
+            tokens = excluded.tokens,
+            refilled_at = excluded.refilled_at`,
+    args: [scope, key, Math.floor(Date.now() / 60_000) * 60_000],
+  });
+}

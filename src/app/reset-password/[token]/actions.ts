@@ -6,6 +6,7 @@ import { isAllowedMutationOrigin, requestOriginFromHeaders } from "@/lib/auth";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { consumePasswordResetToken } from "@/lib/email-tokens";
 import { getUserById, markEmailVerified, updatePassword } from "@/lib/users";
+import { AUTH_IP_RATE_LIMIT, consumeRateLimit, getClientIp, rateLimitKey } from "@/lib/rate-limit";
 
 function safeToken(raw: string): string {
   if (raw.length > 128) return "";
@@ -27,6 +28,12 @@ export async function confirmPasswordResetAction(formData: FormData) {
   if (!isAllowedMutationOrigin(headerStore, requestOrigin)) {
     redirect(errorPath(token, "origin"));
   }
+  const ipLimit = await consumeRateLimit({
+    scope: "reset_confirm",
+    key: rateLimitKey("ip", getClientIp(headerStore)),
+    ...AUTH_IP_RATE_LIMIT,
+  });
+  if (!ipLimit.ok) redirect(errorPath(token, "rate"));
 
   if (!token) redirect("/reset-password?error=token");
 

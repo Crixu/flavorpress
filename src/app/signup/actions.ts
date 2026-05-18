@@ -13,6 +13,7 @@ import { issueVerificationToken } from "@/lib/email-tokens";
 import { sendEmail } from "@/lib/email";
 import { verificationEmail } from "@/lib/email-templates";
 import { notifySignupWithEmail } from "@/lib/notifications";
+import { AUTH_IP_RATE_LIMIT, consumeRateLimit, getClientIp, rateLimitKey } from "@/lib/rate-limit";
 
 function safeInvite(raw: string): string {
   if (raw.length > 64) return "";
@@ -41,6 +42,12 @@ export async function signupAction(formData: FormData) {
   if (!isAllowedMutationOrigin(headerStore, requestOrigin)) {
     redirect(signupErrorPath(invite, "origin"));
   }
+  const ipLimit = await consumeRateLimit({
+    scope: "signup",
+    key: rateLimitKey("ip", getClientIp(headerStore)),
+    ...AUTH_IP_RATE_LIMIT,
+  });
+  if (!ipLimit.ok) redirect(signupErrorPath(invite, "rate"));
 
   if (!invite) redirect(signupErrorPath("", "invite"));
   const inviteRow = await readInvite(invite);
