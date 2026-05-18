@@ -284,7 +284,7 @@ function ExtensionsSectionPane({
                 placeholder={field.placeholder}
                 saveLabel={field.saveLabel}
                 section="extensions"
-                defaultValue={field.inputType === "password" ? undefined : snap.value ?? ""}
+                defaultValue={field.inputType === "password" ? undefined : (snap.value ?? "")}
               />
             );
           })}
@@ -356,16 +356,16 @@ function AuthModeRow({ mode, hasApiKey }: { mode: AuthMode; hasApiKey: boolean }
           line: "FlavorPress is using your Anthropic API key. All features (drafting, fact-check) work.",
         }
       : mode === "cli"
-      ? {
-          chip: { label: "Claude Code login", cls: "fp-chip fp-chip-emerald" },
-          line: hasApiKey
-            ? "FlavorPress is riding your local Claude Code login for drafting. Fact-check uses the API key you also have configured below."
-            : "FlavorPress is riding your local Claude Code login. Drafting works without an API key. Fact-check still requires a key (it uses Anthropic's web_search tool); add one below to enable it.",
-        }
-      : {
-          chip: { label: "Not connected", cls: "fp-chip fp-chip-rose" },
-          line: "No Anthropic auth configured. Paste an API key below, or install and sign in to Claude Code to use the local-login path.",
-        };
+        ? {
+            chip: { label: "Claude Code login", cls: "fp-chip fp-chip-emerald" },
+            line: hasApiKey
+              ? "FlavorPress is riding your local Claude Code login for drafting. Fact-check uses the API key you also have configured below."
+              : "FlavorPress is riding your local Claude Code login. Drafting works without an API key. Fact-check still requires a key (it uses Anthropic's web_search tool); add one below to enable it.",
+          }
+        : {
+            chip: { label: "Not connected", cls: "fp-chip fp-chip-rose" },
+            line: "No Anthropic auth configured. Paste an API key below, or install and sign in to Claude Code to use the local-login path.",
+          };
   return (
     <section className="fp-card p-5 space-y-2">
       <div className="flex items-center gap-2 text-sm">
@@ -458,10 +458,10 @@ function SourceLine({
     source === "db"
       ? { label: "Stored locally", cls: "fp-chip fp-chip-emerald" }
       : source === "env"
-      ? { label: `from ${envVar}`, cls: "fp-chip fp-chip-amber" }
-      : source === "default"
-      ? { label: "default", cls: "fp-chip" }
-      : { label: "not set", cls: "fp-chip fp-chip-rose" };
+        ? { label: `from ${envVar}`, cls: "fp-chip fp-chip-amber" }
+        : source === "default"
+          ? { label: "default", cls: "fp-chip" }
+          : { label: "not set", cls: "fp-chip fp-chip-rose" };
   return (
     <div className="flex items-center gap-2 text-[12px]" style={{ color: "var(--fg-muted)" }}>
       <span className={chip.cls}>{chip.label}</span>
@@ -502,16 +502,16 @@ function Banner({
           border: "color-mix(in srgb, var(--emerald) 25%, var(--border))",
         }
       : kind === "warn"
-      ? {
-          bg: "var(--amber-tint)",
-          fg: "var(--amber)",
-          border: "color-mix(in srgb, var(--amber) 25%, var(--border))",
-        }
-      : {
-          bg: "var(--rose-tint)",
-          fg: "var(--rose)",
-          border: "color-mix(in srgb, var(--rose) 25%, var(--border))",
-        };
+        ? {
+            bg: "var(--amber-tint)",
+            fg: "var(--amber)",
+            border: "color-mix(in srgb, var(--amber) 25%, var(--border))",
+          }
+        : {
+            bg: "var(--rose-tint)",
+            fg: "var(--rose)",
+            border: "color-mix(in srgb, var(--rose) 25%, var(--border))",
+          };
   return (
     <div
       className="rounded-lg px-4 py-3 text-sm mb-6"

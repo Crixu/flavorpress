@@ -93,8 +93,7 @@ export function withJsonPrefill(
 
 export type AuthMode = "api" | "cli" | "none";
 
-export interface AnthropicLikeStream
-  extends AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
+export interface AnthropicLikeStream extends AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
   controller: { abort(): void };
 }
 

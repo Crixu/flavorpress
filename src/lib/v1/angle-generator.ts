@@ -205,8 +205,8 @@ function stubTitle(kind: AngleSuggestion["kind"], format: DraftFormatOption): st
     kind === "archive"
       ? "What this changes about the story you've already told"
       : kind === "gap"
-      ? "The detail most outlets are skipping"
-      : "A starting point for readers new to this beat";
+        ? "The detail most outlets are skipping"
+        : "A starting point for readers new to this beat";
   if (format.presetId === "qa") return `${base}?`;
   if (format.presetId === "listicle") return `5 ways: ${base.toLowerCase()}`;
   return base;

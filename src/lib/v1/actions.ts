@@ -2365,7 +2365,7 @@ export async function generateDraftAction(formData: FormData) {
     }
   }
   const format =
-    mode === "researcher" ? undefined : submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT;
+    mode === "researcher" ? undefined : (submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT);
 
   if (mode === "researcher") {
     const notesResult = await generateNotes({
