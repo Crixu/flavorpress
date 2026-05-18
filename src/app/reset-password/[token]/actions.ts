@@ -1,14 +1,8 @@
 "use server";
 
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  SESSION_COOKIE_NAME,
-  createSessionCookie,
-  getSessionTtlSeconds,
-  isAllowedMutationOrigin,
-  requestOriginFromHeaders,
-} from "@/lib/auth";
+import { isAllowedMutationOrigin, requestOriginFromHeaders } from "@/lib/auth";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { consumePasswordResetToken } from "@/lib/email-tokens";
 import { getUserById, markEmailVerified, updatePassword } from "@/lib/users";
@@ -49,22 +43,5 @@ export async function confirmPasswordResetAction(formData: FormData) {
   await updatePassword(user.id, hash);
   await markEmailVerified(user.id);
 
-  const fresh = await getUserById(user.id);
-  if (!fresh) throw new Error("User vanished after password update");
-
-  const session = await createSessionCookie({
-    userId: fresh.id,
-    sessionVersion: fresh.sessionVersion,
-  });
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, session.value, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: true,
-    path: "/",
-    maxAge: getSessionTtlSeconds(),
-    expires: new Date(session.expiresAt),
-  });
-
-  redirect("/");
+  redirect("/login?reset=1");
 }
