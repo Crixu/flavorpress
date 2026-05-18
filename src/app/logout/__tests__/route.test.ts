@@ -96,4 +96,22 @@ describe("POST /logout", () => {
     const after = await getUserById(user.id);
     expect(after?.sessionVersion).toBe(user.sessionVersion + 1);
   });
+
+  it("only bumps once for concurrent logout attempts with the same cookie version", async () => {
+    const user = await createUser({ email: "concurrent@example.com", passwordHash: null });
+    const session = await createSessionCookie({
+      userId: user.id,
+      sessionVersion: user.sessionVersion,
+      secret: SECRET,
+    });
+    cookieJar.set(SESSION_COOKIE_NAME, session.value);
+
+    const { POST } = await import("@/app/logout/route");
+    const [first, second] = await Promise.all([POST(), POST()]);
+
+    expect(first.status).toBe(303);
+    expect(second.status).toBe(303);
+    const after = await getUserById(user.id);
+    expect(after?.sessionVersion).toBe(user.sessionVersion + 1);
+  });
 });

@@ -7,7 +7,7 @@ import {
   requestOriginFromHeaders,
   verifySessionCookie,
 } from "@/lib/auth";
-import { bumpSessionVersion, getUserById } from "@/lib/users";
+import { bumpSessionVersionIfActiveAndCurrent } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,10 +25,7 @@ export async function POST() {
     cookieStore.get(LEGACY_SESSION_COOKIE_NAME)?.value;
   const verified = await verifySessionCookie(sessionCookie);
   if (verified) {
-    const user = await getUserById(verified.userId);
-    if (user?.status === "active" && user.sessionVersion === verified.sessionVersion) {
-      await bumpSessionVersion(user.id);
-    }
+    await bumpSessionVersionIfActiveAndCurrent(verified.userId, verified.sessionVersion);
   }
 
   for (const name of [SESSION_COOKIE_NAME, LEGACY_SESSION_COOKIE_NAME]) {
