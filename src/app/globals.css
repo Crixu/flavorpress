@@ -995,6 +995,11 @@ p[data-fp-para-pending="1"] {
   padding: 10px 10px 0;
 }
 
+.fp-main:has(> .fp-settings-shell) {
+  width: 100%;
+  max-width: none;
+}
+
 /* Drafts bucket tabs */
 .fp-bucket-tabs {
   display: flex;

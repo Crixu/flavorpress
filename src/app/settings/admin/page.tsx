@@ -264,7 +264,7 @@ function UsersSection({ users, currentUserId }: { users: AdminUserRow[]; current
       </div>
       <div className="fp-card overflow-hidden">
         <div
-          className="hidden border-b md:grid md:grid-cols-[minmax(240px,1.4fr)_minmax(260px,1fr)_minmax(360px,1.8fr)]"
+          className="hidden border-b min-[1320px]:grid min-[1320px]:grid-cols-[minmax(220px,1fr)_minmax(320px,1.1fr)_minmax(360px,1.8fr)]"
           style={{ borderColor: "var(--border)", background: "var(--surface-subtle)" }}
         >
           <div className="fp-eyebrow px-5 py-3">User</div>
@@ -275,7 +275,7 @@ function UsersSection({ users, currentUserId }: { users: AdminUserRow[]; current
           {users.map((user) => (
             <li
               key={user.id}
-              className="grid gap-5 px-5 py-5 md:grid-cols-[minmax(240px,1.4fr)_minmax(260px,1fr)_minmax(360px,1.8fr)]"
+              className="grid gap-5 px-5 py-5 min-[1320px]:grid-cols-[minmax(220px,1fr)_minmax(320px,1.1fr)_minmax(360px,1.8fr)]"
             >
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{user.email}</div>
@@ -347,45 +347,64 @@ function UsageCount({ label, count }: { label: string; count: number }) {
 
 function UserControls({ user, isSelf }: { user: AdminUserRow; isSelf: boolean }) {
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
       <form action={setUserPlanAction} className="grid gap-3">
         <input type="hidden" name="userId" value={user.id} />
-        <label className="grid gap-1.5">
-          <span className="fp-eyebrow">Plan</span>
-          <select name="plan" defaultValue={user.plan} className="fp-input">
-            <option value="trial">Trial</option>
-            <option value="pro">Pro</option>
-            <option value="custom">Custom</option>
-          </select>
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          <LimitInput name="customOutletLimit" label="Outlets" defaultValue={user.limits.outlets} />
-          <LimitInput name="customSourceLimit" label="Sources" defaultValue={user.limits.sources} />
-          <LimitInput name="customFolderLimit" label="Folders" defaultValue={user.limits.folders} />
+        <div className="grid gap-3 min-[1400px]:grid-cols-[minmax(136px,0.6fr)_minmax(270px,1.4fr)]">
+          <label className="grid gap-1.5">
+            <span className="fp-eyebrow">Plan</span>
+            <select name="plan" defaultValue={user.plan} className="fp-input">
+              <option value="trial">Trial</option>
+              <option value="pro">Pro</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            <LimitInput
+              name="customOutletLimit"
+              label="Outlets"
+              defaultValue={user.limits.outlets}
+            />
+            <LimitInput
+              name="customSourceLimit"
+              label="Sources"
+              defaultValue={user.limits.sources}
+            />
+            <LimitInput
+              name="customFolderLimit"
+              label="Folders"
+              defaultValue={user.limits.folders}
+            />
+          </div>
         </div>
-        <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
-          <input
-            type="checkbox"
-            name="pollAllEnabled"
-            value="1"
-            defaultChecked={user.pollAllEnabled}
-            className="mt-1"
-          />
-          <span>
-            <span className="font-medium">Allow Poll all</span>
-            <span className="mt-0.5 block text-xs" style={{ color: "var(--fg-muted)" }}>
-              Custom-plan users with this enabled can poll every active source at once.
+        <div className="grid gap-3 min-[1400px]:grid-cols-[minmax(0,1fr)_auto] min-[1400px]:items-start">
+          <label className="flex min-h-11 items-start gap-2 rounded-md border px-3 py-2.5 text-sm">
+            <input
+              type="checkbox"
+              name="pollAllEnabled"
+              value="1"
+              defaultChecked={user.pollAllEnabled}
+              className="mt-1"
+            />
+            <span>
+              <span className="font-medium">Allow Poll all</span>
+              <span className="mt-0.5 block text-xs" style={{ color: "var(--fg-muted)" }}>
+                Custom-plan users can poll every active source at once.
+              </span>
             </span>
-          </span>
-        </label>
-        <div className="flex items-center gap-3">
-          <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Saving">
-            Save plan
-          </SubmitButton>
-          <PendingMessage>Saving plan limits.</PendingMessage>
+          </label>
+          <div className="flex items-center gap-3 min-[1400px]:justify-end">
+            <SubmitButton className="fp-btn fp-btn-ghost" pendingLabel="Saving">
+              Save plan
+            </SubmitButton>
+            <PendingMessage>Saving plan limits.</PendingMessage>
+          </div>
         </div>
       </form>
-      <div className="flex flex-wrap gap-2 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+      <div
+        className="flex flex-wrap gap-2 border-t pt-3 min-[1400px]:justify-end"
+        style={{ borderColor: "var(--border)" }}
+      >
         <Link href={`/settings/admin/users/${user.id}`} className="fp-btn fp-btn-ghost">
           View sources
         </Link>
