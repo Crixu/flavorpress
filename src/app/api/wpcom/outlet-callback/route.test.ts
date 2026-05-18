@@ -45,7 +45,7 @@ import { GET } from "./route";
 
 const fetchMock = vi.fn();
 
-beforeEach(() => {
+beforeEach(async () => {
   mocks.cookieJar.clear();
   for (const mock of [
     mocks.requireSession,
@@ -66,7 +66,7 @@ beforeEach(() => {
   mocks.commitOutletWpcomOAuthCredentials.mockResolvedValue(undefined);
   mocks.getOutlet.mockResolvedValue({ wpcomExpectedBlogId: "123" });
   mocks.recordOutletError.mockResolvedValue(undefined);
-  resetWpcomStateCacheForTests();
+  await resetWpcomStateCacheForTests();
 });
 
 function locationOf(response: Response): string | null {

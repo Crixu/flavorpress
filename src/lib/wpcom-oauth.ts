@@ -24,9 +24,6 @@ type EnvLike = Record<string, string | undefined>;
 
 const encoder = new TextEncoder();
 
-// Set of consumed nonces. Bounded by the TTL window; cleared on test reset.
-const consumedNonces = new Set<string>();
-
 export function wpcomStateCookieOptions(maxAgeSec: number) {
   return {
     httpOnly: true,
@@ -37,8 +34,11 @@ export function wpcomStateCookieOptions(maxAgeSec: number) {
   };
 }
 
-export function resetWpcomStateCacheForTests(): void {
-  consumedNonces.clear();
+export async function resetWpcomStateCacheForTests(): Promise<void> {
+  if (process.env.NODE_ENV !== "test") return;
+  const { db, ensureSchema } = await import("./db");
+  await ensureSchema();
+  await db.execute("DELETE FROM oauth_state_nonces WHERE kind LIKE 'wpcom:%'");
 }
 
 export function getWpcomStateSecret(): string {
@@ -96,6 +96,7 @@ export async function issueWpcomState(state: WpcomOAuthState): Promise<string> {
 }
 
 export async function consumeWpcomState(token: string): Promise<WpcomOAuthState | null> {
+  const now = Date.now();
   const parts = token.split(".");
   if (parts.length !== 3 || parts[0] !== "v1") return null;
   const [, part, sig] = parts;
@@ -110,24 +111,61 @@ export async function consumeWpcomState(token: string): Promise<WpcomOAuthState 
   } catch {
     return null;
   }
-  if (typeof payload.exp !== "number" || payload.exp <= Date.now()) return null;
-  if (typeof payload.nonce !== "string") return null;
+  if (typeof payload.exp !== "number" || payload.exp <= now) return null;
+  if (
+    typeof payload.nonce !== "string" ||
+    payload.nonce.length === 0 ||
+    payload.nonce.length > 256
+  ) {
+    return null;
+  }
   if (payload.mode !== "signup" && payload.mode !== "login" && payload.mode !== "outlet") {
     return null;
   }
-  if (consumedNonces.has(payload.nonce)) return null;
-  consumedNonces.add(payload.nonce);
-  // Bound cache growth: drop oldest entries when over a soft cap.
-  if (consumedNonces.size > 4096) {
-    const drop = consumedNonces.values().next().value;
-    if (drop) consumedNonces.delete(drop);
-  }
+  const consumed = await consumeStateNonce({
+    nonce: payload.nonce,
+    kind: `wpcom:${payload.mode}`,
+    now,
+    expiresAt: payload.exp,
+  });
+  if (!consumed) return null;
   const out: WpcomOAuthState = { nonce: payload.nonce, mode: payload.mode };
   if (payload.invite) out.invite = payload.invite;
   if (payload.userId) out.userId = payload.userId;
   if (payload.outletId) out.outletId = payload.outletId;
   if (payload.expectedSiteUrl) out.expectedSiteUrl = payload.expectedSiteUrl;
   return out;
+}
+
+async function consumeStateNonce({
+  nonce,
+  kind,
+  now,
+  expiresAt,
+}: {
+  nonce: string;
+  kind: string;
+  now: number;
+  expiresAt: number;
+}): Promise<boolean> {
+  const { db, ensureSchema } = await import("./db");
+  await ensureSchema();
+  const [, insert] = await db.batch(
+    [
+      {
+        sql: `DELETE FROM oauth_state_nonces WHERE expires_at <= ?`,
+        args: [now],
+      },
+      {
+        sql: `INSERT OR IGNORE INTO oauth_state_nonces
+              (nonce, kind, bound_value, consumed_at, expires_at)
+              VALUES (?, ?, NULL, ?, ?)`,
+        args: [nonce, kind, now, expiresAt],
+      },
+    ],
+    "write",
+  );
+  return Number(insert?.rowsAffected ?? 0) > 0;
 }
 
 export function buildAuthorizeUrl(opts: { redirectUri: string; state: string }): string {

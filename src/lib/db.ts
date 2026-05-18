@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-18.mcp-tokens";
+const SCHEMA_VERSION = "2026-05-18.mcp-tokens-oauth-nonces";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -148,6 +148,16 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_wp_authorize_states_expires ON wp_authorize_states(expires_at)`,
       `CREATE INDEX IF NOT EXISTS idx_wp_authorize_states_outlet ON wp_authorize_states(outlet_id)`,
+
+      `CREATE TABLE IF NOT EXISTS oauth_state_nonces (
+        nonce TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        bound_value TEXT,
+        consumed_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        PRIMARY KEY (nonce, kind)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_oauth_state_nonces_expires ON oauth_state_nonces(expires_at)`,
 
       `CREATE TABLE IF NOT EXISTS source_folders (
         id TEXT PRIMARY KEY,
