@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-15.v3";
+const SCHEMA_VERSION = "2026-05-18.mcp-tokens";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -603,6 +603,16 @@ export async function ensureSchema(): Promise<void> {
         value TEXT,
         updated_at INTEGER NOT NULL
       )`,
+
+      `CREATE TABLE IF NOT EXISTS user_mcp_tokens (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        label TEXT,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        revoked_at INTEGER
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_mcp_tokens_user ON user_mcp_tokens(user_id, created_at DESC)`,
 
       `CREATE TABLE IF NOT EXISTS invites (
         token TEXT PRIMARY KEY,

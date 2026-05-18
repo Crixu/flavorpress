@@ -44,6 +44,17 @@ describe("auth-foundation schema", () => {
     expect(cols.has("user_id")).toBe(true);
   });
 
+  it("creates user_mcp_tokens table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("user_mcp_tokens");
+    expect(cols.has("token_hash")).toBe(true);
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("label")).toBe(true);
+    expect(cols.has("created_at")).toBe(true);
+    expect(cols.has("last_used_at")).toBe(true);
+    expect(cols.has("revoked_at")).toBe(true);
+  });
+
   it("creates user_plans table", async () => {
     await ensureSchema();
     const cols = await tableInfo("user_plans");
