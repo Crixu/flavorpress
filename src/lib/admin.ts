@@ -13,6 +13,7 @@ export interface AdminUserRow {
   outletCount: number;
   sourceCount: number;
   folderCount: number;
+  wpPushCount: number;
   plan: PlanKey;
   limits: PlanLimits;
   pollAllEnabled: boolean;
@@ -102,6 +103,7 @@ function mapAdminUserRow(row: Record<string, unknown>): AdminUserRow {
     outletCount: Number(row.outlet_count ?? 0),
     sourceCount: Number(row.source_count ?? 0),
     folderCount: Number(row.folder_count ?? 0),
+    wpPushCount: Number(row.wp_push_count ?? 0),
     plan,
     limits,
     pollAllEnabled: plan === "custom" && Number(row.poll_all_enabled ?? 0) === 1,
@@ -119,6 +121,7 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
                        COUNT(DISTINCT o.id) AS outlet_count,
                        COUNT(DISTINCT s.id) AS source_count,
                        COUNT(DISTINCT f.id) AS folder_count,
+                       COUNT(DISTINCT e.idempotency_key) AS wp_push_count,
                        p.plan AS plan,
                        p.custom_outlet_limit AS custom_outlet_limit,
                        p.custom_source_limit AS custom_source_limit,
@@ -128,6 +131,7 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
                 LEFT JOIN outlets o ON o.user_id = u.id
                 LEFT JOIN sources s ON s.user_id = u.id
                 LEFT JOIN source_folders f ON f.user_id = u.id
+                LEFT JOIN event_log e ON e.user_id = u.id AND e.type = 'wordpress.pushed'
                 LEFT JOIN user_plans p ON p.user_id = u.id
                 GROUP BY u.id
                 ORDER BY u.created_at DESC`,
@@ -211,6 +215,7 @@ export async function loadAdminUserDetailSnapshot(
                      COUNT(DISTINCT o.id) AS outlet_count,
                      COUNT(DISTINCT s.id) AS source_count,
                      COUNT(DISTINCT f.id) AS folder_count,
+                     COUNT(DISTINCT e.idempotency_key) AS wp_push_count,
                      p.plan AS plan,
                      p.custom_outlet_limit AS custom_outlet_limit,
                      p.custom_source_limit AS custom_source_limit,
@@ -220,6 +225,7 @@ export async function loadAdminUserDetailSnapshot(
               LEFT JOIN outlets o ON o.user_id = u.id
               LEFT JOIN sources s ON s.user_id = u.id
               LEFT JOIN source_folders f ON f.user_id = u.id
+              LEFT JOIN event_log e ON e.user_id = u.id AND e.type = 'wordpress.pushed'
               LEFT JOIN user_plans p ON p.user_id = u.id
               WHERE u.id = ?
               GROUP BY u.id`,

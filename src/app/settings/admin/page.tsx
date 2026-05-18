@@ -308,10 +308,11 @@ function UsersSection({ users, currentUserId }: { users: AdminUserRow[]; current
 
 function Usage({ user }: { user: AdminUserRow }) {
   return (
-    <div className="grid grid-cols-3 gap-4 text-sm">
+    <div className="grid grid-cols-2 gap-4 text-sm xl:grid-cols-4">
       <UsageCell label="Outlets" count={user.outletCount} limit={user.limits.outlets} />
       <UsageCell label="Sources" count={user.sourceCount} limit={user.limits.sources} />
       <UsageCell label="Folders" count={user.folderCount} limit={user.limits.folders} />
+      <UsageCount label="WP Pushes" count={user.wpPushCount} />
     </div>
   );
 }
@@ -331,6 +332,15 @@ function UsageCell({ label, count, limit }: { label: string; count: number; limi
           {limit}
         </span>
       </div>
+    </div>
+  );
+}
+
+function UsageCount({ label, count }: { label: string; count: number }) {
+  return (
+    <div>
+      <div className="fp-eyebrow">{label}</div>
+      <div className="mt-1 font-semibold tabular">{count}</div>
     </div>
   );
 }
