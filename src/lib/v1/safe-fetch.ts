@@ -57,6 +57,7 @@ for (const [network, prefix] of [
 const blockedHostnames = new Set([
   "localhost",
   "metadata",
+  "metadata.azure.com",
   "metadata.google.internal",
   "instance-data",
   "instance-data.ec2.internal",
@@ -230,7 +231,7 @@ export function isUnsafeIpAddress(address: string, family?: number): boolean {
   return true;
 }
 
-function parseHttpUrl(input: string | URL): URL {
+export function parseHttpUrl(input: string | URL): URL {
   let url: URL;
   try {
     url = input instanceof URL ? input : new URL(input);
@@ -242,6 +243,13 @@ function parseHttpUrl(input: string | URL): URL {
       "blocked_protocol",
       url.toString(),
       `blocked outbound protocol: ${url.protocol}`,
+    );
+  }
+  if (url.username || url.password) {
+    throw new SafeFetchError(
+      "blocked_userinfo",
+      url.toString(),
+      "blocked outbound URL credentials",
     );
   }
   return url;
