@@ -11,6 +11,7 @@ interface PageProps {
   searchParams: Promise<{
     error?: string;
     next?: string;
+    reset?: string;
   }>;
 }
 
@@ -26,6 +27,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const next = typeof sp.next === "string" ? sp.next : "/";
   const error = sp.error ? errorMessages[sp.error] : null;
+  const reset = sp.reset === "1";
   const oauthEnabled = isWpcomOAuthConfigured();
 
   return (
@@ -69,6 +71,11 @@ export default async function LoginPage({ searchParams }: PageProps) {
           {error ? (
             <div style={{ marginBottom: 14 }}>
               <Notice tone="error">{error}</Notice>
+            </div>
+          ) : null}
+          {reset ? (
+            <div style={{ marginBottom: 14 }}>
+              <Notice tone="success">Password updated. Sign in with the new password.</Notice>
             </div>
           ) : null}
 

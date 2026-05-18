@@ -62,7 +62,7 @@ async function callConfirm(token: string, password: string): Promise<string> {
 }
 
 describe("confirmPasswordResetAction", () => {
-  it("valid token + strong password: updates hash, bumps version, sets session cookie, redirects to /", async () => {
+  it("valid token + strong password: updates hash, bumps version, does not set a session, redirects to login", async () => {
     const u = await createUser({
       email: "a@example.com",
       passwordHash: await hashPassword("the old password long enough"),
@@ -71,13 +71,13 @@ describe("confirmPasswordResetAction", () => {
     const before = (await getUserByEmail("a@example.com"))!.sessionVersion;
 
     const to = await callConfirm(token, "fresh strong new password");
-    expect(to).toBe("/");
+    expect(to).toBe("/login?reset=1");
 
     const after = (await getUserByEmail("a@example.com"))!;
     expect(after.sessionVersion).toBe(before + 1);
     expect(after.emailVerifiedAt).not.toBeNull();
     expect(await verifyPassword("fresh strong new password", after.passwordHash!)).toBe(true);
-    expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
+    expect(cookieJar.get(SESSION_COOKIE_NAME)).toBeUndefined();
   });
 
   it("invalid token: error path, no DB mutation", async () => {
