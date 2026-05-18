@@ -90,6 +90,46 @@ async function callAction(name: string, form: Record<string, string>): Promise<v
   }
 }
 
+type LegacyPinnedFetch = (
+  url: URL,
+  target: { address: string; family: 4 | 6 },
+  signal: AbortSignal,
+) => Promise<{ status: number; headers: Record<string, string>; body: string }>;
+
+type SafePinnedFetch = (
+  target: { url: URL; address: string; family: 4 | 6; servername?: string },
+  init: RequestInit,
+) => Promise<Response>;
+
+async function setArticleFetchMocks(opts: {
+  legacyFetch: LegacyPinnedFetch;
+  safeFetch: SafePinnedFetch;
+}): Promise<void> {
+  const extractArticle = (await import("@/lib/v1/extract-article")) as unknown as {
+    _setPinnedFetcherForTests?: (fn: LegacyPinnedFetch) => void;
+  };
+  extractArticle._setPinnedFetcherForTests?.(opts.legacyFetch);
+
+  const safeFetch = (await import("@/lib/v1/safe-fetch")) as unknown as {
+    _setPinnedFetchForTests?: (fn: SafePinnedFetch) => void;
+  };
+  safeFetch._setPinnedFetchForTests?.(opts.safeFetch);
+}
+
+async function resetArticleFetchMocks(): Promise<void> {
+  const extractArticle = (await import("@/lib/v1/extract-article")) as unknown as {
+    _resetPinnedFetcherForTests?: () => void;
+  };
+  extractArticle._resetPinnedFetcherForTests?.();
+
+  const safeFetch = (await import("@/lib/v1/safe-fetch")) as unknown as {
+    _resetLookupForTests?: () => void;
+    _resetPinnedFetchForTests?: () => void;
+  };
+  safeFetch._resetLookupForTests?.();
+  safeFetch._resetPinnedFetchForTests?.();
+}
+
 beforeEach(async () => {
   cookieJar = new Map();
   publishToWordPressMock.mockReset();
@@ -333,6 +373,119 @@ describe("dismissClusterAction - cross-user isolation", () => {
       args: [clusterId],
     });
     expect(String(r.rows[0]!.state)).toBe("fired");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addSourceToClusterAction
+// ---------------------------------------------------------------------------
+
+describe("addSourceToClusterAction - cross-user isolation", () => {
+  it("rejects a foreign cluster before fetch or partial row creation", async () => {
+    const legacyFetchMock = vi.fn(async () => ({
+      status: 200,
+      headers: { "content-type": "text/html" },
+      body: "<html><body><article>Should not fetch.</article></body></html>",
+    }));
+    const safeFetchMock = vi.fn(
+      async () =>
+        new Response("<html><body><article>Should not fetch.</article></body></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    );
+    await setArticleFetchMocks({ legacyFetch: legacyFetchMock, safeFetch: safeFetchMock });
+    try {
+      const { userA, userB } = await createTwoUserFixture();
+      const clusterA = await seedClusterForUser(userA.id);
+
+      await loginAs(userB.id);
+      const fd = new FormData();
+      fd.set("clusterId", clusterA);
+      fd.set("url", "http://93.184.216.34/fresh-story");
+      const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+        string,
+        (f: FormData) => Promise<unknown>
+      >;
+
+      await expect(mod.addSourceToClusterAction!(fd)).rejects.toThrow(/not found/i);
+      expect(legacyFetchMock).not.toHaveBeenCalled();
+      expect(safeFetchMock).not.toHaveBeenCalled();
+
+      const items = await db.execute({
+        sql: `SELECT id FROM items WHERE user_id = ? OR cluster_id = ?`,
+        args: [userB.id, clusterA],
+      });
+      const sources = await db.execute({
+        sql: `SELECT id FROM sources WHERE user_id = ?`,
+        args: [userB.id],
+      });
+      expect(items.rows.length).toBe(0);
+      expect(sources.rows.length).toBe(0);
+    } finally {
+      await resetArticleFetchMocks();
+    }
+  });
+
+  it("adds an owned cluster source once and treats re-paste as idempotent", async () => {
+    const articleHtml = `
+      <html>
+        <head><title>Manual story</title></head>
+        <body>
+          <article>
+            <h1>Manual story</h1>
+            <p>${"Manual story body with enough source material for notes. ".repeat(8)}</p>
+            <p>${"This second paragraph gives Readability more text to keep. ".repeat(8)}</p>
+          </article>
+        </body>
+      </html>`;
+    const legacyFetchMock = vi.fn(async () => ({
+      status: 200,
+      headers: { "content-type": "text/html" },
+      body: articleHtml,
+    }));
+    const safeFetchMock = vi.fn(
+      async () =>
+        new Response(articleHtml, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    );
+    await setArticleFetchMocks({ legacyFetch: legacyFetchMock, safeFetch: safeFetchMock });
+    try {
+      const { userA } = await createTwoUserFixture();
+      const clusterId = await seedClusterForUser(userA.id);
+
+      await loginAs(userA.id);
+      const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+        string,
+        (f: FormData) => Promise<unknown>
+      >;
+      const first = new FormData();
+      first.set("clusterId", clusterId);
+      first.set("url", "http://93.184.216.34/owned-story");
+      await mod.addSourceToClusterAction!(first);
+
+      const second = new FormData();
+      second.set("clusterId", clusterId);
+      second.set("url", "http://93.184.216.34/owned-story");
+      await mod.addSourceToClusterAction!(second);
+
+      const items = await db.execute({
+        sql: `SELECT canonical_url, cluster_id, user_id FROM items WHERE user_id = ? AND cluster_id = ?`,
+        args: [userA.id, clusterId],
+      });
+      const sources = await db.execute({
+        sql: `SELECT id FROM sources WHERE user_id = ? AND kind = 'manual'`,
+        args: [userA.id],
+      });
+      expect(items.rows.length).toBe(1);
+      expect(String(items.rows[0]!.canonical_url)).toBe("http://93.184.216.34/owned-story");
+      expect(sources.rows.length).toBe(1);
+      expect(legacyFetchMock.mock.calls.length + safeFetchMock.mock.calls.length).toBe(1);
+    } finally {
+      await resetArticleFetchMocks();
+    }
   });
 });
 
