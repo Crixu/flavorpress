@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type * as EmailModule from "@/lib/email";
 import { db, ensureSchema } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { rateLimitKey } from "@/lib/rate-limit";
@@ -8,7 +9,7 @@ const sendCalls: { to: string; subject: string }[] = [];
 let forwardedFor = "198.51.101.1";
 let ipCounter = 1;
 vi.mock("@/lib/email", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/email")>("@/lib/email");
+  const actual = await vi.importActual<typeof EmailModule>("@/lib/email");
   return {
     ...actual,
     sendEmail: async (msg: { to: string; subject: string; html: string; text: string }) => {
