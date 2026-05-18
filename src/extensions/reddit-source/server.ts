@@ -73,10 +73,12 @@ function parseThreshold(raw: string | null | undefined): number | null {
   return n;
 }
 
-export async function getRedditEngagementThresholds(): Promise<RedditEngagementThresholds> {
+export async function getRedditEngagementThresholds(
+  userId: string,
+): Promise<RedditEngagementThresholds> {
   const [scoreDb, commentsDb] = await Promise.all([
-    getSetting(REDDIT_MIN_SCORE_KEY),
-    getSetting(REDDIT_MIN_COMMENTS_KEY),
+    getSetting(REDDIT_MIN_SCORE_KEY, userId),
+    getSetting(REDDIT_MIN_COMMENTS_KEY, userId),
   ]);
   const minScore =
     parseThreshold(scoreDb) ?? parseThreshold(process.env[REDDIT_MIN_SCORE_ENV] ?? null);
@@ -128,7 +130,7 @@ export const redditSourceExtension: SourceExtensionEntry = {
     return isRedditUrl(input);
   },
 
-  async resolve(input: string): Promise<ResolvedSource> {
+  async resolve(input: string, _userId: string): Promise<ResolvedSource> {
     const trimmed = input.trim();
     if (!isRedditUrl(trimmed)) {
       throw new Error(`reddit-source: refused to resolve non-reddit input: ${input}`);

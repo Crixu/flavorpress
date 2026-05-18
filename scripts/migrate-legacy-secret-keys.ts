@@ -48,8 +48,9 @@ export interface MigrationResult {
 }
 
 interface SecretCell {
-  table: "outlets" | "app_settings";
+  table: "outlets" | "app_settings" | "user_settings";
   idValue: InValue;
+  keyValue?: InValue;
   column: "app_password_encrypted" | "wpcom_refresh_token_encrypted" | "value";
   value: unknown;
 }
@@ -196,6 +197,19 @@ async function listSecretCells(client: Client): Promise<SecretCell[]> {
     }
   }
 
+  if (await tableExists(client, "user_settings")) {
+    const r = await client.execute("SELECT user_id, key, value FROM user_settings");
+    for (const row of r.rows) {
+      cells.push({
+        table: "user_settings",
+        idValue: String(row.user_id),
+        keyValue: String(row.key),
+        column: "value",
+        value: row.value,
+      });
+    }
+  }
+
   return cells;
 }
 
@@ -222,6 +236,18 @@ async function updateSecretCell(
     await client.execute({
       sql: `UPDATE app_settings SET value = ?, updated_at = ? WHERE key = ?`,
       args: [value, Date.now(), cell.idValue],
+    });
+    return;
+  }
+
+  if (cell.table === "user_settings") {
+    const keyValue = cell.keyValue;
+    if (keyValue === undefined) {
+      throw new Error("user_settings secret cell is missing a key.");
+    }
+    await client.execute({
+      sql: `UPDATE user_settings SET value = ?, updated_at = ? WHERE user_id = ? AND key = ?`,
+      args: [value, Date.now(), cell.idValue, keyValue],
     });
     return;
   }

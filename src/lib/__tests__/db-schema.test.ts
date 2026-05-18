@@ -92,6 +92,19 @@ describe("auth-foundation schema", () => {
     expect(cols.has("value")).toBe(true);
   });
 
+  it("creates tenant-scoped settings tables", async () => {
+    await ensureSchema();
+    const userSettings = await tableInfo("user_settings");
+    expect(userSettings.has("user_id")).toBe(true);
+    expect(userSettings.has("key")).toBe(true);
+    expect(userSettings.has("value")).toBe(true);
+
+    const deploymentSettings = await tableInfo("deployment_settings");
+    expect(deploymentSettings.has("key")).toBe(true);
+    expect(deploymentSettings.has("value")).toBe(true);
+    expect(deploymentSettings.has("updated_at")).toBe(true);
+  });
+
   it("creates notification_webhook_deliveries table", async () => {
     await ensureSchema();
     const cols = await tableInfo("notification_webhook_deliveries");

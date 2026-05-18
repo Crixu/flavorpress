@@ -93,7 +93,8 @@ export function withJsonPrefill(
 
 export type AuthMode = "api" | "cli" | "none";
 
-export interface AnthropicLikeStream extends AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
+export interface AnthropicLikeStream
+  extends AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
   controller: { abort(): void };
 }
 
@@ -139,7 +140,7 @@ export interface ResolvedAnthropicAuth {
  *    login via @anthropic-ai/claude-agent-sdk; same path Conductor uses).
  * 5. Otherwise → none. Call sites fall back to existing stub or error.
  */
-export async function resolveAnthropicAuth(): Promise<ResolvedAnthropicAuth> {
+export async function resolveAnthropicAuth(userId: string): Promise<ResolvedAnthropicAuth> {
   const flag = process.env.FLAVORPRESS_LOCAL_CLAUDE;
   const onVercel = process.env.VERCEL === "1";
 
@@ -147,7 +148,7 @@ export async function resolveAnthropicAuth(): Promise<ResolvedAnthropicAuth> {
   // the active mode so callers that specifically need the API path
   // (fact-check, anything using Anthropic server tools) can read it
   // even when the user has forced CLI mode for streaming drafts.
-  const apiKey = await getAnthropicApiKey();
+  const apiKey = await getAnthropicApiKey(userId);
 
   if (flag === "1") {
     if (onVercel) {
@@ -190,7 +191,7 @@ export interface AnthropicClientHandle {
  * existing stub / error path).
  */
 export async function createAnthropicClient(userId: string): Promise<AnthropicClientHandle> {
-  const auth = await resolveAnthropicAuth();
+  const auth = await resolveAnthropicAuth(userId);
   if (auth.mode === "api" && auth.apiKey) {
     return { mode: "api", client: createAnthropicApiClient(auth.apiKey, userId) };
   }

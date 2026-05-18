@@ -1,7 +1,6 @@
 /**
- * Settings actions are admin-only: a non-admin authenticated user must not
- * be able to mutate global app_settings (e.g., the Anthropic API key) or
- * toggle extensions for everyone.
+ * Settings actions are per-user: a writer can edit their own model, API
+ * key, and extension toggles without mutating another tenant's settings.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -70,39 +69,57 @@ async function callRedirect(
 
 beforeEach(async () => {
   await ensureSchema();
+  await db.execute("DELETE FROM user_settings");
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM app_settings");
   cookieJar = new Map();
   process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
   delete process.env.FLAVORPRESS_AUTH;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_DRAFT_MODEL;
 });
 
-describe("saveSettingAction - admin-only", () => {
-  it("non-admin user is rejected", async () => {
+describe("saveSettingAction - per-user", () => {
+  it("non-admin user saves their own setting without writing app_settings", async () => {
     const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
     await loginAs(userId);
     const { saveSettingAction } = await import("@/lib/v1/settings-actions");
     const to = await callRedirect(saveSettingAction, {
       key: "anthropic_api_key",
-      value: "sk-ant-fakefakefakefake",
+      value: "sk-ant-writerfakefakefake",
     });
-    expect(to).toMatch(/error=forbidden/);
-    const r = await db.execute({
+    expect(to).toMatch(/saved=/);
+    const userSetting = await db.execute({
+      sql: `SELECT 1 FROM user_settings WHERE user_id = ? AND key = ?`,
+      args: [userId, "anthropic_api_key"],
+    });
+    expect(userSetting.rows.length).toBe(1);
+    const legacy = await db.execute({
       sql: `SELECT 1 FROM app_settings WHERE key = ?`,
       args: ["anthropic_api_key"],
     });
-    expect(r.rows.length).toBe(0);
+    expect(legacy.rows.length).toBe(0);
   });
 
-  it("admin user is allowed", async () => {
-    const userId = await makeUser({ email: "admin@example.com", isAdmin: true });
-    await loginAs(userId);
+  it("keeps two users' draft model settings isolated", async () => {
+    const userA = await makeUser({ email: "a@example.com" });
+    const userB = await makeUser({ email: "b@example.com" });
     const { saveSettingAction } = await import("@/lib/v1/settings-actions");
-    const to = await callRedirect(saveSettingAction, {
-      key: "anthropic_api_key",
-      value: "sk-ant-fakefakefakefake",
+    const { getAnthropicDraftModel } = await import("@/lib/v1/settings");
+
+    await loginAs(userA);
+    await callRedirect(saveSettingAction, {
+      key: "anthropic_draft_model",
+      value: "claude-user-a",
     });
-    expect(to).toMatch(/saved=/);
+    await loginAs(userB);
+    await callRedirect(saveSettingAction, {
+      key: "anthropic_draft_model",
+      value: "claude-user-b",
+    });
+
+    await expect(getAnthropicDraftModel(userA)).resolves.toBe("claude-user-a");
+    await expect(getAnthropicDraftModel(userB)).resolves.toBe("claude-user-b");
   });
 
   it("keeps the submitted settings section after saving", async () => {
@@ -116,28 +133,53 @@ describe("saveSettingAction - admin-only", () => {
     });
     expect(to).toBe("/settings?section=models&saved=anthropic_draft_model");
   });
-});
 
-describe("clearSettingAction - admin-only", () => {
-  it("non-admin user is rejected", async () => {
+  it("falls back to the deployment env key when the user has no DB value", async () => {
     const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
-    await loginAs(userId);
-    const { clearSettingAction } = await import("@/lib/v1/settings-actions");
-    const to = await callRedirect(clearSettingAction, { key: "anthropic_api_key" });
-    expect(to).toMatch(/error=forbidden/);
+    process.env.ANTHROPIC_API_KEY = "sk-ant-envfakefakefake";
+    const { getAnthropicApiKey } = await import("@/lib/v1/settings");
+    await expect(getAnthropicApiKey(userId)).resolves.toBe("sk-ant-envfakefakefake");
   });
 });
 
-describe("toggleExtensionAction - admin-only", () => {
-  it("non-admin user is rejected", async () => {
+describe("clearSettingAction - per-user", () => {
+  it("clears only the current user's row", async () => {
     const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
+    const otherId = await makeUser({ email: "other@example.com", isAdmin: false });
+    await db.execute({
+      sql: `INSERT INTO user_settings (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)`,
+      args: [userId, "anthropic_draft_model", "claude-user", Date.now()],
+    });
+    await db.execute({
+      sql: `INSERT INTO user_settings (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)`,
+      args: [otherId, "anthropic_draft_model", "claude-other", Date.now()],
+    });
     await loginAs(userId);
+    const { clearSettingAction } = await import("@/lib/v1/settings-actions");
+    const to = await callRedirect(clearSettingAction, { key: "anthropic_draft_model" });
+    expect(to).toMatch(/cleared=/);
+    const r = await db.execute({
+      sql: `SELECT user_id FROM user_settings WHERE key = ? ORDER BY user_id`,
+      args: ["anthropic_draft_model"],
+    });
+    expect(r.rows.map((row) => String(row.user_id))).toEqual([otherId]);
+  });
+});
+
+describe("toggleExtensionAction - per-user", () => {
+  it("disabling an extension for user A leaves user B enabled", async () => {
+    const userA = await makeUser({ email: "a@example.com", isAdmin: false });
+    const userB = await makeUser({ email: "b@example.com", isAdmin: false });
+    await loginAs(userA);
     const { toggleExtensionAction } = await import("@/lib/v1/settings-actions");
+    const { getDisabledExtensionIds } = await import("@/lib/v1/settings");
     const to = await callRedirect(toggleExtensionAction, {
       extensionId: "fact-check",
       enabled: "0",
     });
-    expect(to).toMatch(/error=forbidden/);
+    expect(to).toMatch(/state=disabled/);
+    await expect(getDisabledExtensionIds(userA)).resolves.toEqual(new Set(["fact-check"]));
+    await expect(getDisabledExtensionIds(userB)).resolves.toEqual(new Set());
   });
 
   it("stays on the extensions section after toggling", async () => {

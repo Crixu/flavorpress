@@ -63,7 +63,7 @@ export async function extractItemTags(input: TagInput, opts: TagOptions = {}): P
   if (!client) return [];
 
   try {
-    const model = await getAnthropicDraftModel();
+    const model = await getAnthropicDraftModel(input.userId);
     const sourceNonce = newSourceNonce();
     const sourceBlock = renderUntrustedSource(
       {

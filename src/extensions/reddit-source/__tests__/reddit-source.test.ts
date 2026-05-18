@@ -17,6 +17,8 @@ import {
 } from "../server";
 import type { RawItem } from "@/lib/v1/source-connector";
 
+const USER_ID = "user_a";
+
 beforeEach(() => {
   getSettingMock.mockReset();
   delete process.env.REDDIT_MIN_SCORE;
@@ -219,7 +221,7 @@ describe("redditSourceExtension contract", () => {
   it("resolves a subreddit URL into r/<sub> as the display name", async () => {
     getSettingMock.mockResolvedValue(null);
     await expect(
-      redditSourceExtension.resolve("https://www.reddit.com/r/science/"),
+      redditSourceExtension.resolve("https://www.reddit.com/r/science/", USER_ID),
     ).resolves.toEqual({
       url: "https://www.reddit.com/r/science/",
       displayName: "r/science",
@@ -241,7 +243,7 @@ describe("redditSourceExtension contract", () => {
 describe("getRedditEngagementThresholds", () => {
   it("returns null thresholds when no setting and no env var is present", async () => {
     getSettingMock.mockResolvedValue(null);
-    await expect(getRedditEngagementThresholds()).resolves.toEqual({
+    await expect(getRedditEngagementThresholds(USER_ID)).resolves.toEqual({
       minScore: null,
       minComments: null,
     });
@@ -255,17 +257,19 @@ describe("getRedditEngagementThresholds", () => {
     });
     process.env.REDDIT_MIN_SCORE = "1";
     process.env.REDDIT_MIN_COMMENTS = "1";
-    await expect(getRedditEngagementThresholds()).resolves.toEqual({
+    await expect(getRedditEngagementThresholds(USER_ID)).resolves.toEqual({
       minScore: 100,
       minComments: 20,
     });
+    expect(getSettingMock).toHaveBeenCalledWith("reddit_min_score", USER_ID);
+    expect(getSettingMock).toHaveBeenCalledWith("reddit_min_comments", USER_ID);
   });
 
   it("falls back to env vars when settings are absent", async () => {
     getSettingMock.mockResolvedValue(null);
     process.env.REDDIT_MIN_SCORE = "5";
     process.env.REDDIT_MIN_COMMENTS = "0";
-    await expect(getRedditEngagementThresholds()).resolves.toEqual({
+    await expect(getRedditEngagementThresholds(USER_ID)).resolves.toEqual({
       minScore: 5,
       minComments: 0,
     });
@@ -277,7 +281,7 @@ describe("getRedditEngagementThresholds", () => {
       if (key === "reddit_min_comments") return "-3";
       return null;
     });
-    await expect(getRedditEngagementThresholds()).resolves.toEqual({
+    await expect(getRedditEngagementThresholds(USER_ID)).resolves.toEqual({
       minScore: null,
       minComments: null,
     });

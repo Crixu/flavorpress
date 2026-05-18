@@ -420,7 +420,7 @@ export async function addSourceAction(formData: FormData) {
   // that *would* have claimed an input is treated as an error so we don't
   // silently fall through to detectKind (which would store, say, an x.com
   // profile URL as an RSS feed and 404 on poll).
-  const disabled = await getDisabledExtensionIds();
+  const disabled = await getDisabledExtensionIds(session.userId);
   for (const input of inputs) {
     const claimer = findClaimingSourceExtension(input);
     if (claimer && disabled.has(claimer.id)) {
@@ -448,7 +448,7 @@ export async function addSourceAction(formData: FormData) {
     const claimer = findClaimingSourceExtension(input);
     try {
       if (claimer) {
-        const resolved = await claimer.resolve(input);
+        const resolved = await claimer.resolve(input, session.userId);
         kind = claimer.kind as typeof kind;
         url = resolved.url;
         display = resolved.displayName;
@@ -757,7 +757,9 @@ async function runBackgroundAutoTitling(
         });
       } catch (err) {
         console.warn(
-          `autoTitle ${safeLogValue(url)}: ${safeLogValue(err instanceof Error ? err.message : String(err))}`,
+          `autoTitle ${safeLogValue(url)}: ${safeLogValue(
+            err instanceof Error ? err.message : String(err),
+          )}`,
         );
       }
     }),
@@ -1614,7 +1616,9 @@ async function runBackgroundPolls(
       if (!task) return Promise.resolve();
       return task.catch((err) => {
         console.warn(
-          `${label} source ${safeLogValue(sourceId)}: ${safeLogValue(err instanceof Error ? err.message : String(err))}`,
+          `${label} source ${safeLogValue(sourceId)}: ${safeLogValue(
+            err instanceof Error ? err.message : String(err),
+          )}`,
         );
       });
     }),
@@ -2047,7 +2051,7 @@ async function summarizeBlogIdentity(input: {
     if (!client) {
       return fallback || "A personal blog.";
     }
-    const model = await getAnthropicDraftModel();
+    const model = await getAnthropicDraftModel(input.userId);
     const message = await client.messages.create({
       model,
       max_tokens: 300,
@@ -2361,7 +2365,7 @@ export async function generateDraftAction(formData: FormData) {
     }
   }
   const format =
-    mode === "researcher" ? undefined : (submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT);
+    mode === "researcher" ? undefined : submittedFormat ?? previousFormat ?? DEFAULT_DRAFT_FORMAT;
 
   if (mode === "researcher") {
     const notesResult = await generateNotes({
@@ -2376,7 +2380,7 @@ export async function generateDraftAction(formData: FormData) {
   // open of the wizard preselects them and "Just go" can fire without
   // landing on the original 1000-word default.
   if (format && wordCount && (WIZARD_LENGTHS as readonly number[]).includes(wordCount)) {
-    await setDraftWizardPrefs({ format, length: wordCount as WizardLength });
+    await setDraftWizardPrefs(session.userId, { format, length: wordCount as WizardLength });
   }
 
   // If commissioned from a notebook view, the writer's already vetted some
@@ -2489,7 +2493,8 @@ export async function generateDraftAnglesAction(
  */
 export async function getDraftWizardPrefsAction(): Promise<DraftWizardPrefs> {
   await ensureSchema();
-  return getDraftWizardPrefs();
+  const session = await requireSession();
+  return getDraftWizardPrefs(session.userId);
 }
 
 /**

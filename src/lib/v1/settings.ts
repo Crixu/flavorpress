@@ -1,8 +1,8 @@
 /**
- * App-level settings stored in the DB so the user can edit them from
+ * Per-user settings stored in the DB so each writer can edit them from
  * /settings instead of bouncing to a terminal to edit .env.
  *
- * Lookup precedence: DB value (set via UI) → process.env fallback. This
+ * Lookup precedence: user DB value (set via UI), then process.env fallback. This
  * preserves existing .env-only setups and lets ops override locally
  * without touching the DB.
  */
@@ -26,16 +26,23 @@ export function isSensitiveSettingKey(key: string): boolean {
   return key === SETTING_KEYS.anthropicApiKey || SENSITIVE_SETTING_PATTERN.test(key);
 }
 
+function normalizeUserId(userId: string): string {
+  const trimmed = userId.trim();
+  if (!trimmed) throw new Error("userId required for settings.");
+  return trimmed;
+}
+
 /**
- * Read any app_settings row. Built-in keys live in SETTING_KEYS;
+ * Read any user_settings row. Built-in keys live in SETTING_KEYS;
  * extension-owned keys (e.g. x_bridge_template) are passed as raw
  * strings so the extension layer can keep its key constants local.
  */
-export async function getSetting(key: string): Promise<string | null> {
+export async function getSetting(key: string, userId: string): Promise<string | null> {
   await ensureSchema();
+  const scopedUserId = normalizeUserId(userId);
   const r = await db.execute({
-    sql: `SELECT value FROM app_settings WHERE key = ?`,
-    args: [key],
+    sql: `SELECT value FROM user_settings WHERE user_id = ? AND key = ?`,
+    args: [scopedUserId, key],
   });
   if (r.rows.length === 0) return null;
   const v = r.rows[0]!.value;
@@ -46,27 +53,30 @@ export async function getSetting(key: string): Promise<string | null> {
   if (isEncryptedSecret(s)) return decryptSecret(s);
 
   await db.execute({
-    sql: `UPDATE app_settings SET value = ?, updated_at = ? WHERE key = ?`,
-    args: [encryptSecret(s), Date.now(), key],
+    sql: `UPDATE user_settings SET value = ?, updated_at = ? WHERE user_id = ? AND key = ?`,
+    args: [encryptSecret(s), Date.now(), scopedUserId, key],
   });
   return s;
 }
 
-export async function setSetting(key: string, value: string | null): Promise<void> {
+export async function setSetting(key: string, userId: string, value: string | null): Promise<void> {
   await ensureSchema();
+  const scopedUserId = normalizeUserId(userId);
   if (value === null || value.trim() === "") {
     await db.execute({
-      sql: `DELETE FROM app_settings WHERE key = ?`,
-      args: [key],
+      sql: `DELETE FROM user_settings WHERE user_id = ? AND key = ?`,
+      args: [scopedUserId, key],
     });
     return;
   }
   const trimmed = value.trim();
   const storedValue = isSensitiveSettingKey(key) ? encryptSecret(trimmed) : trimmed;
   await db.execute({
-    sql: `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    args: [key, storedValue, Date.now()],
+    sql: `INSERT INTO user_settings (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+          ON CONFLICT(user_id, key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at`,
+    args: [scopedUserId, key, storedValue, Date.now()],
   });
 }
 
@@ -78,13 +88,13 @@ function normalizeAnthropicKey(value: string | null | undefined): string | null 
   return trimmed;
 }
 
-export async function getAnthropicApiKey(): Promise<string | null> {
-  const fromDb = await getSetting(SETTING_KEYS.anthropicApiKey);
+export async function getAnthropicApiKey(userId: string): Promise<string | null> {
+  const fromDb = await getSetting(SETTING_KEYS.anthropicApiKey, userId);
   return normalizeAnthropicKey(fromDb) ?? normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY);
 }
 
-export async function getAnthropicDraftModel(): Promise<string> {
-  const fromDb = await getSetting(SETTING_KEYS.anthropicDraftModel);
+export async function getAnthropicDraftModel(userId: string): Promise<string> {
+  const fromDb = await getSetting(SETTING_KEYS.anthropicDraftModel, userId);
   return fromDb ?? process.env.ANTHROPIC_DRAFT_MODEL ?? DEFAULT_DRAFT_MODEL;
 }
 
@@ -105,8 +115,8 @@ export interface SettingsSnapshot {
  * absent setting is treated as "all enabled," which keeps the default
  * working without seeding a row, and means new extensions ship enabled.
  */
-export async function getDisabledExtensionIds(): Promise<Set<string>> {
-  const raw = await getSetting(SETTING_KEYS.disabledExtensions);
+export async function getDisabledExtensionIds(userId: string): Promise<Set<string>> {
+  const raw = await getSetting(SETTING_KEYS.disabledExtensions, userId);
   if (!raw) return new Set();
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -117,15 +127,19 @@ export async function getDisabledExtensionIds(): Promise<Set<string>> {
   }
 }
 
-export async function setExtensionEnabled(extensionId: string, enabled: boolean): Promise<void> {
-  const current = await getDisabledExtensionIds();
+export async function setExtensionEnabled(
+  extensionId: string,
+  enabled: boolean,
+  userId: string,
+): Promise<void> {
+  const current = await getDisabledExtensionIds(userId);
   if (enabled) current.delete(extensionId);
   else current.add(extensionId);
   if (current.size === 0) {
-    await setSetting(SETTING_KEYS.disabledExtensions, null);
+    await setSetting(SETTING_KEYS.disabledExtensions, userId, null);
     return;
   }
-  await setSetting(SETTING_KEYS.disabledExtensions, JSON.stringify([...current].sort()));
+  await setSetting(SETTING_KEYS.disabledExtensions, userId, JSON.stringify([...current].sort()));
 }
 
 function previewSecret(value: string): string {
@@ -134,14 +148,15 @@ function previewSecret(value: string): string {
 }
 
 export async function loadSettingsSnapshot(
+  userId: string,
   extensionSettingKeys: string[] = [],
 ): Promise<SettingsSnapshot> {
   await ensureSchema();
   const [dbApiKey, dbModel, disabled, extensionValues] = await Promise.all([
-    getSetting(SETTING_KEYS.anthropicApiKey),
-    getSetting(SETTING_KEYS.anthropicDraftModel),
-    getDisabledExtensionIds(),
-    Promise.all(extensionSettingKeys.map(async (k) => [k, await getSetting(k)] as const)),
+    getSetting(SETTING_KEYS.anthropicApiKey, userId),
+    getSetting(SETTING_KEYS.anthropicDraftModel, userId),
+    getDisabledExtensionIds(userId),
+    Promise.all(extensionSettingKeys.map(async (k) => [k, await getSetting(k, userId)] as const)),
   ]);
 
   const envApiKey = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY);

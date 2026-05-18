@@ -54,7 +54,7 @@ export async function generateSourceTitle(url: string, userId: string): Promise<
   try {
     const { client } = await createAnthropicClient(userId);
     if (!client) return fallback;
-    const model = await getAnthropicDraftModel();
+    const model = await getAnthropicDraftModel(userId);
     const sourceNonce = newSourceNonce();
     const sourceBlock = renderUntrustedPromptBlock(
       "source",

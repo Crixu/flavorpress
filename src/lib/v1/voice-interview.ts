@@ -47,7 +47,7 @@ export async function synthesizeVoiceEssay(
     const { client } = await createAnthropicClient(userId);
     if (!client) return null;
     const { system, user } = buildSynthesisPrompt(sanitized);
-    const model = await getAnthropicDraftModel();
+    const model = await getAnthropicDraftModel(userId);
     const message = await client.messages.create({
       model,
       max_tokens: 2000,

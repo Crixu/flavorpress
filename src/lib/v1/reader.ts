@@ -624,10 +624,10 @@ async function groupByTheme(items: ReaderItem[], userId: string): Promise<ThemeG
     return [{ theme: items[0]!.title, itemIds: [items[0]!.id] }];
   }
 
-  const apiKey = await getAnthropicApiKey();
+  const apiKey = await getAnthropicApiKey(userId);
   if (!apiKey) return fallbackGrouping(items);
 
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(userId);
   const client = createAnthropicApiClient(apiKey, userId);
 
   const numbered = items

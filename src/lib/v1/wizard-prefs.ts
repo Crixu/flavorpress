@@ -3,9 +3,8 @@ import "server-only";
 /**
  * Last-used format and length for the guided-draft wizard.
  *
- * Stored as a single JSON blob in app_settings under "draft_wizard_prefs".
+ * Stored as a single JSON blob in user_settings under "draft_wizard_prefs".
  * The wizard uses these to preselect chips on open and to power "Just go".
- * Single-user app so we don't bother keying by user_id.
  */
 
 import { getSetting, setSetting } from "./settings";
@@ -26,8 +25,8 @@ export {
 
 const KEY = "draft_wizard_prefs";
 
-export async function getDraftWizardPrefs(): Promise<DraftWizardPrefs> {
-  const raw = await getSetting(KEY);
+export async function getDraftWizardPrefs(userId: string): Promise<DraftWizardPrefs> {
+  const raw = await getSetting(KEY, userId);
   if (!raw) return DEFAULT_WIZARD_PREFS;
   try {
     const parsed = JSON.parse(raw) as { format?: unknown; length?: unknown };
@@ -45,6 +44,6 @@ export async function getDraftWizardPrefs(): Promise<DraftWizardPrefs> {
   }
 }
 
-export async function setDraftWizardPrefs(prefs: DraftWizardPrefs): Promise<void> {
-  await setSetting(KEY, JSON.stringify(prefs));
+export async function setDraftWizardPrefs(userId: string, prefs: DraftWizardPrefs): Promise<void> {
+  await setSetting(KEY, userId, JSON.stringify(prefs));
 }

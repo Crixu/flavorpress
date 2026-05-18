@@ -84,10 +84,13 @@ vi.mock("@/lib/anthropic", () => ({
 vi.mock("@/lib/v1/settings", () => ({
   getAnthropicDraftModel: vi.fn().mockResolvedValue("claude-3-5-sonnet-20241022"),
   getAnthropicApiKey: vi.fn().mockResolvedValue("sk-test-fake-key"),
-  getSetting: vi.fn(async (key: string) => settingStore.get(key) ?? null),
-  setSetting: vi.fn(async (key: string, value: string | null) => {
-    if (value === null) settingStore.delete(key);
-    else settingStore.set(key, value);
+  getSetting: vi.fn(
+    async (key: string, userId: string) => settingStore.get(`${userId}:${key}`) ?? null,
+  ),
+  setSetting: vi.fn(async (key: string, userId: string, value: string | null) => {
+    const scopedKey = `${userId}:${key}`;
+    if (value === null) settingStore.delete(scopedKey);
+    else settingStore.set(scopedKey, value);
   }),
   SETTING_KEYS: { relatedImagesLicenseFilter: "related_images_license_filter" },
 }));
@@ -642,7 +645,8 @@ describe("setLicenseFilterAction - cross-user isolation", () => {
 
     expect(setResult.ok).toBe(true);
     expect(vi.mocked(setSetting)).toHaveBeenCalledWith(
-      `related_images_license_filter:${userA.id}`,
+      "related_images_license_filter",
+      userA.id,
       JSON.stringify(["cc0"]),
     );
     expect(vi.mocked(getSetting)).not.toHaveBeenCalledWith("related_images_license_filter");
@@ -655,6 +659,7 @@ describe("setLicenseFilterAction - cross-user isolation", () => {
 
     expect(loadResult.ok).toBe(true);
     if (!loadResult.ok) return;
+    expect(vi.mocked(getSetting)).toHaveBeenCalledWith("related_images_license_filter", userB.id);
     expect(loadResult.payload.licenseFilter).toContain("by");
     expect(loadResult.payload.results).toHaveLength(1);
   });

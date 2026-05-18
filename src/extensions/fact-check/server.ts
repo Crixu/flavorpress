@@ -66,7 +66,7 @@ export async function runFactCheck(
   // does not block fact-check on a perfectly usable API key. The
   // resolver throws on those config-error states; we don't want that
   // throw to roll over a working API path.
-  const apiKey = await getAnthropicApiKey();
+  const apiKey = await getAnthropicApiKey(session.userId);
   if (!apiKey) {
     const cliForced = process.env.FLAVORPRESS_LOCAL_CLAUDE === "1";
     throw new Error(
@@ -75,7 +75,7 @@ export async function runFactCheck(
         : "No Anthropic API key configured. Add one on /settings, then retry.",
     );
   }
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(session.userId);
   const client = createAnthropicApiClient(apiKey, session.userId);
 
   // Cap web_search at MAX_CLAIMS. The model still needs one lookup per
@@ -300,7 +300,7 @@ export async function suggestFactCheckFix(
   // binary, and we don't want a misconfigured CLI to roll over a
   // perfectly usable API key, especially since fact-check requires the
   // API anyway and the user already paired the two flows.
-  const apiKey = await getAnthropicApiKey();
+  const apiKey = await getAnthropicApiKey(session.userId);
   if (!apiKey) {
     const cliForced = process.env.FLAVORPRESS_LOCAL_CLAUDE === "1";
     throw new Error(
@@ -309,7 +309,7 @@ export async function suggestFactCheckFix(
         : "No Anthropic API key configured. Add one on /settings, then retry.",
     );
   }
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(session.userId);
   const client = createAnthropicApiClient(apiKey, session.userId);
 
   // The source URL/title is shown only for citation context. We do NOT
@@ -382,7 +382,9 @@ Hard rules:
     parsed = extractJson(text);
   } catch (err) {
     throw new Error(
-      `Fix-claim model did not return valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      `Fix-claim model did not return valid JSON: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
     );
   }
   const original =

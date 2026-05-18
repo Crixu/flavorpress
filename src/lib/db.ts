@@ -71,11 +71,12 @@ export const db: Client = buildClient();
 
 // Bumped whenever the schema or migration sequence changes. The sentinel
 // short-circuit in ensureSchema() compares the value stored in
-// app_settings.schema_version against this constant; a mismatch (or missing
-// row) drives the slow path that runs migrateLegacyTables and the full
+// deployment_settings.schema_version against this constant; a mismatch (or
+// missing row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-18.mcp-tokens-oauth-nonces-f10-ai-budget-f09-auth-rate-buckets";
+const SCHEMA_VERSION =
+  "2026-05-18.mcp-tokens-oauth-nonces-f10-ai-budget-f09-auth-rate-buckets-f11-tenant-settings";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -615,9 +616,8 @@ export async function ensureSchema(): Promise<void> {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_user_ai_budget_day ON user_ai_budget(day_utc)`,
 
-      // App-level settings the user can edit from /settings instead of .env.
-      // Single-user prototype so we keep this keyed only by `key`; values are
-      // stored as TEXT. Sensitive values use the shared secret envelope.
+      // Legacy global settings table. Kept so old installs can copy rows into
+      // user_settings; runtime settings reads and writes must not use it.
       `CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
         value TEXT,
@@ -630,6 +630,20 @@ export async function ensureSchema(): Promise<void> {
         tokens INTEGER NOT NULL,
         refilled_at INTEGER NOT NULL,
         PRIMARY KEY (scope, key)
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS user_settings (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value TEXT,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, key)
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS deployment_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at INTEGER NOT NULL
       )`,
 
       `CREATE TABLE IF NOT EXISTS user_mcp_tokens (
@@ -690,6 +704,7 @@ export async function ensureSchema(): Promise<void> {
   );
 
   await backfillFirstAdminState();
+  await backfillLegacyAppSettings();
   await backfillLegacyPasswordVerification();
   await writeSchemaSentinel();
   initialized = true;
@@ -733,24 +748,105 @@ export async function backfillLegacyPasswordVerification(): Promise<void> {
 async function schemaSentinelMatches(): Promise<boolean> {
   try {
     const r = await db.execute({
-      sql: `SELECT value FROM app_settings WHERE key = 'schema_version'`,
+      sql: `SELECT value FROM deployment_settings WHERE key = 'schema_version'`,
     });
     return r.rows.length > 0 && String(r.rows[0]!.value) === SCHEMA_VERSION;
   } catch {
-    // app_settings table does not exist yet (first deploy on a fresh DB).
+    // deployment_settings table does not exist yet (first deploy on a fresh DB).
     return false;
   }
 }
 
 async function writeSchemaSentinel(): Promise<void> {
   await db.execute({
-    sql: `INSERT INTO app_settings (key, value, updated_at)
+    sql: `INSERT INTO deployment_settings (key, value, updated_at)
           VALUES ('schema_version', ?, ?)
           ON CONFLICT(key) DO UPDATE SET
             value = excluded.value,
             updated_at = excluded.updated_at`,
     args: [SCHEMA_VERSION, Date.now()],
   });
+}
+
+async function backfillLegacyAppSettings(): Promise<void> {
+  const backfillKey = "legacy_app_settings_backfilled_at";
+  const existing = await db.execute({
+    sql: "SELECT 1 FROM deployment_state WHERE key = ?",
+    args: [backfillKey],
+  });
+  if (existing.rows.length > 0) return;
+
+  const legacy = await db.execute({
+    sql: `SELECT key, value, updated_at FROM app_settings WHERE key != 'schema_version'`,
+  });
+  if (legacy.rows.length === 0) {
+    await markLegacyAppSettingsBackfilled(backfillKey, "empty");
+    return;
+  }
+
+  const ownerId = await findLegacySettingsOwnerId();
+  if (!ownerId) {
+    console.warn("[migrate] app_settings: found legacy settings but no user exists to own them");
+    await markLegacyAppSettingsBackfilled(backfillKey, "no-user-owner");
+    return;
+  }
+
+  for (const row of legacy.rows) {
+    const resolved = await resolveLegacySettingTarget(String(row.key), ownerId);
+    if (!resolved) continue;
+    await db.execute({
+      sql: `INSERT INTO user_settings (user_id, key, value, updated_at)
+            SELECT ?, ?, ?, ?
+            WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)
+            ON CONFLICT(user_id, key) DO NOTHING`,
+      args: [
+        resolved.userId,
+        resolved.key,
+        row.value ?? null,
+        row.updated_at ? Number(row.updated_at) : Date.now(),
+        resolved.userId,
+      ],
+    });
+  }
+
+  await markLegacyAppSettingsBackfilled(backfillKey, "copied");
+}
+
+async function markLegacyAppSettingsBackfilled(key: string, reason: string): Promise<void> {
+  await db.execute({
+    sql: "INSERT OR IGNORE INTO deployment_state (key, value) VALUES (?, ?)",
+    args: [key, JSON.stringify({ at: Date.now(), reason })],
+  });
+}
+
+async function findLegacySettingsOwnerId(): Promise<string | null> {
+  const firstAdmin = await db.execute({
+    sql: `SELECT id FROM users WHERE is_admin = 1 ORDER BY created_at ASC LIMIT 1`,
+  });
+  if (firstAdmin.rows.length > 0) return String(firstAdmin.rows[0]!.id);
+
+  const firstUser = await db.execute({
+    sql: `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`,
+  });
+  return firstUser.rows.length > 0 ? String(firstUser.rows[0]!.id) : null;
+}
+
+async function resolveLegacySettingTarget(
+  key: string,
+  ownerId: string,
+): Promise<{ userId: string; key: string } | null> {
+  const relatedImagesPrefix = "related_images_license_filter:";
+  if (key.startsWith(relatedImagesPrefix)) {
+    const userId = key.slice(relatedImagesPrefix.length);
+    if (!userId) return null;
+    const user = await db.execute({
+      sql: "SELECT 1 FROM users WHERE id = ?",
+      args: [userId],
+    });
+    if (user.rows.length === 0) return null;
+    return { userId, key: "related_images_license_filter" };
+  }
+  return { userId: ownerId, key };
 }
 
 /**

@@ -356,7 +356,7 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
     return stubResult(args.wordCount);
   }
 
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(args.userId);
   // Body tokens ~ words / 0.75; add headroom for headlines, alternates, quotes,
   // and the JSON envelope itself. Floor at 1500 to keep small drafts honest.
   const maxTokens = Math.max(1500, Math.round(args.wordCount / 0.75) + 600);

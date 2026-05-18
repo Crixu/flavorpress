@@ -3,7 +3,7 @@ import "server-only";
 /**
  * x-source extension: server half.
  *
- * Reads the configured RSS bridge template from app_settings, parses
+ * Reads the configured RSS bridge template from user settings, parses
  * X handles or profile URLs, and emits the bridge URL to poll. The
  * polling loop itself uses the standard RSS connector because the
  * bridge serves RSS XML, so this extension does not own a poll path.
@@ -58,8 +58,10 @@ export function extractHandle(input: string): string | null {
   return HANDLE_RE.test(handle) ? handle : null;
 }
 
-export async function getXBridgeTemplate(): Promise<string | null> {
-  return (await getSetting(X_BRIDGE_TEMPLATE_KEY)) ?? process.env[X_BRIDGE_TEMPLATE_ENV] ?? null;
+export async function getXBridgeTemplate(userId: string): Promise<string | null> {
+  return (
+    (await getSetting(X_BRIDGE_TEMPLATE_KEY, userId)) ?? process.env[X_BRIDGE_TEMPLATE_ENV] ?? null
+  );
 }
 
 export function buildBridgeUrl(handle: string, template: string): string {
@@ -96,12 +98,12 @@ export const xSourceExtension: SourceExtensionEntry = {
     return extractHandle(input) !== null;
   },
 
-  async resolve(input: string): Promise<ResolvedSource> {
+  async resolve(input: string, userId: string): Promise<ResolvedSource> {
     const handle = extractHandle(input);
     if (!handle) {
       throw new Error(`x-source: refused to resolve non-X input: ${input}`);
     }
-    const template = await getXBridgeTemplate();
+    const template = await getXBridgeTemplate(userId);
     if (!template) {
       throw new Error(
         "X bridge template is missing. Add an RSS bridge template in Settings before adding X sources.",

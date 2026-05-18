@@ -11,6 +11,7 @@ vi.mock("@/lib/v1/settings", () => ({
 import { buildBridgeUrl, extractHandle, xSourceExtension } from "../server";
 
 const TEMPLATE = "https://nitter.example/{handle}/rss";
+const USER_ID = "user_a";
 
 beforeEach(() => {
   getSettingMock.mockReset();
@@ -86,16 +87,17 @@ describe("xSourceExtension contract", () => {
     getSettingMock.mockResolvedValue(null);
     process.env.X_BRIDGE_TEMPLATE = TEMPLATE;
 
-    await expect(xSourceExtension.resolve("@levie")).resolves.toEqual({
+    await expect(xSourceExtension.resolve("@levie", USER_ID)).resolves.toEqual({
       url: "https://nitter.example/levie/rss",
       displayName: "@levie",
     });
+    expect(getSettingMock).toHaveBeenCalledWith("x_bridge_template", USER_ID);
   });
 
   it("surfaces a missing bridge template as a user-facing error", async () => {
     getSettingMock.mockResolvedValue(null);
 
-    await expect(xSourceExtension.resolve("@levie")).rejects.toThrow(
+    await expect(xSourceExtension.resolve("@levie", USER_ID)).rejects.toThrow(
       "X bridge template is missing",
     );
   });
