@@ -7,7 +7,7 @@
  * capabilities as MCP tools.
  *
  * v1 ships read-only registry inspection plus a tools/list and tools/call
- * surface. Tool calls require Authorization: Bearer <FLAVORPRESS_MCP_TOKEN>.
+ * surface. Requests require Authorization: Bearer <per-user MCP token>.
  *
  * Architect note: protocol version is advertised in handshake (the MCP
  * spec already supports this). When MCP 2.0 ships, we expose a sibling
@@ -16,17 +16,17 @@
  */
 
 import { NextResponse } from "next/server";
-import { createHash, timingSafeEqual } from "node:crypto";
 import { getRegistry } from "@/lib/v1/capability-registry";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
+import { consumeMcpToken, McpTokenSecretError } from "@/lib/v1/mcp-tokens";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const PROTOCOL_VERSION = "2024-11-05"; // MCP draft we target in v1
 
-// Sub-spec 4 wires per-user MCP tokens. Until then, production serves 501.
-// Dev keeps the existing single-user shape using the legacy "default-user" id.
+// Production stays closed until the token issuance UI ships. Non-production
+// still uses per-user token lookup so shared previews cannot fall back to one user.
 function rejectIfProduction(): NextResponse | null {
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json(
@@ -40,24 +40,12 @@ function rejectIfProduction(): NextResponse | null {
 export async function GET(req: Request) {
   const prodBlock = rejectIfProduction();
   if (prodBlock) return prodBlock;
-  const authError = rejectInvalidPresentedAuth(req, null);
-  if (authError) return authError;
+  const auth = await authenticateMcpRequest(req);
+  if (!auth.ok) return jsonRpcError(null, -32001, auth.message, 401);
 
   // Discovery: handshake + tool list.
   await ensureRegisteredCapabilities();
-  const registry = getRegistry();
-  const tools = registry.list().map((m) => ({
-    name: m.id,
-    description: m.description,
-    inputSchema: m.inputSchema,
-    metadata: {
-      version: m.version,
-      tier: m.tier,
-      requiresAuth: m.requiresAuth,
-      latencyBudgetMs: m.latencyBudgetMs,
-      tags: m.tags,
-    },
-  }));
+  const tools = listMcpTools();
 
   return NextResponse.json({
     protocolVersion: PROTOCOL_VERSION,
@@ -88,8 +76,8 @@ export async function POST(req: Request) {
 
   const id = body.id ?? null;
   const method = body.method;
-  const authError = rejectInvalidPresentedAuth(req, id);
-  if (authError) return authError;
+  const auth = await authenticateMcpRequest(req);
+  if (!auth.ok) return jsonRpcError(id, -32001, auth.message, 401);
 
   if (method === "initialize") {
     return jsonRpcResult(id, {
@@ -101,13 +89,7 @@ export async function POST(req: Request) {
 
   if (method === "tools/list") {
     await ensureRegisteredCapabilities();
-    const registry = getRegistry();
-    const tools = registry.list().map((m) => ({
-      name: m.id,
-      description: m.description,
-      inputSchema: m.inputSchema ?? { type: "object" },
-    }));
-    return jsonRpcResult(id, { tools });
+    return jsonRpcResult(id, { tools: listMcpTools() });
   }
 
   if (method === "tools/call") {
@@ -115,9 +97,6 @@ export async function POST(req: Request) {
     const name = params.name as string | undefined;
     const args = params.arguments as Record<string, unknown> | undefined;
     if (!name) return jsonRpcError(id, -32602, "missing tool name");
-
-    const auth = authenticateMcpRequest(req);
-    if (!auth.ok) return jsonRpcError(id, -32001, auth.message);
 
     await ensureRegisteredCapabilities();
     const registry = getRegistry();
@@ -147,32 +126,29 @@ function jsonRpcResult(id: unknown, result: unknown) {
   return NextResponse.json({ jsonrpc: "2.0", id, result });
 }
 
-function jsonRpcError(id: unknown, code: number, message: string) {
-  return NextResponse.json({
-    jsonrpc: "2.0",
-    id,
-    error: { code, message },
-  });
+function jsonRpcError(id: unknown, code: number, message: string, status = 200) {
+  return NextResponse.json(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: { code, message },
+    },
+    { status },
+  );
 }
 
-function rejectInvalidPresentedAuth(req: Request, id: unknown) {
-  const header = req.headers.get("authorization");
-  if (!header) return null;
-
-  const auth = authenticateMcpRequest(req);
-  if (auth.ok) return null;
-
-  return jsonRpcError(id, -32001, auth.message);
+function listMcpTools() {
+  const registry = getRegistry();
+  return registry.list().map((m) => ({
+    name: m.id,
+    description: m.description,
+    inputSchema: m.inputSchema ?? { type: "object" },
+  }));
 }
 
-function authenticateMcpRequest(
+async function authenticateMcpRequest(
   req: Request,
-): { ok: true; userId: string } | { ok: false; message: string } {
-  const configuredToken = (process.env.FLAVORPRESS_MCP_TOKEN ?? "").trim();
-  if (!configuredToken) {
-    return { ok: false, message: "MCP token is not configured" };
-  }
-
+): Promise<{ ok: true; userId: string } | { ok: false; message: string }> {
   const header = req.headers.get("authorization") ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(header);
   if (!match) {
@@ -180,18 +156,14 @@ function authenticateMcpRequest(
   }
 
   const token = match[1];
-  if (!token || !tokenMatches(token, configuredToken)) {
-    return { ok: false, message: "unauthorized" };
+  try {
+    const consumed = await consumeMcpToken(token);
+    if (!consumed) return { ok: false, message: "unauthorized" };
+    return { ok: true, userId: consumed.userId };
+  } catch (err) {
+    if (err instanceof McpTokenSecretError) {
+      return { ok: false, message: "unauthorized" };
+    }
+    throw err;
   }
-
-  // DEV-only compatibility: "default-user" is the legacy seeded user id.
-  // Sub-spec 4 replaces this with per-user token lookup.
-  return { ok: true, userId: "default-user" };
-}
-
-function tokenMatches(token: string, configuredToken: string): boolean {
-  const tokenBytes = createHash("sha256").update(token).digest();
-  const configuredBytes = createHash("sha256").update(configuredToken).digest();
-  if (tokenBytes.byteLength !== configuredBytes.byteLength) return false;
-  return timingSafeEqual(tokenBytes, configuredBytes);
 }
