@@ -1,30 +1,21 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
-vi.mock("node:dns/promises", () => ({
-  default: {
-    lookup: vi.fn(async (hostname: string) => {
-      if (hostname === "private.example") return [{ address: "10.0.0.5", family: 4 }];
-      return [{ address: "93.184.216.34", family: 4 }];
-    }),
-  },
-  lookup: vi.fn(async (hostname: string) => {
-    if (hostname === "private.example") return [{ address: "10.0.0.5", family: 4 }];
-    return [{ address: "93.184.216.34", family: 4 }];
-  }),
-}));
-
 import {
   _resetExtractorForTests,
   _setExtractorForTests,
   rssConnectorExpanded,
 } from "../connectors/rss";
 import {
-  _resetPinnedFetcherForTests,
-  _setPinnedFetcherForTests,
   extractFullArticle,
   looksLikeTeaser,
   parseArticle,
 } from "../extract-article";
+import {
+  _resetLookupForTests,
+  _resetPinnedFetchForTests,
+  _setLookupForTests,
+  _setPinnedFetchForTests,
+} from "../safe-fetch";
 import { createExtractionBudget } from "../source-connector";
 import type { ConnectorContext, RawItem } from "../source-connector";
 
@@ -124,41 +115,87 @@ describe("parseArticle", () => {
 });
 
 describe("extractFullArticle", () => {
+  beforeEach(() => {
+    _setLookupForTests(async () => [{ address: "93.184.216.34", family: 4 }]);
+  });
+
   afterEach(() => {
-    _resetPinnedFetcherForTests();
+    _resetLookupForTests();
+    _resetPinnedFetchForTests();
   });
 
   it("does not fetch loopback URLs", async () => {
-    const fetchMock = vi.fn(async () => ({ status: 200, headers: {}, body: "" }));
-    _setPinnedFetcherForTests(fetchMock);
+    const fetchMock = vi.fn(async () => new Response("nope"));
+    _setPinnedFetchForTests(fetchMock);
 
     await expect(extractFullArticle("http://127.0.0.1/admin")).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not fetch hostnames that resolve to private addresses", async () => {
-    const fetchMock = vi.fn(async () => ({ status: 200, headers: {}, body: "" }));
-    _setPinnedFetcherForTests(fetchMock);
+    const fetchMock = vi.fn(async () => new Response("nope"));
+    _setLookupForTests(async (hostname) => {
+      if (hostname === "private.example") return [{ address: "10.0.0.5", family: 4 }];
+      return [{ address: "93.184.216.34", family: 4 }];
+    });
+    _setPinnedFetchForTests(fetchMock);
 
     await expect(extractFullArticle("https://private.example/post-1")).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not fetch IPv4-mapped IPv6 loopback URLs", async () => {
-    const fetchMock = vi.fn(async () => ({ status: 200, headers: {}, body: "" }));
-    _setPinnedFetcherForTests(fetchMock);
+    const fetchMock = vi.fn(async () => new Response("nope"));
+    _setPinnedFetchForTests(fetchMock);
 
     await expect(extractFullArticle("http://[::ffff:127.0.0.1]/admin")).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("does not fetch cloud metadata IPs or hostnames", async () => {
+    const fetchMock = vi.fn(async () => new Response("nope"));
+    _setPinnedFetchForTests(fetchMock);
+
+    await expect(extractFullArticle("http://169.254.169.254/latest/")).resolves.toBeNull();
+    await expect(extractFullArticle("http://metadata.google.internal/")).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch hostnames that resolve to TEST-NET addresses", async () => {
+    const fetchMock = vi.fn(async () => new Response("nope"));
+    _setLookupForTests(async (hostname) => {
+      if (hostname === "test-net.example") return [{ address: "192.0.2.5", family: 4 }];
+      return [{ address: "93.184.216.34", family: 4 }];
+    });
+    _setPinnedFetchForTests(fetchMock);
+
+    await expect(extractFullArticle("https://test-net.example/post-1")).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("does not follow redirects to private network URLs", async () => {
-    const fetchMock = vi.fn(async () => ({
-      status: 302,
-      headers: { location: "http://169.254.169.254/latest/meta-data" },
-      body: "",
-    }));
-    _setPinnedFetcherForTests(fetchMock);
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "http://169.254.169.254/latest/meta-data" },
+        }),
+    );
+    _setPinnedFetchForTests(fetchMock);
+
+    await expect(extractFullArticle("https://example.com/post-1")).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when the article response is too large", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("x".repeat(2_000_001), {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+    );
+    _setPinnedFetchForTests(fetchMock);
 
     await expect(extractFullArticle("https://example.com/post-1")).resolves.toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -177,13 +214,16 @@ describe("extractFullArticle", () => {
         </body>
       </html>`;
     const seen: Array<{ hostname: string; address: string; family: number }> = [];
-    _setPinnedFetcherForTests(async (url, target) => {
-      seen.push({ hostname: url.hostname, address: target.address, family: target.family });
-      return {
+    _setPinnedFetchForTests(async (target) => {
+      seen.push({
+        hostname: target.url.hostname,
+        address: target.address,
+        family: target.family,
+      });
+      return new Response(articleHtml, {
         status: 200,
         headers: { "content-type": "text/html; charset=utf-8" },
-        body: articleHtml,
-      };
+      });
     });
 
     await expect(extractFullArticle("https://rebind.example/post-1")).resolves.not.toBeNull();
