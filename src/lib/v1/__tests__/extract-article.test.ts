@@ -5,11 +5,7 @@ import {
   _setExtractorForTests,
   rssConnectorExpanded,
 } from "../connectors/rss";
-import {
-  extractFullArticle,
-  looksLikeTeaser,
-  parseArticle,
-} from "../extract-article";
+import { extractFullArticle, looksLikeTeaser, parseArticle } from "../extract-article";
 import {
   _resetLookupForTests,
   _resetPinnedFetchForTests,
