@@ -5,7 +5,9 @@ import {
   SESSION_COOKIE_NAME,
   isAllowedMutationOrigin,
   requestOriginFromHeaders,
+  verifySessionCookie,
 } from "@/lib/auth";
+import { bumpSessionVersionIfActiveAndCurrent } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +20,14 @@ export async function POST() {
   }
 
   const cookieStore = await cookies();
+  const sessionCookie =
+    cookieStore.get(SESSION_COOKIE_NAME)?.value ??
+    cookieStore.get(LEGACY_SESSION_COOKIE_NAME)?.value;
+  const verified = await verifySessionCookie(sessionCookie);
+  if (verified) {
+    await bumpSessionVersionIfActiveAndCurrent(verified.userId, verified.sessionVersion);
+  }
+
   for (const name of [SESSION_COOKIE_NAME, LEGACY_SESSION_COOKIE_NAME]) {
     cookieStore.set(name, "", {
       httpOnly: true,

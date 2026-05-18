@@ -156,6 +156,21 @@ export async function bumpSessionVersion(userId: string): Promise<void> {
   });
 }
 
+export async function bumpSessionVersionIfActiveAndCurrent(
+  userId: string,
+  sessionVersion: number,
+): Promise<boolean> {
+  const r = await db.execute({
+    sql: `UPDATE users
+          SET session_version = session_version + 1
+          WHERE id = ?
+            AND status = 'active'
+            AND session_version = ?`,
+    args: [userId, sessionVersion],
+  });
+  return r.rowsAffected > 0;
+}
+
 export async function claimFirstAdmin(userId: string): Promise<boolean> {
   await db.batch([
     {
