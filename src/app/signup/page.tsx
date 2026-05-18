@@ -23,6 +23,7 @@ const errorMessages: Record<string, string> = {
   origin: "This sign-up request did not come from this FlavorPress app.",
   oauth_state: "The sign-up link expired or was tampered with. Try again.",
   oauth: "WordPress.com sign-up failed. Try again.",
+  rate: "Too many sign-up attempts. Try again in a minute.",
 };
 
 export default async function SignupPage({ searchParams }: PageProps) {

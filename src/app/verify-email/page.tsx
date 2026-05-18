@@ -7,6 +7,7 @@ interface PageProps {
 export default async function VerifyEmailStatusPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const isInvalid = sp.status === "invalid";
+  const isRateLimited = sp.status === "rate";
   return (
     <div
       style={{
@@ -17,11 +18,17 @@ export default async function VerifyEmailStatusPage({ searchParams }: PageProps)
       }}
     >
       <h1 style={{ fontSize: 22, fontWeight: 500 }}>
-        {isInvalid ? "Link is invalid or expired" : "Verifying email"}
+        {isInvalid
+          ? "Link is invalid or expired"
+          : isRateLimited
+            ? "Too many verification attempts"
+            : "Verifying email"}
       </h1>
       <p style={{ color: "var(--ink-tertiary)" }}>
         {isInvalid
           ? "Ask the admin to resend an invite or use the password-reset flow to re-verify."
+          : isRateLimited
+            ? "Try again in a minute."
           : "Open the link from the email we sent you."}
       </p>
     </div>

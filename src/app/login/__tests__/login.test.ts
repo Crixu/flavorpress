@@ -2,10 +2,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
+import { rateLimitKey } from "@/lib/rate-limit";
 import { createUser, setStatus } from "@/lib/users";
 
 let cookieJar: Map<string, string>;
 let cookieOptions: Map<string, CookieOptions>;
+let forwardedFor = "198.51.100.1";
+let ipCounter = 1;
 
 interface CookieOptions {
   httpOnly?: boolean;
@@ -32,6 +35,7 @@ vi.mock("next/headers", () => ({
     get: (name: string) => {
       if (name === "origin") return "http://localhost:3000";
       if (name === "x-forwarded-host") return "localhost:3000";
+      if (name === "x-forwarded-for") return forwardedFor;
       return null;
     },
   }),
@@ -48,8 +52,11 @@ vi.mock("next/navigation", () => ({
 beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM users");
+  await db.execute("DELETE FROM rate_buckets");
   cookieJar = new Map();
   cookieOptions = new Map();
+  forwardedFor = `198.51.100.${ipCounter}`;
+  ipCounter += 1;
   redirectCalls.length = 0;
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
   process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
@@ -163,4 +170,65 @@ describe("loginAction", () => {
     expect(to).toMatch(/error=credentials/);
     expect(cookieJar.get(SESSION_COOKIE_NAME)).toBeUndefined();
   });
+
+  it("rate-limits login when the IP bucket is exhausted", async () => {
+    await seedExhaustedBucket("login", rateLimitKey("ip", forwardedFor));
+
+    const limited = await callLogin({
+      email: "ghost@example.com",
+      password: "correct horse battery staple",
+    });
+    expect(limited).toMatch(/error=rate/);
+  });
+
+  it("rate-limits unknown accounts by normalized submitted email before the IP bucket", async () => {
+    await seedExhaustedBucket("login", rateLimitKey("account", "ghost@example.com"));
+
+    const limited = await callLogin({
+      email: " Ghost@Example.COM ",
+      password: "correct horse battery staple",
+    });
+    expect(limited).toMatch(/error=rate/);
+  });
+
+  it("bumps session_version after five consecutive failures for a real account", async () => {
+    const hash = await hashPassword("correct horse battery staple");
+    const u = await createUser({
+      email: "a@example.com",
+      passwordHash: hash,
+      emailVerifiedAt: Date.now(),
+    });
+
+    for (let i = 0; i < 5; i += 1) {
+      const to = await callLogin({
+        email: "a@example.com",
+        password: "wrong-but-long-enough",
+      });
+      expect(to).toMatch(/error=credentials/);
+    }
+
+    const after = await db.execute({
+      sql: "SELECT session_version FROM users WHERE id = ?",
+      args: [u.id],
+    });
+    expect(Number(after.rows[0]!.session_version)).toBe(1);
+    await seedExhaustedBucket("login", rateLimitKey("account", "a@example.com"));
+
+    const limited = await callLogin({
+      email: "a@example.com",
+      password: "wrong-but-long-enough",
+    });
+    expect(limited).toMatch(/error=rate/);
+  });
 });
+
+async function seedExhaustedBucket(scope: string, key: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO rate_buckets (scope, key, tokens, refilled_at)
+          VALUES (?, ?, 0, ?)
+          ON CONFLICT(scope, key) DO UPDATE SET
+            tokens = excluded.tokens,
+            refilled_at = excluded.refilled_at`,
+    args: [scope, key, Math.floor(Date.now() / 60_000) * 60_000],
+  });
+}

@@ -76,6 +76,15 @@ describe("auth-foundation schema", () => {
     expect(cols.has("updated_at")).toBe(true);
   });
 
+  it("creates rate_buckets table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("rate_buckets");
+    expect(cols.has("scope")).toBe(true);
+    expect(cols.has("key")).toBe(true);
+    expect(cols.has("tokens")).toBe(true);
+    expect(cols.has("refilled_at")).toBe(true);
+  });
+
   it("creates deployment_state table", async () => {
     await ensureSchema();
     const cols = await tableInfo("deployment_state");

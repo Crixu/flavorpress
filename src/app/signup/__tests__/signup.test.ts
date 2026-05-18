@@ -64,6 +64,7 @@ beforeEach(async () => {
   await db.execute("DELETE FROM invites");
   await db.execute("DELETE FROM email_verification_tokens");
   await db.execute("DELETE FROM deployment_state");
+  await db.execute("DELETE FROM rate_buckets");
   cookieJar = new Map();
   redirectCalls.length = 0;
   emailMock.sendCalls.length = 0;

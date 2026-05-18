@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, createSessionCookie, getSessionTtlSeconds } from "@/lib/auth";
 import { consumeVerificationToken } from "@/lib/email-tokens";
+import { AUTH_IP_RATE_LIMIT, consumeRateLimit, getClientIp, rateLimitKey } from "@/lib/rate-limit";
 import { getUserById, markEmailVerified } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -11,10 +12,18 @@ interface Params {
   params: Promise<{ token: string }>;
 }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const { token } = await params;
   const origin =
     (process.env.FLAVORPRESS_ORIGIN ?? "").replace(/\/$/, "") || "http://localhost:3000";
+  const ipLimit = await consumeRateLimit({
+    scope: "verify",
+    key: rateLimitKey("ip", getClientIp(req.headers)),
+    ...AUTH_IP_RATE_LIMIT,
+  });
+  if (!ipLimit.ok) {
+    return NextResponse.redirect(new URL("/verify-email?status=rate", origin));
+  }
   const userId = await consumeVerificationToken(token);
   if (!userId) {
     return NextResponse.redirect(new URL("/verify-email?status=invalid", origin));

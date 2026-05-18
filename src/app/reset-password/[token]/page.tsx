@@ -14,6 +14,7 @@ const errorMessages: Record<string, string> = {
   token: "This reset link is invalid or expired.",
   password: "Pick a password with at least 12 characters.",
   origin: "This request did not come from this FlavorPress app.",
+  rate: "Too many reset attempts. Try again in a minute.",
 };
 
 export default async function ResetPasswordConfirmPage({ params, searchParams }: PageProps) {

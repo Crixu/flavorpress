@@ -5,8 +5,11 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { createUser, getUserByEmail } from "@/lib/users";
 import { issuePasswordResetToken } from "@/lib/email-tokens";
 import { hashToken } from "@/lib/token-hash";
+import { rateLimitKey } from "@/lib/rate-limit";
 
 let cookieJar: Map<string, string>;
+let forwardedFor = "198.51.102.1";
+let ipCounter = 1;
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -22,6 +25,7 @@ vi.mock("next/headers", () => ({
     get: (name: string) => {
       if (name === "origin") return "http://localhost:3000";
       if (name === "x-forwarded-host") return "localhost:3000";
+      if (name === "x-forwarded-for") return forwardedFor;
       return null;
     },
   }),
@@ -39,7 +43,10 @@ beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM password_reset_tokens");
+  await db.execute("DELETE FROM rate_buckets");
   cookieJar = new Map();
+  forwardedFor = `198.51.102.${ipCounter}`;
+  ipCounter += 1;
   redirectCalls.length = 0;
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
   process.env.FLAVORPRESS_ALLOWED_ORIGINS = "http://localhost:3000";
@@ -122,4 +129,42 @@ describe("confirmPasswordResetAction", () => {
     const to = await callConfirm(token, "another strong password here");
     expect(to).toMatch(/error=token/);
   });
+
+  it("rate-limits reset-link consumption by IP, not by token", async () => {
+    for (let i = 0; i < 10; i += 1) {
+      const to = await callConfirm(`missing-token-${i}`, "fresh strong new password");
+      expect(to).toMatch(/error=token/);
+    }
+
+    const limited = await callConfirm("missing-token-10", "fresh strong new password");
+    expect(limited).toMatch(/error=rate/);
+  });
+
+  it("does not consume a valid token when reset confirmation is rate-limited", async () => {
+    const u = await createUser({
+      email: "a@example.com",
+      passwordHash: await hashPassword("the old password long enough"),
+    });
+    const token = await issuePasswordResetToken(u.id);
+    await seedExhaustedBucket("reset_confirm", rateLimitKey("ip", forwardedFor));
+
+    const limited = await callConfirm(token, "fresh strong new password");
+    expect(limited).toMatch(/error=rate/);
+    const stored = await db.execute({
+      sql: "SELECT used_at FROM password_reset_tokens WHERE token = ?",
+      args: [hashToken(token)],
+    });
+    expect(stored.rows[0]!.used_at).toBeNull();
+  });
 });
+
+async function seedExhaustedBucket(scope: string, key: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO rate_buckets (scope, key, tokens, refilled_at)
+          VALUES (?, ?, 0, ?)
+          ON CONFLICT(scope, key) DO UPDATE SET
+            tokens = excluded.tokens,
+            refilled_at = excluded.refilled_at`,
+    args: [scope, key, Math.floor(Date.now() / 60_000) * 60_000],
+  });
+}

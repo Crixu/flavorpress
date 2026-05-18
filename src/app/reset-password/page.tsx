@@ -12,6 +12,7 @@ interface PageProps {
 const errorMessages: Record<string, string> = {
   email: "Enter your email address.",
   origin: "This request did not come from this FlavorPress app.",
+  rate: "Too many reset requests. Try again in a minute.",
 };
 
 export default async function ResetPasswordRequestPage({ searchParams }: PageProps) {
