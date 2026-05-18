@@ -2,10 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  isAllowedMutationOrigin,
-  requestOriginFromHeaders,
-} from "@/lib/auth";
+import { isAllowedMutationOrigin, requestOriginFromHeaders } from "@/lib/auth";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { consumePasswordResetToken } from "@/lib/email-tokens";
 import { getUserById, markEmailVerified, updatePassword } from "@/lib/users";
