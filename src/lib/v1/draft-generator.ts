@@ -149,6 +149,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
   });
 
   let result = await streamOnce({
+    userId: input.userId,
     systemPrompt: promptBundle.systemPrompt,
     userMessage: promptBundle.userMessage,
     voiceFingerprint: voiceProfile?.functionWordDistribution ?? null,
@@ -208,6 +209,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
       sourceNonce: tighterPrompt.sourceNonce,
     });
     result = await streamOnce({
+      userId: input.userId,
       systemPrompt: tighterPrompt.systemPrompt,
       userMessage: tighterPrompt.userMessage,
       voiceFingerprint: voiceProfile?.functionWordDistribution ?? null,
@@ -315,6 +317,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftOutput> {
 }
 
 interface StreamArgs {
+  userId: string;
   systemPrompt: string;
   userMessage: string;
   voiceFingerprint: Float32Array | null;
@@ -343,7 +346,7 @@ interface StreamResult {
 }
 
 async function streamOnce(args: StreamArgs): Promise<StreamResult> {
-  const { client } = await createAnthropicClient();
+  const { client } = await createAnthropicClient(args.userId);
   if (!client) {
     // No auth configured (no API key, no `claude` on PATH). Fall back
     // to a deterministic stub so the loop closes for local dev without

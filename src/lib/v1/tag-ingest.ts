@@ -12,16 +12,17 @@ import { extractItemTags } from "@/lib/v1/tagger";
  */
 export async function tagItem(itemId: string): Promise<number> {
   const r = await db.execute({
-    sql: `SELECT title, body FROM items WHERE id = ?`,
+    sql: `SELECT user_id, title, body FROM items WHERE id = ?`,
     args: [itemId],
   });
   const row = r.rows[0];
   if (!row) return 0;
+  const userId = String(row.user_id ?? "");
   const title = String(row.title ?? "");
   const body = String(row.body ?? "");
-  if (!title && !body) return 0;
+  if (!userId || (!title && !body)) return 0;
 
-  const tags = await extractItemTags({ title, body });
+  const tags = await extractItemTags({ userId, title, body });
   if (tags.length === 0) return 0;
 
   const now = Date.now();

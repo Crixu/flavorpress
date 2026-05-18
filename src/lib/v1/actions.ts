@@ -746,7 +746,7 @@ async function runBackgroundAutoTitling(
     jobs.map(async ({ id, url }) => {
       try {
         const placeholder = hostFromUrl(url);
-        const title = (await generateSourceTitle(url)).trim();
+        const title = (await generateSourceTitle(url, userId)).trim();
         if (!title || title === placeholder) return;
         // Race guard: only overwrite if the user hasn't already renamed it.
         await db.execute({
@@ -1934,7 +1934,7 @@ export async function seedVoiceFromInterviewAction(formData: FormData) {
     throw new Error(`Answer at least three questions to seed a voice; got ${filled}.`);
   }
 
-  const essay = await synthesizeVoiceEssay(answers);
+  const essay = await synthesizeVoiceEssay(answers, session.userId);
   if (!essay) {
     throw new Error(
       "Could not synthesize a voice essay from the interview. Try again, or seed from samples.",
@@ -2015,6 +2015,7 @@ export async function deriveBlogDescriptionAction(formData: FormData) {
   const prose = identity.homeUrl ? await fetchHomepageProse(identity.homeUrl) : "";
 
   const description = await summarizeBlogIdentity({
+    userId: session.userId,
     name: identity.name,
     tagline: identity.tagline,
     homepageProse: prose,
@@ -2029,6 +2030,7 @@ export async function deriveBlogDescriptionAction(formData: FormData) {
 }
 
 async function summarizeBlogIdentity(input: {
+  userId: string;
   name: string;
   tagline: string;
   homepageProse: string;
@@ -2041,7 +2043,7 @@ async function summarizeBlogIdentity(input: {
   // enough. Client resolution stays inside the try so a Vercel +
   // FLAVORPRESS_LOCAL_CLAUDE=1 misconfig does not 500 the action.
   try {
-    const { client } = await createAnthropicClient();
+    const { client } = await createAnthropicClient(input.userId);
     if (!client) {
       return fallback || "A personal blog.";
     }

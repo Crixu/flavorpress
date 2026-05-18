@@ -3,7 +3,9 @@ import {
   capPromptBytes,
   escapePromptXml,
   newSourceNonce,
+  PromptTooLargeError,
   renderUntrustedSource,
+  truncatePromptBytes,
   untrustedSourceContract,
   wrapUntrustedSource,
 } from "../prompt-safety";
@@ -38,17 +40,25 @@ describe("prompt safety helpers", () => {
     expect(rendered.match(new RegExp(`</source-${nonce}>`, "g"))).toHaveLength(1);
   });
 
-  it("caps prompt text by bytes without splitting multibyte characters", () => {
-    const capped = capPromptBytes("ab😀cd", 6);
+  it("truncates prompt text by bytes without splitting multibyte characters", () => {
+    const capped = truncatePromptBytes("ab😀cd", 6);
     expect(capped).toBe("ab😀");
     expect(Buffer.byteLength(capped, "utf8")).toBeLessThanOrEqual(6);
   });
 
   it("drops a partial multi-byte character instead of emitting a replacement char", () => {
-    const capped = capPromptBytes("ab😀", 3);
+    const capped = truncatePromptBytes("ab😀", 3);
     expect(capped).toBe("ab");
     expect(capped).not.toContain("�");
     expect(Buffer.byteLength(capped, "utf8")).toBeLessThanOrEqual(3);
+  });
+
+  it("rejects oversized assembled prompts instead of silently truncating", () => {
+    expect(() => capPromptBytes("abcdef", 3)).toThrow(PromptTooLargeError);
+  });
+
+  it("returns prompts unchanged when they fit the byte cap", () => {
+    expect(capPromptBytes("ab😀", 6)).toBe("ab😀");
   });
 
   it("applies field byte caps before rendering", () => {

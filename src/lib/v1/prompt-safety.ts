@@ -7,6 +7,7 @@ const DEFAULT_TITLE_BYTE_CAP = 500;
 const DEFAULT_URL_BYTE_CAP = 2000;
 const DEFAULT_LEDE_BYTE_CAP = 2000;
 const DEFAULT_BODY_BYTE_CAP = 4000;
+const DEFAULT_PROMPT_BYTE_CAP = 64 * 1024;
 
 export interface UntrustedSourceItem {
   title: string;
@@ -38,7 +39,29 @@ export function escapePromptXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function capPromptBytes(s: string, max: number): string {
+export class PromptTooLargeError extends Error {
+  readonly code = "prompt_too_large";
+
+  constructor(
+    readonly byteLength: number,
+    readonly maxBytes: number,
+  ) {
+    super(`Prompt is ${byteLength} bytes; the maximum is ${maxBytes} bytes.`);
+    this.name = "PromptTooLargeError";
+  }
+}
+
+export function capPromptBytes(s: string, max = DEFAULT_PROMPT_BYTE_CAP): string {
+  const byteLength = promptByteLength(s);
+  if (byteLength > max) throw new PromptTooLargeError(byteLength, max);
+  return s;
+}
+
+export function promptByteLength(s: string): number {
+  return new TextEncoder().encode(s).byteLength;
+}
+
+export function truncatePromptBytes(s: string, max: number): string {
   if (!Number.isFinite(max) || max <= 0) return "";
 
   const encoder = new TextEncoder();
@@ -99,7 +122,10 @@ export function renderUntrustedPromptBlock(
   const lines = fields
     .filter((field) => field.value !== null && field.value !== undefined && field.value !== "")
     .map((field) => {
-      const capped = capPromptBytes(String(field.value), field.byteCap ?? DEFAULT_FIELD_BYTE_CAP);
+      const capped = truncatePromptBytes(
+        String(field.value),
+        field.byteCap ?? DEFAULT_FIELD_BYTE_CAP,
+      );
       return `${safeFieldLabel(field.label)}: ${escapePromptXml(capped)}`;
     })
     .join("\n");
@@ -119,7 +145,7 @@ export function wrapUntrustedSource(
 ): { nonce: string; fragment: string } {
   const nonce = options.nonce ?? newSourceNonce();
   const maxBytes = options.maxBytes ?? 48 * 1024;
-  const capped = capPromptBytes(body, maxBytes);
+  const capped = truncatePromptBytes(body, maxBytes);
   const safe = options.preserveMarkup ? capped : escapePromptXml(capped);
   const fragment = `${untrustedSourceContract(nonce)}
 

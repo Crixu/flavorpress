@@ -36,12 +36,15 @@ export function buildSynthesisPrompt(answers: string[]): SynthesisPrompt {
  * not shown to the user. Returns null if the LLM is unavailable or fails;
  * the caller decides whether to surface the error.
  */
-export async function synthesizeVoiceEssay(answers: string[]): Promise<string | null> {
+export async function synthesizeVoiceEssay(
+  answers: string[],
+  userId: string,
+): Promise<string | null> {
   const sanitized = sanitizeAnswers(answers);
   if (sanitized.every((a) => !a)) return null;
 
   try {
-    const { client } = await createAnthropicClient();
+    const { client } = await createAnthropicClient(userId);
     if (!client) return null;
     const { system, user } = buildSynthesisPrompt(sanitized);
     const model = await getAnthropicDraftModel();

@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-18.mcp-tokens-oauth-nonces";
+const SCHEMA_VERSION = "2026-05-18.mcp-tokens-oauth-nonces-f10-ai-budget";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -604,6 +604,16 @@ export async function ensureSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_item_tags_item ON item_tags(item_id)`,
       `CREATE INDEX IF NOT EXISTS idx_item_tags_item_confidence ON item_tags(item_id, confidence DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag)`,
+
+      `CREATE TABLE IF NOT EXISTS user_ai_budget (
+        user_id TEXT NOT NULL,
+        day_utc TEXT NOT NULL,
+        tokens_remaining INTEGER NOT NULL,
+        tokens_limit INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, day_utc)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_ai_budget_day ON user_ai_budget(day_utc)`,
 
       // App-level settings the user can edit from /settings instead of .env.
       // Single-user prototype so we keep this keyed only by `key`; values are

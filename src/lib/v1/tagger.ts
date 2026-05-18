@@ -5,6 +5,7 @@ import { getAnthropicDraftModel } from "./settings";
 import { newSourceNonce, renderUntrustedSource, untrustedSourceContract } from "./prompt-safety";
 
 export interface TagInput {
+  userId: string;
   title: string;
   body: string;
 }
@@ -53,7 +54,7 @@ export async function extractItemTags(input: TagInput, opts: TagOptions = {}): P
     // createAnthropicClient() can throw on misconfigured CLI states; isolate that
     // from the network-call try so we always fail closed (return []).
     try {
-      const result = await createAnthropicClient();
+      const result = await createAnthropicClient(input.userId);
       client = result.client;
     } catch {
       return [];

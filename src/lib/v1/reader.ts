@@ -13,8 +13,8 @@
  * on the items that landed in a group.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { db, ensureSchema } from "../db";
+import { createAnthropicApiClient } from "../anthropic";
 import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
 import { rankCluster } from "./ranker";
 import type { Cluster } from "./types";
@@ -553,7 +553,7 @@ export async function clusterMarkedItems(userId: string): Promise<FormedCluster[
   const marked = await listMarked(userId);
   if (marked.length === 0) return [];
 
-  const groups = await groupByTheme(marked);
+  const groups = await groupByTheme(marked, userId);
   if (groups.length === 0) return [];
 
   const formed: FormedCluster[] = [];
@@ -618,7 +618,7 @@ interface ThemeGroup {
   itemIds: string[];
 }
 
-async function groupByTheme(items: ReaderItem[]): Promise<ThemeGroup[]> {
+async function groupByTheme(items: ReaderItem[], userId: string): Promise<ThemeGroup[]> {
   // Single-item piles never need the model; one cluster, theme is the title.
   if (items.length === 1) {
     return [{ theme: items[0]!.title, itemIds: [items[0]!.id] }];
@@ -628,7 +628,7 @@ async function groupByTheme(items: ReaderItem[]): Promise<ThemeGroup[]> {
   if (!apiKey) return fallbackGrouping(items);
 
   const model = await getAnthropicDraftModel();
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropicApiClient(apiKey, userId);
 
   const numbered = items
     .map(

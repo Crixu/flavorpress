@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { LocalClaudeClient, resolveClaudeBinary } from "./anthropic-local";
 import { withAnthropicLimit } from "./v1/ai-limiter";
+import { reserveTokens, refundReservation } from "./v1/ai-budget";
+import { capPromptBytes, promptByteLength } from "./v1/prompt-safety";
 import { getAnthropicApiKey } from "./v1/settings";
 
 export { LocalClaudeError, type LocalClaudeErrorKind } from "./anthropic-local";
@@ -187,32 +189,123 @@ export interface AnthropicClientHandle {
  * when no auth is configured (call sites then fall back to their
  * existing stub / error path).
  */
-export async function createAnthropicClient(): Promise<AnthropicClientHandle> {
+export async function createAnthropicClient(userId: string): Promise<AnthropicClientHandle> {
   const auth = await resolveAnthropicAuth();
   if (auth.mode === "api" && auth.apiKey) {
-    const raw = new Anthropic({ apiKey: auth.apiKey }) as unknown as AnthropicLike;
-    return { mode: "api", client: wrapWithLimiter(raw) };
+    return { mode: "api", client: createAnthropicApiClient(auth.apiKey, userId) };
   }
   if (auth.mode === "cli" && auth.claudePath) {
     return {
       mode: "cli",
-      client: wrapWithLimiter(new LocalClaudeClient(auth.claudePath)),
+      client: wrapAnthropicClient(new LocalClaudeClient(auth.claudePath), userId),
     };
   }
   return { mode: "none", client: null };
 }
 
+export function createAnthropicApiClient(apiKey: string, userId: string): AnthropicLike {
+  const raw = new Anthropic({ apiKey }) as unknown as AnthropicLike;
+  return wrapAnthropicClient(raw, userId);
+}
+
 /**
  * Wrap the client's non-streaming `messages.create` with the process-wide
- * Anthropic limiter so every call site honors the org rate cap. Streaming
- * passes through; one user-initiated stream is one request and gating it
- * just adds latency to the only flow the user is actively watching.
+ * Anthropic limiter so every call site honors the org rate cap. The
+ * per-user budget is reserved before the process limiter so an exhausted
+ * user cannot spend org-limiter tokens that would suppress another user.
  */
-function wrapWithLimiter(client: AnthropicLike): AnthropicLike {
+export function wrapAnthropicClient(client: AnthropicLike, userId: string): AnthropicLike {
   return {
     messages: {
-      create: (params) => withAnthropicLimit(() => client.messages.create(params)),
-      stream: (params) => client.messages.stream(params),
+      create: async (params) => {
+        const estimatedTokens = estimateAnthropicTokens(params);
+        const reservation = await reserveTokens(userId, estimatedTokens);
+        try {
+          const message = await withAnthropicLimit(() => client.messages.create(params));
+          await refundReservation(reservation, usageTokens(message));
+          return message;
+        } catch (err) {
+          await refundReservation(reservation, 0);
+          throw err;
+        }
+      },
+      stream: (params) => {
+        const estimatedTokens = estimateAnthropicTokens(params);
+        let stream: AnthropicLikeStream | null = null;
+        let aborted = false;
+        let started = false;
+        let sawStop = false;
+        const streamUsage = { inputTokens: 0, outputTokens: 0 };
+
+        async function* iterate(): AsyncGenerator<Anthropic.Messages.RawMessageStreamEvent> {
+          const reservation = await reserveTokens(userId, estimatedTokens);
+          try {
+            if (aborted) throw new Error("Anthropic stream aborted before start.");
+            stream = client.messages.stream(params);
+            started = true;
+            for await (const event of stream) {
+              updateStreamUsage(event, streamUsage);
+              if (event.type === "message_stop") sawStop = true;
+              yield event;
+            }
+          } finally {
+            if (sawStop) await refundReservation(reservation, streamUsageTokens(streamUsage));
+            else if (!started) await refundReservation(reservation, 0);
+          }
+        }
+
+        return {
+          controller: {
+            abort: () => {
+              aborted = true;
+              stream?.controller.abort();
+            },
+          },
+          [Symbol.asyncIterator]: iterate,
+        };
+      },
     },
   };
+}
+
+const PROMPT_BYTE_CAP = 64 * 1024;
+
+function estimateAnthropicTokens(
+  params:
+    | Anthropic.Messages.MessageCreateParamsNonStreaming
+    | Anthropic.Messages.MessageStreamParams,
+): number {
+  const promptPayload = JSON.stringify({
+    system: params.system ?? null,
+    messages: params.messages ?? [],
+    tools: "tools" in params ? params.tools : undefined,
+  });
+  capPromptBytes(promptPayload, PROMPT_BYTE_CAP);
+  const inputTokens = Math.ceil(promptByteLength(promptPayload) / 4);
+  return Math.max(1, Number(params.max_tokens ?? 0) + inputTokens);
+}
+
+function usageTokens(message: Anthropic.Messages.Message): number | null {
+  const usage = message.usage;
+  if (!usage) return null;
+  return Number(usage.input_tokens ?? 0) + Number(usage.output_tokens ?? 0);
+}
+
+function updateStreamUsage(
+  event: Anthropic.Messages.RawMessageStreamEvent,
+  usage: { inputTokens: number; outputTokens: number },
+): void {
+  if (event.type === "message_start") {
+    usage.inputTokens = Number(event.message.usage?.input_tokens ?? 0);
+    usage.outputTokens = Number(event.message.usage?.output_tokens ?? 0);
+    return;
+  }
+  if (event.type === "message_delta" && event.usage) {
+    usage.outputTokens = Number(event.usage.output_tokens ?? usage.outputTokens);
+  }
+}
+
+function streamUsageTokens(usage: { inputTokens: number; outputTokens: number }): number | null {
+  const total = usage.inputTokens + usage.outputTokens;
+  return total > 0 ? total : null;
 }

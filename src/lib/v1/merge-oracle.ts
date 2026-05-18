@@ -25,6 +25,7 @@ import { newSourceNonce, renderUntrustedSource, untrustedSourceContract } from "
 export const ORACLE_PROMPT_VERSION = "2026-05-05.v1";
 
 export interface MergeOracleInput {
+  userId: string;
   aHash: string;
   aTitle: string;
   aLede: string;
@@ -72,7 +73,7 @@ export async function askMergeOracle(input: MergeOracleInput): Promise<MergeOrac
   const cached = await loadCached(hashA, hashB, model);
   if (cached) return { ...cached, source: "cache" };
 
-  const { client } = await createAnthropicClient();
+  const { client } = await createAnthropicClient(input.userId);
   if (!client) return null;
 
   // The model sees the items in cache-canonical order so the prompt is

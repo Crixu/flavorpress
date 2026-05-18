@@ -10,8 +10,8 @@
  * the stable key for this feature.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { db, ensureSchema } from "../db";
+import { createAnthropicApiClient } from "../anthropic";
 import { getBus } from "./event-bus";
 import { newTraceId, traceLogger } from "./trace";
 import { getClusterItems } from "./cluster-engine";
@@ -76,7 +76,7 @@ export async function generateNotes(input: NotesInput): Promise<NotesOutput> {
     sourceCount: items.length,
     sourceNonce: prompt.sourceNonce,
   });
-  const rawNotes = await runOnce(prompt, log);
+  const rawNotes = await runOnce(prompt, log, input.userId);
   const notes = groundNotes(rawNotes, items);
 
   await log.info("notes.generate", "complete", {
@@ -167,7 +167,7 @@ export async function remixIdeas(input: {
   }
 
   const model = await getAnthropicDraftModel();
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropicApiClient(apiKey, input.userId);
   const sourceNonce = newSourceNonce();
   const sourceBlock = renderSourceBlock(items, sourceNonce);
   const prior = input.current.ideas.map((i) => `- ${i.angle}`).join("\n");
@@ -248,7 +248,7 @@ export async function extendQuotes(input: {
 
   const remaining = MAX_TOTAL_QUOTES - input.current.quotes.length;
   const model = await getAnthropicDraftModel();
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropicApiClient(apiKey, input.userId);
   const sourceNonce = newSourceNonce();
   const sourceBlock = renderSourceBlock(items, sourceNonce);
   const prior = input.current.quotes.map((q) => `- "${q.text}" (${q.sourceUrl})`).join("\n");
@@ -414,7 +414,11 @@ Return the notes JSON now.`;
   return { systemPrompt, userMessage, sourceNonce };
 }
 
-async function runOnce(prompt: Prompt, log: ReturnType<typeof traceLogger>): Promise<Notes> {
+async function runOnce(
+  prompt: Prompt,
+  log: ReturnType<typeof traceLogger>,
+  userId: string,
+): Promise<Notes> {
   const apiKey = await getAnthropicApiKey();
   if (!apiKey) {
     await log.warn("notes.generate.run", "no API key; using stub");
@@ -422,7 +426,7 @@ async function runOnce(prompt: Prompt, log: ReturnType<typeof traceLogger>): Pro
   }
 
   const model = await getAnthropicDraftModel();
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropicApiClient(apiKey, userId);
   const response = await client.messages.create({
     model,
     max_tokens: 2000,

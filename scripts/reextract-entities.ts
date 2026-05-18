@@ -79,6 +79,7 @@ async function main() {
 
   const work = async (it: ItemRow): Promise<void> => {
     const extracted = await extractItemEntities({
+      userId,
       title: it.title,
       lede: it.lede,
       contentHash: it.contentHash,

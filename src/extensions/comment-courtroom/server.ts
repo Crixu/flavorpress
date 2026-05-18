@@ -103,7 +103,7 @@ export async function runCommentCourtroom(
     throw new Error("Draft is too short to simulate comments; write a few more sentences first.");
   }
 
-  const handle = await createAnthropicClient();
+  const handle = await createAnthropicClient(session.userId);
   if (!handle.client) {
     throw new Error("No Anthropic auth configured. Add a key on /settings, then retry.");
   }
