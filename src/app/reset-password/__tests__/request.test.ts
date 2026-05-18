@@ -103,6 +103,21 @@ describe("requestPasswordResetAction", () => {
     expect(Number(tokens.rows[0]!.n)).toBe(0);
   });
 
+  it("rate-limits reset requests by IP before issuing a token for a known user", async () => {
+    await createUser({
+      email: "known-rate@example.com",
+      passwordHash: await hashPassword("correct horse battery staple"),
+    });
+    await seedExhaustedBucket("reset", rateLimitKey("ip", forwardedFor));
+
+    const to = await callRequest("known-rate@example.com");
+
+    expect(to).toMatch(/error=rate/);
+    expect(sendCalls).toHaveLength(0);
+    const tokens = await db.execute("SELECT COUNT(*) AS n FROM password_reset_tokens");
+    expect(Number(tokens.rows[0]!.n)).toBe(0);
+  });
+
   it("honors the normalized submitted email bucket before user lookup", async () => {
     await seedExhaustedBucket("reset", rateLimitKey("account", "reset-me@example.com"));
     await createUser({
@@ -110,6 +125,17 @@ describe("requestPasswordResetAction", () => {
       passwordHash: await hashPassword("correct horse battery staple"),
     });
     const to = await callRequest(" Reset-Me@Example.COM ");
+
+    expect(to).toMatch(/check=1/);
+    expect(sendCalls).toHaveLength(0);
+    const tokens = await db.execute("SELECT COUNT(*) AS n FROM password_reset_tokens");
+    expect(Number(tokens.rows[0]!.n)).toBe(0);
+  });
+
+  it("returns the same generic path for an unknown email with an exhausted submitted-email bucket", async () => {
+    await seedExhaustedBucket("reset", rateLimitKey("account", "ghost@example.com"));
+
+    const to = await callRequest(" Ghost@Example.COM ");
 
     expect(to).toMatch(/check=1/);
     expect(sendCalls).toHaveLength(0);
