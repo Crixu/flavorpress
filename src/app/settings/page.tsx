@@ -63,8 +63,11 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const section = sp.section ?? "authentication";
 
   const [snapshot, auth, draftCountR] = await Promise.all([
-    loadSettingsSnapshot(extensionSettingFields.map((f) => f.key)),
-    resolveAnthropicAuth().catch(
+    loadSettingsSnapshot(
+      session.userId,
+      extensionSettingFields.map((f) => f.key),
+    ),
+    resolveAnthropicAuth(session.userId).catch(
       () =>
         ({ mode: "none", apiKey: null, claudePath: null }) as Awaited<
           ReturnType<typeof resolveAnthropicAuth>

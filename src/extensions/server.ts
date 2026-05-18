@@ -27,8 +27,11 @@ export const SERVER_EXTENSIONS: ServerExtensionEntry[] = [
  * the user has disabled in /settings are skipped entirely so the editor
  * never hydrates highlights or panels for them.
  */
-export async function loadAllAnnotations(draftId: string): Promise<InitialAnnotationsByExtension> {
-  const disabled = await getDisabledExtensionIds();
+export async function loadAllAnnotations(
+  draftId: string,
+  userId: string,
+): Promise<InitialAnnotationsByExtension> {
+  const disabled = await getDisabledExtensionIds(userId);
   const active = SERVER_EXTENSIONS.filter((ext) => !disabled.has(ext.id));
   const results = await Promise.all(
     active.map(async (ext) => {

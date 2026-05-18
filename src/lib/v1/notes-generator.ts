@@ -71,7 +71,7 @@ export async function generateNotes(input: NotesInput): Promise<NotesOutput> {
   const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
-  const prompt = buildPrompt(items);
+  const prompt = buildPrompt(items, input.userId);
   await log.info("notes.generate", "prompt assembled", {
     sourceCount: items.length,
     sourceNonce: prompt.sourceNonce,
@@ -160,13 +160,13 @@ export async function remixIdeas(input: {
   const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
-  const apiKey = await getAnthropicApiKey();
+  const apiKey = await getAnthropicApiKey(input.userId);
   if (!apiKey) {
     await log.warn("notes.remix-ideas", "no API key; returning current ideas");
     return input.current.ideas;
   }
 
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(input.userId);
   const client = createAnthropicApiClient(apiKey, input.userId);
   const sourceNonce = newSourceNonce();
   const sourceBlock = renderSourceBlock(items, sourceNonce);
@@ -240,14 +240,14 @@ export async function extendQuotes(input: {
   const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
-  const apiKey = await getAnthropicApiKey();
+  const apiKey = await getAnthropicApiKey(input.userId);
   if (!apiKey) {
     await log.warn("notes.more-quotes", "no API key; returning current quotes");
     return input.current.quotes;
   }
 
   const remaining = MAX_TOTAL_QUOTES - input.current.quotes.length;
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(input.userId);
   const client = createAnthropicApiClient(apiKey, input.userId);
   const sourceNonce = newSourceNonce();
   const sourceBlock = renderSourceBlock(items, sourceNonce);
@@ -375,12 +375,13 @@ function parseLooseJson(text: string): Record<string, unknown> {
 }
 
 interface Prompt {
+  userId: string;
   systemPrompt: string;
   userMessage: string;
   sourceNonce: string;
 }
 
-function buildPrompt(items: Item[]): Prompt {
+function buildPrompt(items: Item[], userId: string): Prompt {
   const sourceNonce = newSourceNonce();
   const sourceBlock = renderSourceBlock(items, sourceNonce);
 
@@ -411,7 +412,7 @@ ${sourceBlock}
 
 Return the notes JSON now.`;
 
-  return { systemPrompt, userMessage, sourceNonce };
+  return { userId, systemPrompt, userMessage, sourceNonce };
 }
 
 async function runOnce(
@@ -419,13 +420,13 @@ async function runOnce(
   log: ReturnType<typeof traceLogger>,
   userId: string,
 ): Promise<Notes> {
-  const apiKey = await getAnthropicApiKey();
+  const apiKey = await getAnthropicApiKey(userId);
   if (!apiKey) {
     await log.warn("notes.generate.run", "no API key; using stub");
     return stubNotes();
   }
 
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(userId);
   const client = createAnthropicApiClient(apiKey, userId);
   const response = await client.messages.create({
     model,

@@ -107,7 +107,7 @@ export async function runCommentCourtroom(
   if (!handle.client) {
     throw new Error("No Anthropic auth configured. Add a key on /settings, then retry.");
   }
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(session.userId);
 
   const sourceNonce = newSourceNonce();
   const draftBlock = renderUntrustedPromptBlock(

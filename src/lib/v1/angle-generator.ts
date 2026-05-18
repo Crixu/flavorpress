@@ -133,7 +133,7 @@ RULES:
 
   const userMessage = `Cluster source bundle:\n\n${sourceBlock}\n\nReturn the JSON envelope now.`;
 
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(input.userId);
   const message = await client.messages.create({
     model,
     max_tokens: 700,

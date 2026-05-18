@@ -55,6 +55,7 @@ const COPY_PLAN: CopyPlanItem[] = [
   { table: "clusters", hasUserId: true, conflict: "ignore" },
   { table: "drafts", hasUserId: true, conflict: "ignore" },
   { table: "voice_profiles", hasUserId: true, conflict: "ignore" },
+  { table: "user_settings", hasUserId: true, conflict: "ignore" },
   { table: "ranker_signals", hasUserId: true, conflict: "ignore" },
   { table: "ranker_corrections", hasUserId: true, conflict: "ignore" },
 
@@ -71,7 +72,7 @@ const COPY_PLAN: CopyPlanItem[] = [
 //   event_log, trace_log         observability noise; tens of thousands of rows
 //   wp_authorize_states          transient OAuth state, expires fast
 //   job_progress                 transient
-//   app_settings                 global; do not overwrite local config (e.g. API keys)
+//   app_settings                 legacy global table; user_settings is copied above
 //   capabilities                 system-level; ensureRegisteredCapabilities re-seeds
 //   item_tags                    not present in current schema as of this writing
 //   fact_check_*, originality_*, related_image_*, comment_courtroom_*
@@ -167,7 +168,9 @@ async function main(): Promise<void> {
       item.conflict,
     );
     process.stdout.write(
-      `${item.table.padEnd(20)} scanned=${String(result.scanned).padStart(6)} inserted=${String(result.inserted).padStart(6)}\n`,
+      `${item.table.padEnd(20)} scanned=${String(result.scanned).padStart(6)} inserted=${String(
+        result.inserted,
+      ).padStart(6)}\n`,
     );
   }
 

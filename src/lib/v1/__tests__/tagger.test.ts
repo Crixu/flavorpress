@@ -71,6 +71,8 @@ describe("extractItemTags", () => {
 
     const tags = await extractItemTags({ userId: USER_ID, title: "Slow espresso", body: "..." });
     expect(tags).toEqual(["espresso", "roasting", "lisbon", "extraction"]);
+    expect(createAnthropicClient).toHaveBeenCalledWith(USER_ID);
+    expect(getAnthropicDraftModel).toHaveBeenCalledWith(USER_ID);
     expect(fakeClient.messages.create).toHaveBeenCalledWith(
       expect.objectContaining({ model: "claude-settings-model" }),
     );

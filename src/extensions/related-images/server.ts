@@ -53,14 +53,8 @@ interface OpenverseResponse {
   results?: OpenverseHit[];
 }
 
-function licenseFilterSettingKey(userId: string): string {
-  return `${SETTING_KEYS.relatedImagesLicenseFilter}:${userId}`;
-}
-
 export async function getLicenseFilter(userId: string): Promise<LicenseCode[]> {
-  const raw =
-    (await getSetting(licenseFilterSettingKey(userId))) ??
-    (await getSetting(SETTING_KEYS.relatedImagesLicenseFilter));
+  const raw = await getSetting(SETTING_KEYS.relatedImagesLicenseFilter, userId);
   if (!raw) return [...DEFAULT_LICENSE_FILTER];
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -85,7 +79,7 @@ export async function setLicenseFilter(
   // An empty filter would match nothing; treat it as "fall back to default"
   // so the user can't accidentally lock themselves out of search results.
   const effective = cleaned.length > 0 ? cleaned : [...DEFAULT_LICENSE_FILTER];
-  await setSetting(licenseFilterSettingKey(userId), JSON.stringify(effective));
+  await setSetting(SETTING_KEYS.relatedImagesLicenseFilter, userId, JSON.stringify(effective));
   // Prune the caller's cached results whose license is no longer
   // permitted. Without this, narrowing the filter would leave stale rows
   // in the panel that the chips claim are excluded; the reuse guidance

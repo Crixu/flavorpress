@@ -57,7 +57,6 @@ function settingsRedirectUrl(
  */
 export async function saveSettingAction(formData: FormData): Promise<void> {
   const session = await requireSession();
-  if (!session.isAdmin) redirect(settingsRedirectUrl(formData, { error: "forbidden" }));
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
     redirect(settingsRedirectUrl(formData, { error: "invalid_key" }));
@@ -65,7 +64,7 @@ export async function saveSettingAction(formData: FormData): Promise<void> {
   const value = String(formData.get("value") ?? "").trim();
 
   if (value === "") {
-    await setSetting(key, null);
+    await setSetting(key, session.userId, null);
     revalidatePath("/settings");
     redirect(settingsRedirectUrl(formData, { cleared: key }));
   }
@@ -77,19 +76,18 @@ export async function saveSettingAction(formData: FormData): Promise<void> {
     redirect(settingsRedirectUrl(formData, { error }));
   }
 
-  await setSetting(key, value);
+  await setSetting(key, session.userId, value);
   revalidatePath("/settings");
   redirect(settingsRedirectUrl(formData, { saved: key }));
 }
 
 export async function clearSettingAction(formData: FormData): Promise<void> {
   const session = await requireSession();
-  if (!session.isAdmin) redirect(settingsRedirectUrl(formData, { error: "forbidden" }));
   const key = String(formData.get("key") ?? "");
   if (!isAllowedKey(key)) {
     redirect(settingsRedirectUrl(formData, { error: "invalid_key" }));
   }
-  await setSetting(key, null);
+  await setSetting(key, session.userId, null);
   revalidatePath("/settings");
   redirect(settingsRedirectUrl(formData, { cleared: key }));
 }
@@ -103,13 +101,12 @@ export async function clearSettingAction(formData: FormData): Promise<void> {
  */
 export async function toggleExtensionAction(formData: FormData): Promise<void> {
   const session = await requireSession();
-  if (!session.isAdmin) redirect(settingsRedirectUrl(formData, { error: "forbidden" }));
   const extensionId = String(formData.get("extensionId") ?? "");
   if (!findExtensionMetadata(extensionId)) {
     redirect(settingsRedirectUrl(formData, { error: "invalid_extension" }));
   }
   const enabled = String(formData.get("enabled") ?? "") === "1";
-  await setExtensionEnabled(extensionId, enabled);
+  await setExtensionEnabled(extensionId, enabled, session.userId);
   revalidatePath("/settings");
   revalidatePath("/editor", "layout");
   redirect(

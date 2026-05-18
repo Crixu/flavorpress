@@ -59,7 +59,7 @@ export const redditConnector: SourceConnector<RawItem> = {
     const body = await fetchJson(ctx.source, jsonUrl);
     if (body === null) return [];
     const items = parseListing(body);
-    const thresholds = await getRedditEngagementThresholds();
+    const thresholds = await getRedditEngagementThresholds(ctx.source.userId);
     return applyEngagementThresholds(items, thresholds);
   },
 

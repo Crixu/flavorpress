@@ -168,7 +168,7 @@ async function ensureBudgetRow(userId: string, dayUtc: string, tokensLimit: numb
 async function dailyLimitForUser(userId: string): Promise<number> {
   const plan = await getUserPlan(userId);
   const tier = tierForPlan(plan.plan);
-  const configured = await getSetting(APP_SETTING_KEYS[tier]);
+  const configured = await getSetting(APP_SETTING_KEYS[tier], userId);
   return positiveInt(configured ?? process.env[ENV_KEYS[tier]], DEFAULT_DAILY_TOKEN_LIMITS[tier]);
 }
 

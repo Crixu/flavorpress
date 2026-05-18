@@ -13,6 +13,8 @@ vi.mock("../../db", () => ({
 
 import { getSetting, SETTING_KEYS, setSetting } from "../settings";
 
+const USER_ID = "user_a";
+
 describe("settings secret storage", () => {
   beforeEach(() => {
     executeMock.mockReset();
@@ -24,35 +26,35 @@ describe("settings secret storage", () => {
     vi.unstubAllEnvs();
   });
 
-  it("encrypts sensitive app settings on write", async () => {
+  it("encrypts sensitive user settings on write", async () => {
     executeMock.mockResolvedValue({ rows: [] });
     const apiKey = ["sk", "ant", "testvalue"].join("-");
 
-    await setSetting(SETTING_KEYS.anthropicApiKey, apiKey);
+    await setSetting(SETTING_KEYS.anthropicApiKey, USER_ID, apiKey);
 
     const insert = executeMock.mock.calls[0]![0] as { args: unknown[] };
-    const stored = String(insert.args[1]);
+    const stored = String(insert.args[2]);
     expect(isEncryptedSecret(stored)).toBe(true);
     expect(stored).not.toContain(apiKey);
   });
 
-  it("decrypts encrypted app settings on read", async () => {
+  it("decrypts encrypted user settings on read", async () => {
     const apiKey = ["sk", "ant", "stored"].join("-");
     executeMock.mockResolvedValueOnce({
       rows: [{ value: encryptSecret(apiKey) }],
     });
 
-    await expect(getSetting(SETTING_KEYS.anthropicApiKey)).resolves.toBe(apiKey);
+    await expect(getSetting(SETTING_KEYS.anthropicApiKey, USER_ID)).resolves.toBe(apiKey);
     expect(executeMock).toHaveBeenCalledTimes(1);
   });
 
-  it("migrates legacy plaintext app settings on read", async () => {
+  it("migrates legacy plaintext user settings on read", async () => {
     const apiKey = ["sk", "ant", "legacy"].join("-");
     executeMock.mockResolvedValueOnce({ rows: [{ value: apiKey }] }).mockResolvedValueOnce({
       rows: [],
     });
 
-    await expect(getSetting(SETTING_KEYS.anthropicApiKey)).resolves.toBe(apiKey);
+    await expect(getSetting(SETTING_KEYS.anthropicApiKey, USER_ID)).resolves.toBe(apiKey);
 
     const rewrite = executeMock.mock.calls[1]![0] as { args: unknown[] };
     const stored = String(rewrite.args[0]);
@@ -63,9 +65,9 @@ describe("settings secret storage", () => {
   it("leaves non-sensitive settings readable without encryption", async () => {
     executeMock.mockResolvedValue({ rows: [] });
 
-    await setSetting(SETTING_KEYS.anthropicDraftModel, "claude-model");
+    await setSetting(SETTING_KEYS.anthropicDraftModel, USER_ID, "claude-model");
 
     const insert = executeMock.mock.calls[0]![0] as { args: unknown[] };
-    expect(insert.args[1]).toBe("claude-model");
+    expect(insert.args[2]).toBe("claude-model");
   });
 });

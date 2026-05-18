@@ -197,8 +197,8 @@ export default async function EditorPage({ params }: PageProps) {
   }
 
   const [initialAnnotationsByExt, disabledExtensionIds] = await Promise.all([
-    loadAllAnnotations(String(d.id)),
-    getDisabledExtensionIds(),
+    loadAllAnnotations(String(d.id), session.userId),
+    getDisabledExtensionIds(session.userId),
   ]);
   const totalAnnotations = Object.values(initialAnnotationsByExt).reduce(
     (n, payload) => n + payload.annotations.length,

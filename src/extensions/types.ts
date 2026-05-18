@@ -143,7 +143,7 @@ export interface SourceExtensionEntry {
    * user-facing message when the extension is misconfigured (missing
    * setting, malformed input). Only called when `claims()` returned true.
    */
-  resolve(input: string): Promise<ResolvedSource>;
+  resolve(input: string, userId: string): Promise<ResolvedSource>;
   /** Settings the extension wants on /settings. Empty for none. */
   settings?: ExtensionSettingField[];
 }

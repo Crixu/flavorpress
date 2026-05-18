@@ -85,7 +85,7 @@ Pick the lane a recurring reader would file this under. Be specific; "tech" is t
 No em-dashes; use semicolons or new sentences if needed.`;
 
 export async function extractItemEntities(input: ExtractionInput): Promise<EntityExtraction> {
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(input.userId);
 
   // 1. Cache check.
   const cached = await loadCached(input.contentHash, model);

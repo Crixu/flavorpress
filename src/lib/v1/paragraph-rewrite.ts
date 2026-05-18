@@ -415,7 +415,7 @@ async function callModel(
   const { client } = await createAnthropicClient(userId);
   if (!client) return stub();
 
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(userId);
   try {
     const message = await client.messages.create({
       model,

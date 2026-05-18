@@ -112,6 +112,7 @@ export async function runReextractEntitiesJob(userId: string): Promise<JobStartR
   // Snapshot the rows so the worker doesn't keep the cursor open.
   const items = r.rows.map((row) => ({
     id: String(row.id),
+    userId,
     title: String(row.title ?? ""),
     lede: String(row.lede ?? ""),
     contentHash: String(row.content_hash ?? ""),

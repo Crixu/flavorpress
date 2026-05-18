@@ -68,7 +68,7 @@ reason: one short sentence. No em-dashes; use semicolons or new sentences if you
 
 export async function askMergeOracle(input: MergeOracleInput): Promise<MergeOracleResult | null> {
   const [hashA, hashB] = orderHashes(input.aHash, input.bHash);
-  const model = await getAnthropicDraftModel();
+  const model = await getAnthropicDraftModel(input.userId);
   // Cache hit shortcut.
   const cached = await loadCached(hashA, hashB, model);
   if (cached) return { ...cached, source: "cache" };

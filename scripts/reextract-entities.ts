@@ -26,6 +26,7 @@ const CONCURRENCY = 5;
 
 interface ItemRow {
   id: string;
+  userId: string;
   title: string;
   lede: string;
   contentHash: string;
@@ -60,6 +61,7 @@ async function main() {
 
   const items: ItemRow[] = r.rows.map((row) => ({
     id: String(row.id),
+    userId,
     title: String(row.title ?? ""),
     lede: String(row.lede ?? ""),
     contentHash: String(row.content_hash ?? ""),
@@ -79,7 +81,7 @@ async function main() {
 
   const work = async (it: ItemRow): Promise<void> => {
     const extracted = await extractItemEntities({
-      userId,
+      userId: it.userId,
       title: it.title,
       lede: it.lede,
       contentHash: it.contentHash,
