@@ -7,7 +7,10 @@ import {
   getSessionTtlSeconds,
   verifySessionCookie,
 } from "./auth";
+import { assertLocalAuthNotVercelProduction } from "./env-guards";
 import { createUser, getUserById } from "./users";
+
+assertLocalAuthNotVercelProduction();
 
 export class AuthRequiredError extends Error {
   constructor() {

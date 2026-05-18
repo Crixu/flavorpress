@@ -8,6 +8,9 @@ import {
   safeRedirectPath,
   verifySessionCookie,
 } from "@/lib/auth";
+import { assertLocalAuthNotVercelProduction } from "@/lib/env-guards";
+
+assertLocalAuthNotVercelProduction();
 
 const PUBLIC_PATHS = new Set([
   "/favicon.ico",
