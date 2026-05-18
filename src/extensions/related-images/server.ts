@@ -20,6 +20,7 @@ import "server-only";
 
 import { db, ensureSchema } from "@/lib/db";
 import { requireSession } from "@/lib/session";
+import { parseHttpUrl, safeFetch, safeReadJson } from "@/lib/v1/safe-fetch";
 import { getSetting, setSetting, SETTING_KEYS } from "@/lib/v1/settings";
 import type { ServerExtensionEntry } from "../types";
 import {
@@ -121,21 +122,13 @@ export async function runRelatedImageSearch(
   url.searchParams.set("page_size", String(MAX_RESULTS));
   url.searchParams.set("mature", "false");
 
-  let res: Response;
-  try {
-    res = await fetch(url.toString(), {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
-  } catch (err) {
-    throw new Error(
-      `Openverse request failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  const res = await safeFetch(url, {
+    headers: { Accept: "application/json" },
+  });
   if (!res.ok) {
     throw new Error(`Openverse returned ${res.status} ${res.statusText}.`);
   }
-  const data = (await res.json()) as OpenverseResponse;
+  const data = await safeReadJson<OpenverseResponse>(res);
   const ranAt = Date.now();
 
   await db.execute({
@@ -341,10 +334,14 @@ function buildQuery(headline: string, bodyText: string): string {
 function normalizeHit(
   hit: OpenverseHit,
 ): Omit<RelatedImageResult, "id" | "draftId" | "resultIndex" | "searchedAt"> | null {
-  const imageUrl = typeof hit.url === "string" ? hit.url : null;
+  const rawImageUrl = typeof hit.url === "string" ? hit.url : null;
+  const imageUrl = toHttpUrl(rawImageUrl);
   const thumbnailUrl =
-    typeof hit.thumbnail === "string" && hit.thumbnail.length > 0 ? hit.thumbnail : imageUrl;
-  const sourceUrl = typeof hit.foreign_landing_url === "string" ? hit.foreign_landing_url : null;
+    typeof hit.thumbnail === "string" && hit.thumbnail.length > 0
+      ? toHttpUrl(hit.thumbnail)
+      : imageUrl;
+  const sourceUrl =
+    typeof hit.foreign_landing_url === "string" ? toHttpUrl(hit.foreign_landing_url) : null;
   const licenseRaw = typeof hit.license === "string" ? hit.license.trim().toLowerCase() : "";
   if (!imageUrl || !thumbnailUrl || !sourceUrl) return null;
   if (!(LICENSE_CODES as readonly string[]).includes(licenseRaw)) return null;
@@ -358,13 +355,22 @@ function normalizeHit(
         ? hit.title.trim().slice(0, 240)
         : null,
     creator: typeof hit.creator === "string" ? hit.creator : null,
-    creatorUrl: typeof hit.creator_url === "string" ? hit.creator_url : null,
+    creatorUrl: typeof hit.creator_url === "string" ? toHttpUrl(hit.creator_url) : null,
     licenseCode: licenseRaw as LicenseCode,
     licenseVersion: typeof hit.license_version === "string" ? hit.license_version : null,
-    licenseUrl: typeof hit.license_url === "string" ? hit.license_url : null,
+    licenseUrl: typeof hit.license_url === "string" ? toHttpUrl(hit.license_url) : null,
     width: typeof hit.width === "number" ? hit.width : null,
     height: typeof hit.height === "number" ? hit.height : null,
   };
+}
+
+function toHttpUrl(value: string | null): string | null {
+  if (!value || value.trim().length === 0) return null;
+  try {
+    return parseHttpUrl(value).toString();
+  } catch {
+    return null;
+  }
 }
 
 const STOP_WORDS = new Set<string>([
