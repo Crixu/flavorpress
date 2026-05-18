@@ -4,6 +4,7 @@ import { loadAdminSnapshot } from "@/lib/admin";
 
 beforeEach(async () => {
   await ensureSchema();
+  await db.execute("DELETE FROM event_log");
   await db.execute("DELETE FROM user_plans");
   await db.execute("DELETE FROM outlets");
   await db.execute("DELETE FROM sources");
@@ -49,6 +50,21 @@ describe("admin snapshot", () => {
       withErrors: 1,
       usersWithConnectedOutlets: 2,
     });
+  });
+
+  it("returns distinct WordPress push counts per user", async () => {
+    const now = Date.now();
+    await insertUser("admin-user-a", "a@example.com", now);
+    await insertUser("admin-user-b", "b@example.com", now + 1);
+    await insertEvent("wordpress.pushed", "wordpress.pushed:draft-a:101", "admin-user-a", now);
+    await insertEvent("wordpress.pushed", "wordpress.pushed:draft-a:101", "admin-user-a", now + 1);
+    await insertEvent("wordpress.pushed", "wordpress.pushed:draft-b:201", "admin-user-b", now + 2);
+    await insertEvent("draft.rendered", "draft.rendered:draft-a", "admin-user-a", now + 3);
+
+    const snapshot = await loadAdminSnapshot();
+
+    expect(snapshot.users.find((user) => user.id === "admin-user-a")?.wpPushCount).toBe(1);
+    expect(snapshot.users.find((user) => user.id === "admin-user-b")?.wpPushCount).toBe(1);
   });
 
   it("returns all unused invites and the five newest used invites", async () => {
@@ -114,6 +130,15 @@ async function insertOutlet(opts: {
           )
           VALUES (?, ?, ?, ${opts.appPassword ? "X'01'" : "NULL"}, ?, ?)`,
     args: [opts.id, opts.userId, opts.baseUrl, opts.lastError ?? null, opts.createdAt],
+  });
+}
+
+async function insertEvent(type: string, key: string, userId: string, occurredAt: number) {
+  await db.execute({
+    sql: `INSERT INTO event_log
+          (id, user_id, type, payload, idempotency_key, occurred_at)
+          VALUES (?, ?, ?, '{}', ?, ?)`,
+    args: [crypto.randomUUID(), userId, type, key, occurredAt],
   });
 }
 
