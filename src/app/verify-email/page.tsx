@@ -29,7 +29,7 @@ export default async function VerifyEmailStatusPage({ searchParams }: PageProps)
           ? "Ask the admin to resend an invite or use the password-reset flow to re-verify."
           : isRateLimited
             ? "Try again in a minute."
-          : "Open the link from the email we sent you."}
+            : "Open the link from the email we sent you."}
       </p>
     </div>
   );
