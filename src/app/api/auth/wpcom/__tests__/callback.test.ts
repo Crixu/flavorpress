@@ -71,7 +71,7 @@ beforeEach(async () => {
   process.env.WPCOM_OAUTH_CLIENT_ID = "test-client";
   process.env.WPCOM_OAUTH_CLIENT_SECRET = "test-secret";
   process.env.FLAVORPRESS_ORIGIN = "http://localhost:3000";
-  resetWpcomStateCacheForTests();
+  await resetWpcomStateCacheForTests();
 });
 
 async function call(state: string, code: string): Promise<Response> {

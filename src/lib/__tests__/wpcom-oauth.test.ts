@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { db } from "@/lib/db";
 import {
   issueWpcomState,
   consumeWpcomState,
@@ -14,11 +15,11 @@ import {
   wpcomStateCookieOptions,
 } from "@/lib/wpcom-oauth";
 
-beforeEach(() => {
+beforeEach(async () => {
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
   delete process.env.WPCOM_OAUTH_CLIENT_ID;
   delete process.env.WPCOM_OAUTH_CLIENT_SECRET;
-  resetWpcomStateCacheForTests();
+  await resetWpcomStateCacheForTests();
 });
 
 afterEach(() => {
@@ -77,6 +78,49 @@ describe("wpcom state token", () => {
     const token = await issueWpcomState({ nonce: "n4", mode: "login" });
     await consumeWpcomState(token);
     expect(await consumeWpcomState(token)).toBeNull();
+  });
+
+  it("rejects a nonce already consumed in the persistent store", async () => {
+    const nonce = "n_persistent_duplicate";
+    const now = Date.now();
+    const token = await issueWpcomState({ nonce, mode: "login" });
+    await db.execute({
+      sql: `INSERT INTO oauth_state_nonces
+            (nonce, kind, bound_value, consumed_at, expires_at)
+            VALUES (?, ?, NULL, ?, ?)`,
+      args: [nonce, "wpcom:login", now, now + 60_000],
+    });
+
+    expect(await consumeWpcomState(token)).toBeNull();
+  });
+
+  it("does not let an expired nonce row block a fresh signed state", async () => {
+    const nonce = "n_expired_row";
+    const now = Date.now();
+    const token = await issueWpcomState({ nonce, mode: "login" });
+    await db.execute({
+      sql: `INSERT INTO oauth_state_nonces
+            (nonce, kind, bound_value, consumed_at, expires_at)
+            VALUES (?, ?, NULL, ?, ?)`,
+      args: [nonce, "wpcom:login", now - 20_000, now - 10_000],
+    });
+
+    const state = await consumeWpcomState(token);
+
+    expect(state?.nonce).toBe(nonce);
+    expect(state?.mode).toBe("login");
+  });
+
+  it("scopes duplicate protection by OAuth state kind", async () => {
+    const nonce = "n_shared_by_kind";
+    const login = await issueWpcomState({ nonce, mode: "login" });
+    const signup = await issueWpcomState({ nonce, mode: "signup", invite: "INV2" });
+
+    expect((await consumeWpcomState(login))?.mode).toBe("login");
+    const second = await consumeWpcomState(signup);
+
+    expect(second?.mode).toBe("signup");
+    expect(second?.invite).toBe("INV2");
   });
 });
 

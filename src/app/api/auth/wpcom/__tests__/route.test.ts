@@ -6,12 +6,12 @@ import {
 } from "@/lib/wpcom-oauth";
 import { GET } from "../route";
 
-beforeEach(() => {
+beforeEach(async () => {
   process.env.FLAVORPRESS_SESSION_SECRET = "test-secret-that-is-at-least-32-bytes-long!!";
   process.env.WPCOM_OAUTH_CLIENT_ID = "test-client";
   process.env.WPCOM_OAUTH_CLIENT_SECRET = "test-secret";
   process.env.FLAVORPRESS_ORIGIN = "http://localhost:3000";
-  resetWpcomStateCacheForTests();
+  await resetWpcomStateCacheForTests();
 });
 
 describe("wpcom auth start", () => {
