@@ -8,6 +8,7 @@ import {
   updatePassword,
   setStatus,
   bumpSessionVersion,
+  touchUserActiveDay,
 } from "@/lib/users";
 
 beforeEach(async () => {
@@ -85,5 +86,23 @@ describe("users", () => {
     await bumpSessionVersion(u.id);
     const after = await getUserById(u.id);
     expect(after?.sessionVersion).toBe(2);
+  });
+
+  it("touchUserActiveDay advances once per UTC day", async () => {
+    const hash = await hashPassword("correct horse battery staple");
+    const u = await createUser({ email: "a@example.com", passwordHash: hash });
+    const dayOneMorning = Date.UTC(2026, 4, 18, 8);
+    const dayOneEvening = Date.UTC(2026, 4, 18, 20);
+    const dayTwo = Date.UTC(2026, 4, 19, 9);
+
+    await db.execute({
+      sql: "UPDATE users SET last_active_at = ? WHERE id = ?",
+      args: [dayOneMorning, u.id],
+    });
+    await touchUserActiveDay(u.id, dayOneEvening);
+    expect((await getUserById(u.id))?.lastActiveAt).toBe(dayOneMorning);
+
+    await touchUserActiveDay(u.id, dayTwo);
+    expect((await getUserById(u.id))?.lastActiveAt).toBe(dayTwo);
   });
 });

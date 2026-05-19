@@ -124,6 +124,22 @@ export async function getUserById(id: string): Promise<User | null> {
   return row ? rowToUser(row as Record<string, unknown>) : null;
 }
 
+function startOfUtcDay(ms: number): number {
+  const date = new Date(ms);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+export async function touchUserActiveDay(userId: string, activeAt = Date.now()): Promise<void> {
+  const dayStart = startOfUtcDay(activeAt);
+  await db.execute({
+    sql: `UPDATE users
+          SET last_active_at = ?
+          WHERE id = ?
+            AND (last_active_at IS NULL OR last_active_at < ?)`,
+    args: [activeAt, userId, dayStart],
+  });
+}
+
 export async function updatePassword(userId: string, passwordHash: string): Promise<void> {
   await db.execute({
     sql: `UPDATE users
