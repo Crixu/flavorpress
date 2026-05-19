@@ -118,6 +118,20 @@ function redirectPlanLimit(error: unknown): void {
   redirect(`/voice?${params.toString()}`);
 }
 
+function logDraftLookupMiss(
+  action: string,
+  draftId: string,
+  userId: string,
+  data: Record<string, unknown> = {},
+): void {
+  console.warn("[draft] lookup missed", {
+    action,
+    draftId: safeLogValue(draftId, 128),
+    userId,
+    ...data,
+  });
+}
+
 /**
  * Run the preflight only. Stages the outlet (so we have a row to attach
  * findings to) and stores the result on `last_error` for the UI to read.
@@ -1188,7 +1202,10 @@ export async function saveResearchBoardAction(formData: FormData) {
     sql: `SELECT mode, research_board FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, session.userId],
   });
-  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (r.rows.length === 0) {
+    logDraftLookupMiss("saveResearchBoardAction", draftId, session.userId);
+    throw new Error("Draft not found.");
+  }
   if (String(r.rows[0]!.mode ?? "") !== "researcher") {
     throw new Error("Research boards can only be saved on notes drafts.");
   }
@@ -1776,7 +1793,10 @@ async function deleteDraftRows(
     sql: `SELECT wp_post_id, cluster_id FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, opts.userId],
   });
-  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (r.rows.length === 0) {
+    logDraftLookupMiss("deleteDraftRows", draftId, opts.userId, { adjustTrust: opts.adjustTrust });
+    throw new Error("Draft not found.");
+  }
   const wasSent = Boolean(r.rows[0]!.wp_post_id);
   const clusterId = r.rows[0]!.cluster_id ? String(r.rows[0]!.cluster_id) : null;
 
@@ -2233,7 +2253,10 @@ export async function selectDraftHeadlineAction(formData: FormData) {
           WHERE id = ? AND user_id = ?`,
     args: [draftId, session.userId],
   });
-  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (r.rows.length === 0) {
+    logDraftLookupMiss("selectDraftHeadlineAction", draftId, session.userId);
+    throw new Error("Draft not found.");
+  }
   const row = r.rows[0]!;
   if (row.wp_post_id) {
     // Sent drafts are read-only in FlavorPress. The editor for a sent
@@ -2521,7 +2544,10 @@ export async function regenerateDraftAction(formData: FormData) {
           WHERE id = ? AND user_id = ?`,
     args: [draftId, session.userId],
   });
-  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (r.rows.length === 0) {
+    logDraftLookupMiss("regenerateDraftAction", draftId, session.userId);
+    throw new Error("Draft not found.");
+  }
   const row = r.rows[0]!;
   if (row.wp_post_id) {
     throw new Error("This draft has been sent to WordPress and can no longer be regenerated.");
@@ -2671,7 +2697,10 @@ export async function publishDraftToWPAction(formData: FormData): Promise<{ edit
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, session.userId],
   });
-  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (r.rows.length === 0) {
+    logDraftLookupMiss("publishDraftToWPAction", draftId, session.userId, { status });
+    throw new Error("Draft not found.");
+  }
   const row = r.rows[0]!;
 
   if (String(row.mode ?? "drafter") === "researcher") {
@@ -2804,7 +2833,10 @@ export async function sendNotesToWPAction(formData: FormData): Promise<{ editLin
           FROM drafts WHERE id = ? AND user_id = ?`,
     args: [draftId, session.userId],
   });
-  if (r.rows.length === 0) throw new Error("Draft not found.");
+  if (r.rows.length === 0) {
+    logDraftLookupMiss("sendNotesToWPAction", draftId, session.userId);
+    throw new Error("Draft not found.");
+  }
   const row = r.rows[0]!;
 
   if (String(row.mode ?? "drafter") !== "researcher") {
