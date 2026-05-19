@@ -4,6 +4,7 @@ import { withAnthropicLimit } from "./v1/ai-limiter";
 import { reserveTokens, refundReservation } from "./v1/ai-budget";
 import { capPromptBytes, promptByteLength } from "./v1/prompt-safety";
 import { getAnthropicApiKey } from "./v1/settings";
+import { safeLogValue } from "./safe-log";
 
 export { LocalClaudeError, type LocalClaudeErrorKind } from "./anthropic-local";
 
@@ -271,13 +272,21 @@ class AnthropicProxyClient implements AnthropicLike {
     create: async (
       params: Anthropic.Messages.MessageCreateParamsNonStreaming,
     ): Promise<Anthropic.Messages.Message> => {
-      const response = await fetch(`${this.config.url}/messages`, {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify(params),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${this.config.url}/messages`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(params),
+        });
+      } catch (err) {
+        this.logTransportFailure("messages.create", params, err);
+        throw err;
+      }
       if (!response.ok) {
-        throw new Error(await proxyErrorMessage(response));
+        const details = await proxyErrorDetails(response);
+        this.logFailure("messages.create", params, details);
+        throw new Error(details.message);
       }
       return (await response.json()) as Anthropic.Messages.Message;
     },
@@ -304,14 +313,22 @@ class AnthropicProxyClient implements AnthropicLike {
     params: Anthropic.Messages.MessageStreamParams,
     signal: AbortSignal,
   ): AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
-    const response = await fetch(`${this.config.url}/messages`, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify({ ...params, stream: true }),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.config.url}/messages`, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ ...params, stream: true }),
+        signal,
+      });
+    } catch (err) {
+      this.logTransportFailure("messages.stream", params, err);
+      throw err;
+    }
     if (!response.ok) {
-      throw new Error(await proxyErrorMessage(response));
+      const details = await proxyErrorDetails(response);
+      this.logFailure("messages.stream", params, details);
+      throw new Error(details.message);
     }
     if (!response.body) throw new Error("Anthropic proxy returned no response body.");
 
@@ -335,11 +352,73 @@ class AnthropicProxyClient implements AnthropicLike {
     const finalEvent = parseSseEvent(buffer);
     if (finalEvent) yield finalEvent;
   }
+
+  private logFailure(
+    call: "messages.create" | "messages.stream",
+    params:
+      | Anthropic.Messages.MessageCreateParamsNonStreaming
+      | Anthropic.Messages.MessageStreamParams,
+    details: ProxyErrorDetails,
+  ): void {
+    const endpoint = proxyEndpointParts(this.config.url);
+    console.error("[anthropic-proxy] request failed", {
+      call,
+      status: details.status,
+      statusText: details.statusText,
+      host: endpoint.host,
+      path: endpoint.path,
+      feature: this.config.feature || null,
+      model: params.model,
+      maxTokens: params.max_tokens,
+      response: safeLogValue(details.bodySnippet, 500),
+    });
+  }
+
+  private logTransportFailure(
+    call: "messages.create" | "messages.stream",
+    params:
+      | Anthropic.Messages.MessageCreateParamsNonStreaming
+      | Anthropic.Messages.MessageStreamParams,
+    err: unknown,
+  ): void {
+    const endpoint = proxyEndpointParts(this.config.url);
+    console.error("[anthropic-proxy] transport failed", {
+      call,
+      host: endpoint.host,
+      path: endpoint.path,
+      feature: this.config.feature || null,
+      model: params.model,
+      maxTokens: params.max_tokens,
+      error: safeLogValue(err, 500),
+    });
+  }
 }
 
-async function proxyErrorMessage(response: Response): Promise<string> {
+interface ProxyErrorDetails {
+  status: number;
+  statusText: string;
+  bodySnippet: string;
+  message: string;
+}
+
+async function proxyErrorDetails(response: Response): Promise<ProxyErrorDetails> {
   const text = await response.text().catch(() => "");
-  return `Anthropic proxy request failed (${response.status}): ${text.slice(0, 500)}`;
+  const bodySnippet = text.slice(0, 500);
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    bodySnippet,
+    message: `Anthropic proxy request failed (${response.status}): ${bodySnippet}`,
+  };
+}
+
+function proxyEndpointParts(baseUrl: string): { host: string; path: string } {
+  try {
+    const url = new URL(baseUrl);
+    return { host: url.host, path: `${url.pathname.replace(/\/+$/, "")}/messages` };
+  } catch {
+    return { host: "(invalid-url)", path: "/messages" };
+  }
 }
 
 function parseSseEvent(block: string): Anthropic.Messages.RawMessageStreamEvent | null {
