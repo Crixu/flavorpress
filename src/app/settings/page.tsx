@@ -69,7 +69,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
     ),
     resolveAnthropicAuth(session.userId).catch(
       () =>
-        ({ mode: "none", apiKey: null, claudePath: null }) as Awaited<
+        ({ mode: "none", apiKey: null, claudePath: null, proxyUrl: null }) as Awaited<
           ReturnType<typeof resolveAnthropicAuth>
         >,
     ),
@@ -350,22 +350,27 @@ function LibrarySectionPane({ draftCount }: { draftCount: number }) {
 
 function AuthModeRow({ mode, hasApiKey }: { mode: AuthMode; hasApiKey: boolean }) {
   const config =
-    mode === "api"
+    mode === "proxy"
       ? {
-          chip: { label: "API key", cls: "fp-chip fp-chip-emerald" },
-          line: "FlavorPress is using your Anthropic API key. All features (drafting, fact-check) work.",
+          chip: { label: "Managed AI gateway", cls: "fp-chip fp-chip-emerald" },
+          line: "FlavorPress is routing Anthropic calls through a server-side AI gateway. Gateway credentials stay server-side and are not exposed to the browser.",
         }
-      : mode === "cli"
+      : mode === "api"
         ? {
-            chip: { label: "Claude Code login", cls: "fp-chip fp-chip-emerald" },
-            line: hasApiKey
-              ? "FlavorPress is riding your local Claude Code login for drafting. Fact-check uses the API key you also have configured below."
-              : "FlavorPress is riding your local Claude Code login. Drafting works without an API key. Fact-check still requires a key (it uses Anthropic's web_search tool); add one below to enable it.",
+            chip: { label: "API key", cls: "fp-chip fp-chip-emerald" },
+            line: "FlavorPress is using your Anthropic API key. All features (drafting, fact-check) work.",
           }
-        : {
-            chip: { label: "Not connected", cls: "fp-chip fp-chip-rose" },
-            line: "No Anthropic auth configured. Paste an API key below, or install and sign in to Claude Code to use the local-login path.",
-          };
+        : mode === "cli"
+          ? {
+              chip: { label: "Claude Code login", cls: "fp-chip fp-chip-emerald" },
+              line: hasApiKey
+                ? "FlavorPress is riding your local Claude Code login for drafting. Fact-check uses the API key you also have configured below."
+                : "FlavorPress is riding your local Claude Code login. Drafting works without an API key. Fact-check still requires a key (it uses Anthropic's web_search tool); add one below to enable it.",
+            }
+          : {
+              chip: { label: "Not connected", cls: "fp-chip fp-chip-rose" },
+              line: "No Anthropic auth configured. Paste an API key below, or install and sign in to Claude Code to use the local-login path.",
+            };
   return (
     <section className="fp-card p-5 space-y-2">
       <div className="flex items-center gap-2 text-sm">

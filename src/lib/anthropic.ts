@@ -91,7 +91,7 @@ export function withJsonPrefill(
   return [...messages, { role: "assistant", content: "{" }];
 }
 
-export type AuthMode = "api" | "cli" | "none";
+export type AuthMode = "api" | "cli" | "proxy" | "none";
 
 export interface AnthropicLikeStream extends AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
   controller: { abort(): void };
@@ -124,6 +124,32 @@ export interface ResolvedAnthropicAuth {
    * inside the packaged macOS app.
    */
   claudePath: string | null;
+  /** Configured server-side proxy URL. Populated only when mode === "proxy". */
+  proxyUrl: string | null;
+}
+
+interface AnthropicProxyConfig {
+  url: string;
+  token: string;
+  feature: string | null;
+}
+
+function readAnthropicProxyConfig(): AnthropicProxyConfig | null {
+  const url = process.env.FLAVORPRESS_ANTHROPIC_PROXY_URL?.trim();
+  const token = process.env.FLAVORPRESS_ANTHROPIC_PROXY_TOKEN?.trim();
+  const feature = process.env.FLAVORPRESS_ANTHROPIC_PROXY_FEATURE?.trim() || null;
+
+  if (!url && !token) return null;
+  if (!url || !token) {
+    throw new Error(
+      "FLAVORPRESS_ANTHROPIC_PROXY_URL and FLAVORPRESS_ANTHROPIC_PROXY_TOKEN must be configured together.",
+    );
+  }
+  return {
+    url: url.replace(/\/+$/, ""),
+    token,
+    feature,
+  };
 }
 
 /**
@@ -132,12 +158,15 @@ export interface ResolvedAnthropicAuth {
  *    the user's local Claude install is unreachable from a serverless
  *    function). The configured API key still travels in `apiKey` so
  *    API-only call sites can use it.
- * 2. Vercel → API only. Auto-detect never runs there.
- * 3. API key configured (DB or env) → API. The user pasting a key is
+ * 2. FLAVORPRESS_ANTHROPIC_PROXY_URL + _TOKEN → server-side proxy.
+ *    Hosted deployments use this to keep provider credentials out of
+ *    the app database and browser.
+ * 3. Vercel → API only. Auto-detect never runs there.
+ * 4. API key configured (DB or env) → API. The user pasting a key is
  *    an explicit choice; we do not auto-switch behind their back.
- * 4. `claude` binary on PATH → CLI (rides the user's Claude Code
+ * 5. `claude` binary on PATH → CLI (rides the user's Claude Code
  *    login via @anthropic-ai/claude-agent-sdk; same path Conductor uses).
- * 5. Otherwise → none. Call sites fall back to existing stub or error.
+ * 6. Otherwise → none. Call sites fall back to existing stub or error.
  */
 export async function resolveAnthropicAuth(userId: string): Promise<ResolvedAnthropicAuth> {
   const flag = process.env.FLAVORPRESS_LOCAL_CLAUDE;
@@ -148,6 +177,7 @@ export async function resolveAnthropicAuth(userId: string): Promise<ResolvedAnth
   // (fact-check, anything using Anthropic server tools) can read it
   // even when the user has forced CLI mode for streaming drafts.
   const apiKey = await getAnthropicApiKey(userId);
+  const proxy = readAnthropicProxyConfig();
 
   if (flag === "1") {
     if (onVercel) {
@@ -161,21 +191,25 @@ export async function resolveAnthropicAuth(userId: string): Promise<ResolvedAnth
         "FLAVORPRESS_LOCAL_CLAUDE=1 is set but `claude` was not found on PATH. Install Claude Code (or unset the flag and configure ANTHROPIC_API_KEY).",
       );
     }
-    return { mode: "cli", apiKey, claudePath };
+    return { mode: "cli", apiKey, claudePath, proxyUrl: null };
+  }
+
+  if (proxy) {
+    return { mode: "proxy", apiKey, claudePath: null, proxyUrl: proxy.url };
   }
 
   if (onVercel) {
     return apiKey
-      ? { mode: "api", apiKey, claudePath: null }
-      : { mode: "none", apiKey: null, claudePath: null };
+      ? { mode: "api", apiKey, claudePath: null, proxyUrl: null }
+      : { mode: "none", apiKey: null, claudePath: null, proxyUrl: null };
   }
 
-  if (apiKey) return { mode: "api", apiKey, claudePath: null };
+  if (apiKey) return { mode: "api", apiKey, claudePath: null, proxyUrl: null };
 
   const claudePath = await resolveClaudeBinary();
-  if (claudePath) return { mode: "cli", apiKey: null, claudePath };
+  if (claudePath) return { mode: "cli", apiKey: null, claudePath, proxyUrl: null };
 
-  return { mode: "none", apiKey: null, claudePath: null };
+  return { mode: "none", apiKey: null, claudePath: null, proxyUrl: null };
 }
 
 export interface AnthropicClientHandle {
@@ -191,6 +225,11 @@ export interface AnthropicClientHandle {
  */
 export async function createAnthropicClient(userId: string): Promise<AnthropicClientHandle> {
   const auth = await resolveAnthropicAuth(userId);
+  if (auth.mode === "proxy") {
+    const proxy = readAnthropicProxyConfig();
+    if (!proxy) return { mode: "none", client: null };
+    return { mode: "proxy", client: wrapAnthropicClient(new AnthropicProxyClient(proxy), userId) };
+  }
   if (auth.mode === "api" && auth.apiKey) {
     return { mode: "api", client: createAnthropicApiClient(auth.apiKey, userId) };
   }
@@ -206,6 +245,112 @@ export async function createAnthropicClient(userId: string): Promise<AnthropicCl
 export function createAnthropicApiClient(apiKey: string, userId: string): AnthropicLike {
   const raw = new Anthropic({ apiKey }) as unknown as AnthropicLike;
   return wrapAnthropicClient(raw, userId);
+}
+
+/**
+ * API-only factory for features that cannot use the local Claude Code path,
+ * such as Anthropic server tools. It still honors the hosted deployment
+ * proxy before falling back to a direct user-provided API key.
+ */
+export async function createAnthropicApiClientForUser(
+  userId: string,
+): Promise<AnthropicClientHandle> {
+  const proxy = readAnthropicProxyConfig();
+  if (proxy) {
+    return { mode: "proxy", client: wrapAnthropicClient(new AnthropicProxyClient(proxy), userId) };
+  }
+  const apiKey = await getAnthropicApiKey(userId);
+  if (!apiKey) return { mode: "none", client: null };
+  return { mode: "api", client: createAnthropicApiClient(apiKey, userId) };
+}
+
+class AnthropicProxyClient implements AnthropicLike {
+  constructor(private readonly config: AnthropicProxyConfig) {}
+
+  messages = {
+    create: async (
+      params: Anthropic.Messages.MessageCreateParamsNonStreaming,
+    ): Promise<Anthropic.Messages.Message> => {
+      const response = await fetch(`${this.config.url}/messages`, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(params),
+      });
+      if (!response.ok) {
+        throw new Error(await proxyErrorMessage(response));
+      }
+      return (await response.json()) as Anthropic.Messages.Message;
+    },
+
+    stream: (params: Anthropic.Messages.MessageStreamParams): AnthropicLikeStream => {
+      const controller = new AbortController();
+      const events = this.streamEvents(params, controller.signal) as AnthropicLikeStream;
+      events.controller = { abort: () => controller.abort() };
+      return events;
+    },
+  };
+
+  private headers(): HeadersInit {
+    const headers: Record<string, string> = {
+      "X-Api-Key": this.config.token,
+      "Content-Type": "application/json",
+      "anthropic-version": "2023-06-01",
+    };
+    if (this.config.feature) headers["X-WPCOM-AI-Feature"] = this.config.feature;
+    return headers;
+  }
+
+  private async *streamEvents(
+    params: Anthropic.Messages.MessageStreamParams,
+    signal: AbortSignal,
+  ): AsyncIterable<Anthropic.Messages.RawMessageStreamEvent> {
+    const response = await fetch(`${this.config.url}/messages`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ ...params, stream: true }),
+      signal,
+    });
+    if (!response.ok) {
+      throw new Error(await proxyErrorMessage(response));
+    }
+    if (!response.body) throw new Error("Anthropic proxy returned no response body.");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const event = parseSseEvent(part);
+        if (event) yield event;
+      }
+    }
+
+    buffer += decoder.decode();
+    const finalEvent = parseSseEvent(buffer);
+    if (finalEvent) yield finalEvent;
+  }
+}
+
+async function proxyErrorMessage(response: Response): Promise<string> {
+  const text = await response.text().catch(() => "");
+  return `Anthropic proxy request failed (${response.status}): ${text.slice(0, 500)}`;
+}
+
+function parseSseEvent(block: string): Anthropic.Messages.RawMessageStreamEvent | null {
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+    .trim();
+  if (!data || data === "[DONE]") return null;
+  return JSON.parse(data) as Anthropic.Messages.RawMessageStreamEvent;
 }
 
 /**
