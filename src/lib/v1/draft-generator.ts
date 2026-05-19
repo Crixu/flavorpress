@@ -588,7 +588,7 @@ function parseJsonEnvelope(text: string): {
     .replace(/^\s*```(?:json)?\s*/i, "")
     .replace(/\s*```\s*$/i, "")
     .trim();
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown> | null = null;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
@@ -598,9 +598,14 @@ function parseJsonEnvelope(text: string): {
       try {
         parsed = JSON.parse(m[0]);
       } catch {
-        parsed = {};
+        parsed = null;
       }
     }
+  }
+  if (!parsed) {
+    throw new Error(
+      `Draft generator returned invalid JSON envelope (${cleaned.length} chars).`,
+    );
   }
 
   const headline = String(parsed.headline ?? "");
@@ -608,6 +613,9 @@ function parseJsonEnvelope(text: string): {
     ? parsed.headline_alternates.map((s) => String(s)).slice(0, 3)
     : [];
   const body = sanitizeDraftHtml(String(parsed.body ?? ""));
+  if (!headline.trim() || !body.trim()) {
+    throw new Error("Draft generator returned an incomplete JSON envelope.");
+  }
   const quotesRaw = Array.isArray(parsed.quotes) ? parsed.quotes : [];
   const quotes = quotesRaw.slice(0, 3).map((q) => {
     const obj = q as Record<string, unknown>;
