@@ -8,7 +8,7 @@ import {
   verifySessionCookie,
 } from "./auth";
 import { assertLocalAuthNotVercelProduction } from "./env-guards";
-import { createUser, getUserById } from "./users";
+import { createUser, getUserById, touchUserActiveDay } from "./users";
 
 assertLocalAuthNotVercelProduction();
 
@@ -76,6 +76,7 @@ async function ensureLocalBootstrapSession(): Promise<Session> {
     if (!user) throw new Error("Failed to bootstrap local user.");
   }
   const now = Date.now();
+  await touchUserActiveDay(user.id, now);
   return {
     userId: user.id,
     email: user.email,
@@ -97,6 +98,7 @@ async function loadSessionUncached(
   if (user.status !== "active") return null;
   if (user.sessionVersion !== verified.sessionVersion) return null;
   if (user.passwordHash && user.emailVerifiedAt == null) return null;
+  await touchUserActiveDay(user.id);
   return {
     userId: user.id,
     email: user.email,

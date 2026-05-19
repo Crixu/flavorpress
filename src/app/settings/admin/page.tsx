@@ -295,6 +295,9 @@ function UsersSection({ users, currentUserId }: { users: AdminUserRow[]; current
                 <div className="mt-2 text-[11px]" style={{ color: "var(--fg-muted)" }}>
                   Joined {formatDate(user.createdAt)}
                 </div>
+                <div className="mt-1 text-[11px]" style={{ color: "var(--fg-muted)" }}>
+                  Last active {formatLastActiveDay(user.lastActiveAt)}
+                </div>
               </div>
               <Usage user={user} />
               <UserControls user={user} isSelf={user.id === currentUserId} />
@@ -582,6 +585,10 @@ function formatDate(value: number) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(
     new Date(value),
   );
+}
+
+function formatLastActiveDay(value: number | null) {
+  return value == null ? "never" : formatDate(value);
 }
 
 function inviteUrl(origin: string, token: string): string {

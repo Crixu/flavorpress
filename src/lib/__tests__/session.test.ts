@@ -18,7 +18,7 @@ vi.mock("next/headers", () => ({
 
 import { db, ensureSchema } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
-import { createUser, setStatus, bumpSessionVersion } from "@/lib/users";
+import { createUser, setStatus, bumpSessionVersion, getUserById } from "@/lib/users";
 import { LEGACY_SESSION_COOKIE_NAME, SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
 import {
   loadSession,
@@ -57,11 +57,17 @@ async function makeUser(email: string) {
 describe("loadSession", () => {
   it("returns the session for a valid cookie", async () => {
     const u = await makeUser("a@example.com");
+    const staleActiveAt = 1;
+    await db.execute({
+      sql: "UPDATE users SET last_active_at = ? WHERE id = ?",
+      args: [staleActiveAt, u.id],
+    });
     const c = await createSessionCookie({ userId: u.id, sessionVersion: 0, secret: SECRET });
     const s = await loadSession(c.value);
     expect(s?.userId).toBe(u.id);
     expect(s?.email).toBe("a@example.com");
     expect(s?.isAdmin).toBe(false);
+    expect((await getUserById(u.id))?.lastActiveAt).toBeGreaterThan(staleActiveAt);
   });
 
   it("returns null for missing user row", async () => {

@@ -101,7 +101,7 @@ describe("createAnthropicApiClientForUser", () => {
             id: "msg_1",
             type: "message",
             role: "assistant",
-            content: [{ type: "text", text: "{\"headline\":\"Story\",\"body\":\"<p>Body</p>\"}" }],
+            content: [{ type: "text", text: '{"headline":"Story","body":"<p>Body</p>"}' }],
             model: "claude-test",
             stop_reason: "end_turn",
             stop_sequence: null,
@@ -126,7 +126,7 @@ describe("createAnthropicApiClientForUser", () => {
       events
         .filter((event) => event.type === "content_block_delta")
         .map((event) => (event as { delta: { text: string } }).delta.text),
-    ).toEqual(["{\"headline\":\"Story\",\"body\":\"<p>Body</p>\"}"]);
+    ).toEqual(['{"headline":"Story","body":"<p>Body</p>"}']);
     expect(events.some((event) => event.type === "message_stop")).toBe(true);
   });
 
@@ -134,10 +134,7 @@ describe("createAnthropicApiClientForUser", () => {
     vi.stubEnv("FLAVORPRESS_ANTHROPIC_PROXY_URL", "https://ai-gateway.test/v1");
     vi.stubEnv("FLAVORPRESS_ANTHROPIC_PROXY_TOKEN", "server-token");
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response("plain text", { status: 200 })),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("plain text", { status: 200 })));
 
     const { client } = await createAnthropicApiClientForUser("user-1");
     await expect(async () => {
