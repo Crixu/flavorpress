@@ -11,7 +11,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ensureSchema, db } from "@/lib/db";
 import { AuthRequiredError, requireSession } from "@/lib/session";
-import { deleteDraftAction } from "@/lib/v1/actions";
+import { deleteDraftAction, regenerateDraftAction } from "@/lib/v1/actions";
 import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
@@ -223,11 +223,10 @@ export default async function EditorPage({ params }: PageProps) {
     text: String(q.text ?? ""),
     citation: String(q.citation ?? ""),
   }));
-  const draftWordCount = String(d.body ?? "")
-    .replace(/<[^>]+>/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
+  const bodyHtml = String(d.body ?? "");
+  const headline = String(d.headline ?? "").trim();
+  const draftWordCount = wordCountFromHtml(bodyHtml);
+  const draftHasStory = headline.length > 0 && draftWordCount > 0;
   return (
     <div className="space-y-6">
       {/* Page header — same eyebrow + serif h1 pattern as the rest of the app */}
@@ -247,18 +246,20 @@ export default async function EditorPage({ params }: PageProps) {
             <span>{sourceCount} sources</span>
           </div>
           <h1 className="fp-h1 fp-h1-serif" style={{ maxWidth: "22ch" }}>
-            {String(d.headline)}
+            {draftHasStory ? headline : "Draft needs regeneration"}
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <PublishToWpForm
-            draftId={String(d.id)}
-            headline={String(d.headline)}
-            className="fp-btn fp-btn-primary"
-            pendingLabel="Saving draft"
-          >
-            Push to WordPress draft →
-          </PublishToWpForm>
+          {draftHasStory ? (
+            <PublishToWpForm
+              draftId={String(d.id)}
+              headline={headline}
+              className="fp-btn fp-btn-primary"
+              pendingLabel="Saving draft"
+            >
+              Push to WordPress draft →
+            </PublishToWpForm>
+          ) : null}
         </div>
       </header>
 
@@ -284,14 +285,7 @@ export default async function EditorPage({ params }: PageProps) {
               className="hidden font-mono tabular text-[11px] md:inline"
               style={{ color: "var(--fg-subtle)" }}
             >
-              {
-                String(d.body ?? "")
-                  .replace(/<[^>]+>/g, " ")
-                  .trim()
-                  .split(/\s+/)
-                  .filter(Boolean).length
-              }{" "}
-              words
+              {draftWordCount} words
             </span>
           </span>
         </div>
@@ -301,23 +295,51 @@ export default async function EditorPage({ params }: PageProps) {
           {/* Manuscript */}
           <main className="fp-editor-manuscript">
             <div className="mx-auto max-w-[640px]">
-              <HeadlineSelector
-                draftId={String(d.id)}
-                headline={String(d.headline)}
-                alternates={headlineAlternates}
-              />
-              <div className="mt-3">{sibling}</div>
+              {draftHasStory ? (
+                <>
+                  <HeadlineSelector
+                    draftId={String(d.id)}
+                    headline={headline}
+                    alternates={headlineAlternates}
+                  />
+                  <div className="mt-3">{sibling}</div>
 
-              <ExtensionsArticle
-                draftId={String(d.id)}
-                bodyHtml={String(d.body ?? "")}
-                initialAnnotationsByExt={initialAnnotationsByExt}
-                enabledExtensionIds={enabledExtensionIds}
-                quotes={quotes.map((q) => ({ text: q.text, citation: q.citation }))}
-              />
-              <ParagraphRewriter draftId={String(d.id)} bodyHtml={String(d.body ?? "")} />
+                  <ExtensionsArticle
+                    draftId={String(d.id)}
+                    bodyHtml={bodyHtml}
+                    initialAnnotationsByExt={initialAnnotationsByExt}
+                    enabledExtensionIds={enabledExtensionIds}
+                    quotes={quotes.map((q) => ({ text: q.text, citation: q.citation }))}
+                  />
+                  <ParagraphRewriter draftId={String(d.id)} bodyHtml={bodyHtml} />
+                </>
+              ) : (
+                <div className="py-8">
+                  <div className="fp-eyebrow">Draft recovery</div>
+                  <h2
+                    className="mt-3 fp-h1-serif"
+                    style={{
+                      fontSize: "clamp(28px, 3vw, 40px)",
+                      lineHeight: 1.06,
+                    }}
+                  >
+                    Draft generation stopped before saving the story.
+                  </h2>
+                  <p className="mt-4 max-w-[56ch] text-[13px]" style={{ color: "var(--fg-muted)" }}>
+                    Sources are still attached. Regenerate this draft to write the story again from
+                    the same reading.
+                  </p>
+                  <form action={regenerateDraftAction} className="mt-5">
+                    <input type="hidden" name="draftId" value={String(d.id)} />
+                    <button type="submit" className="fp-btn fp-btn-primary">
+                      Regenerate draft
+                    </button>
+                  </form>
+                  <div className="mt-6">{sibling}</div>
+                </div>
+              )}
 
-              {quotes.length > 0 ? (
+              {draftHasStory && quotes.length > 0 ? (
                 <div className="mt-10 pt-6" style={{ borderTop: "1px solid var(--border)" }}>
                   <div className="fp-eyebrow">Quotes lifted</div>
                   <ol
@@ -391,14 +413,16 @@ export default async function EditorPage({ params }: PageProps) {
                   Paragraph rewrite buttons appear inline on hover in the manuscript.
                 </p>
                 <div className="space-y-2 pt-1">
-                  <PublishToWpForm
-                    draftId={String(d.id)}
-                    headline={String(d.headline)}
-                    className="fp-btn fp-btn-primary w-full"
-                    pendingLabel="Saving draft"
-                  >
-                    Push to WordPress draft
-                  </PublishToWpForm>
+                  {draftHasStory ? (
+                    <PublishToWpForm
+                      draftId={String(d.id)}
+                      headline={headline}
+                      className="fp-btn fp-btn-primary w-full"
+                      pendingLabel="Saving draft"
+                    >
+                      Push to WordPress draft
+                    </PublishToWpForm>
+                  ) : null}
                   <form action={deleteDraftAction}>
                     <input type="hidden" name="draftId" value={String(d.id)} />
                     <input type="hidden" name="redirectTo" value="/drafts" />
@@ -440,6 +464,14 @@ function hostFromUrl(s: string): string {
   } catch {
     return s;
   }
+}
+
+function wordCountFromHtml(html: string): number {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 function safeCitationHref(raw: string): string | null {

@@ -88,4 +88,66 @@ describe("createAnthropicApiClientForUser", () => {
       },
     ]);
   });
+
+  it("parses JSON proxy responses from streaming calls", async () => {
+    vi.stubEnv("FLAVORPRESS_ANTHROPIC_PROXY_URL", "https://ai-gateway.test/v1");
+    vi.stubEnv("FLAVORPRESS_ANTHROPIC_PROXY_TOKEN", "server-token");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "msg_1",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "text", text: "{\"headline\":\"Story\",\"body\":\"<p>Body</p>\"}" }],
+            model: "claude-test",
+            stop_reason: "end_turn",
+            stop_sequence: null,
+            usage: { input_tokens: 2, output_tokens: 3 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const { client } = await createAnthropicApiClientForUser("user-1");
+    const events = [];
+    for await (const event of client!.messages.stream({
+      model: "claude-test",
+      max_tokens: 32,
+      messages: [{ role: "user", content: "hello" }],
+    })) {
+      events.push(event);
+    }
+
+    expect(
+      events
+        .filter((event) => event.type === "content_block_delta")
+        .map((event) => (event as { delta: { text: string } }).delta.text),
+    ).toEqual(["{\"headline\":\"Story\",\"body\":\"<p>Body</p>\"}"]);
+    expect(events.some((event) => event.type === "message_stop")).toBe(true);
+  });
+
+  it("rejects proxy stream responses that are neither SSE nor JSON", async () => {
+    vi.stubEnv("FLAVORPRESS_ANTHROPIC_PROXY_URL", "https://ai-gateway.test/v1");
+    vi.stubEnv("FLAVORPRESS_ANTHROPIC_PROXY_TOKEN", "server-token");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("plain text", { status: 200 })),
+    );
+
+    const { client } = await createAnthropicApiClientForUser("user-1");
+    await expect(async () => {
+      for await (const _event of client!.messages.stream({
+        model: "claude-test",
+        max_tokens: 32,
+        messages: [{ role: "user", content: "hello" }],
+      })) {
+        // exhaust stream
+      }
+    }).rejects.toThrow(/neither SSE nor JSON/);
+  });
 });

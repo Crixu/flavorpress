@@ -335,22 +335,37 @@ class AnthropicProxyClient implements AnthropicLike {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let fullText = "";
+    let emitted = 0;
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      const chunk = decoder.decode(value, { stream: true });
+      fullText += chunk;
+      buffer += chunk;
       const parts = buffer.split(/\r?\n\r?\n/);
       buffer = parts.pop() ?? "";
       for (const part of parts) {
         const event = parseSseEvent(part);
-        if (event) yield event;
+        if (event) {
+          emitted++;
+          yield event;
+        }
       }
     }
 
-    buffer += decoder.decode();
+    const tail = decoder.decode();
+    fullText += tail;
+    buffer += tail;
     const finalEvent = parseSseEvent(buffer);
-    if (finalEvent) yield finalEvent;
+    if (finalEvent) {
+      emitted++;
+      yield finalEvent;
+    }
+    if (emitted === 0) {
+      yield* parseProxyJsonStreamFallback(fullText);
+    }
   }
 
   private logFailure(
@@ -430,6 +445,47 @@ function parseSseEvent(block: string): Anthropic.Messages.RawMessageStreamEvent 
     .trim();
   if (!data || data === "[DONE]") return null;
   return JSON.parse(data) as Anthropic.Messages.RawMessageStreamEvent;
+}
+
+function* parseProxyJsonStreamFallback(
+  text: string,
+): Generator<Anthropic.Messages.RawMessageStreamEvent> {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error("Anthropic proxy returned an empty stream response.");
+
+  let message: Anthropic.Messages.Message;
+  try {
+    message = JSON.parse(trimmed) as Anthropic.Messages.Message;
+  } catch {
+    throw new Error(
+      `Anthropic proxy returned neither SSE nor JSON. Got: ${safeLogValue(trimmed, 200)}`,
+    );
+  }
+
+  if (!Array.isArray(message.content)) {
+    throw new Error("Anthropic proxy JSON response did not include message content.");
+  }
+
+  yield { type: "message_start", message } as Anthropic.Messages.RawMessageStreamEvent;
+  for (const [index, block] of message.content.entries()) {
+    if (block.type !== "text") continue;
+    yield {
+      type: "content_block_delta",
+      index,
+      delta: { type: "text_delta", text: block.text },
+    } as Anthropic.Messages.RawMessageStreamEvent;
+  }
+  yield {
+    type: "message_delta",
+    delta: {
+      stop_reason: message.stop_reason ?? null,
+      stop_sequence: message.stop_sequence ?? null,
+    },
+    usage: message.usage
+      ? { output_tokens: Number(message.usage.output_tokens ?? 0) }
+      : undefined,
+  } as Anthropic.Messages.RawMessageStreamEvent;
+  yield { type: "message_stop" } as Anthropic.Messages.RawMessageStreamEvent;
 }
 
 /**
