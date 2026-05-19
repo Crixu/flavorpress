@@ -14,9 +14,9 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { db, ensureSchema } from "@/lib/db";
 import { requireSession } from "@/lib/session";
-import { createAnthropicApiClient, extractText, extractJson } from "@/lib/anthropic";
+import { createAnthropicApiClientForUser, extractText, extractJson } from "@/lib/anthropic";
 import { sanitizeDraftHtml } from "@/lib/draft-html-sanitizer";
-import { getAnthropicApiKey, getAnthropicDraftModel } from "@/lib/v1/settings";
+import { getAnthropicDraftModel } from "@/lib/v1/settings";
 import { wrapUntrustedSource } from "@/lib/v1/prompt-safety";
 import type { ExtensionAnnotation, ServerExtensionEntry } from "../types";
 import { FACT_CHECK_ID, MAX_CLAIMS, VERDICTS, type FactCheckClaim, type Verdict } from "./types";
@@ -59,15 +59,8 @@ export async function runFactCheck(
     throw new Error("Draft is too short to fact-check.");
   }
 
-  // Fact-check uses Anthropic's web_search server tool, which is only
-  // available on the API. The drafting auth path is irrelevant here;
-  // we read the key directly so a misconfigured local-Claude setup
-  // (flag forced on Vercel, flag forced without `claude` installed)
-  // does not block fact-check on a perfectly usable API key. The
-  // resolver throws on those config-error states; we don't want that
-  // throw to roll over a working API path.
-  const apiKey = await getAnthropicApiKey(session.userId);
-  if (!apiKey) {
+  const { client } = await createAnthropicApiClientForUser(session.userId);
+  if (!client) {
     const cliForced = process.env.FLAVORPRESS_LOCAL_CLAUDE === "1";
     throw new Error(
       cliForced
@@ -76,7 +69,6 @@ export async function runFactCheck(
     );
   }
   const model = await getAnthropicDraftModel(session.userId);
-  const client = createAnthropicApiClient(apiKey, session.userId);
 
   // Cap web_search at MAX_CLAIMS. The model still needs one lookup per
   // checkable claim; doubling that budget gave a hostile body room to
@@ -294,14 +286,10 @@ export async function suggestFactCheckFix(
     throw new Error("Only disputed or unverified claims can be fixed.");
   }
 
-  // Same pattern as runFactCheck: read the API key directly so a forced
-  // CLI flag with a valid key still works. The auth resolver throws on
-  // FLAVORPRESS_LOCAL_CLAUDE=1 if it can't find the local `claude`
-  // binary, and we don't want a misconfigured CLI to roll over a
-  // perfectly usable API key, especially since fact-check requires the
-  // API anyway and the user already paired the two flows.
-  const apiKey = await getAnthropicApiKey(session.userId);
-  if (!apiKey) {
+  // Same pattern as runFactCheck: use the API-capable path so hosted
+  // proxy deployments work and the local Claude Code path is skipped.
+  const { client } = await createAnthropicApiClientForUser(session.userId);
+  if (!client) {
     const cliForced = process.env.FLAVORPRESS_LOCAL_CLAUDE === "1";
     throw new Error(
       cliForced
@@ -310,7 +298,6 @@ export async function suggestFactCheckFix(
     );
   }
   const model = await getAnthropicDraftModel(session.userId);
-  const client = createAnthropicApiClient(apiKey, session.userId);
 
   // The source URL/title is shown only for citation context. We do NOT
   // give the model a fetcher or web_search here, so it has no way to

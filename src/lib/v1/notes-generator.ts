@@ -11,12 +11,12 @@
  */
 
 import { db, ensureSchema } from "../db";
-import { createAnthropicApiClient } from "../anthropic";
 import { getBus } from "./event-bus";
 import { newTraceId, traceLogger } from "./trace";
 import { getClusterItems } from "./cluster-engine";
 import { canonicalize } from "./source-connector";
-import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
+import { createAnthropicApiClientForUser, extractText } from "../anthropic";
+import { getAnthropicDraftModel } from "./settings";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { sanitizeDraftHtml } from "../draft-html-sanitizer";
 import { newSourceNonce, renderUntrustedSource, untrustedSourceContract } from "./prompt-safety";
@@ -160,14 +160,13 @@ export async function remixIdeas(input: {
   const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
-  const apiKey = await getAnthropicApiKey(input.userId);
-  if (!apiKey) {
+  const { client } = await createAnthropicApiClientForUser(input.userId);
+  if (!client) {
     await log.warn("notes.remix-ideas", "no API key; returning current ideas");
     return input.current.ideas;
   }
 
   const model = await getAnthropicDraftModel(input.userId);
-  const client = createAnthropicApiClient(apiKey, input.userId);
   const sourceNonce = newSourceNonce();
   const sourceBlock = renderSourceBlock(items, sourceNonce);
   const prior = input.current.ideas.map((i) => `- ${i.angle}`).join("\n");
@@ -200,7 +199,7 @@ Return the new ideas JSON now.`;
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });
-  const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  const text = extractText(response);
   const parsed = parseLooseJson(text);
   const ideasRaw = Array.isArray(parsed.ideas) ? parsed.ideas : [];
   const ideas = ideasRaw
@@ -240,15 +239,14 @@ export async function extendQuotes(input: {
   const items = await getClusterItems(input.clusterId, input.userId);
   if (items.length === 0) throw new Error(`cluster has no items: ${input.clusterId}`);
 
-  const apiKey = await getAnthropicApiKey(input.userId);
-  if (!apiKey) {
+  const { client } = await createAnthropicApiClientForUser(input.userId);
+  if (!client) {
     await log.warn("notes.more-quotes", "no API key; returning current quotes");
     return input.current.quotes;
   }
 
   const remaining = MAX_TOTAL_QUOTES - input.current.quotes.length;
   const model = await getAnthropicDraftModel(input.userId);
-  const client = createAnthropicApiClient(apiKey, input.userId);
   const sourceNonce = newSourceNonce();
   const sourceBlock = renderSourceBlock(items, sourceNonce);
   const prior = input.current.quotes.map((q) => `- "${q.text}" (${q.sourceUrl})`).join("\n");
@@ -281,7 +279,7 @@ Return the new quotes JSON now.`;
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });
-  const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  const text = extractText(response);
   const parsed = parseLooseJson(text);
   const quotesRaw = Array.isArray(parsed.quotes) ? parsed.quotes : [];
   const candidate: NoteQuote[] = quotesRaw
@@ -420,14 +418,13 @@ async function runOnce(
   log: ReturnType<typeof traceLogger>,
   userId: string,
 ): Promise<Notes> {
-  const apiKey = await getAnthropicApiKey(userId);
-  if (!apiKey) {
+  const { client } = await createAnthropicApiClientForUser(userId);
+  if (!client) {
     await log.warn("notes.generate.run", "no API key; using stub");
     return stubNotes();
   }
 
   const model = await getAnthropicDraftModel(userId);
-  const client = createAnthropicApiClient(apiKey, userId);
   const response = await client.messages.create({
     model,
     max_tokens: 2000,
@@ -435,7 +432,7 @@ async function runOnce(
     messages: [{ role: "user", content: prompt.userMessage }],
   });
 
-  const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  const text = extractText(response);
   return parseNotes(text);
 }
 

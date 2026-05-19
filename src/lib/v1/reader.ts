@@ -14,8 +14,8 @@
  */
 
 import { db, ensureSchema } from "../db";
-import { createAnthropicApiClient } from "../anthropic";
-import { getAnthropicApiKey, getAnthropicDraftModel } from "./settings";
+import { createAnthropicApiClientForUser, extractText } from "../anthropic";
+import { getAnthropicDraftModel } from "./settings";
 import { rankCluster } from "./ranker";
 import type { Cluster } from "./types";
 import { recordClusterFormed } from "./analytics";
@@ -624,11 +624,10 @@ async function groupByTheme(items: ReaderItem[], userId: string): Promise<ThemeG
     return [{ theme: items[0]!.title, itemIds: [items[0]!.id] }];
   }
 
-  const apiKey = await getAnthropicApiKey(userId);
-  if (!apiKey) return fallbackGrouping(items);
+  const { client } = await createAnthropicApiClientForUser(userId);
+  if (!client) return fallbackGrouping(items);
 
   const model = await getAnthropicDraftModel(userId);
-  const client = createAnthropicApiClient(apiKey, userId);
 
   const numbered = items
     .map(
@@ -654,10 +653,7 @@ async function groupByTheme(items: ReaderItem[], userId: string): Promise<ThemeG
     system,
     messages: [{ role: "user", content: user }],
   });
-  const text = response.content
-    .map((b) => (b.type === "text" ? b.text : ""))
-    .join("")
-    .trim();
+  const text = extractText(response);
 
   try {
     const cleaned = text
