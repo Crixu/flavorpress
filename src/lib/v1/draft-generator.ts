@@ -623,7 +623,7 @@ export function parseDraftJsonEnvelope(text: string): {
   try {
     parsed = extractJson<Record<string, unknown>>(cleaned);
   } catch {
-    parsed = null;
+    parsed = parseLooseDraftJsonEnvelope(cleaned);
   }
   if (!parsed) {
     throw new Error(`Draft generator returned invalid JSON envelope (${cleaned.length} chars).`);
@@ -650,6 +650,133 @@ export function parseDraftJsonEnvelope(text: string): {
   const angleGap = parsed.angle_gap ? String(parsed.angle_gap) : null;
 
   return { headline, headlineAlternates, body, quotes, angleArchive, angleGap };
+}
+
+function parseLooseDraftJsonEnvelope(text: string): Record<string, unknown> | null {
+  const headline = readLooseStringField(text, "headline", ["headline_alternates"]);
+  const headlineAlternates = readLooseJsonField(text, "headline_alternates", ["body"]);
+  const body = readLooseStringField(text, "body", ["quotes", "angle_archive", "angle_gap"]);
+  const quotes = readLooseJsonField(text, "quotes", ["angle_archive", "angle_gap"]);
+  const angleArchive = readLooseStringField(text, "angle_archive", ["angle_gap"]);
+  const angleGap = readLooseStringField(text, "angle_gap", []);
+
+  if (!headline && !body) return null;
+  return {
+    headline: headline ?? "",
+    headline_alternates: Array.isArray(headlineAlternates) ? headlineAlternates : [],
+    body: body ?? "",
+    quotes: Array.isArray(quotes) ? quotes : [],
+    angle_archive: angleArchive,
+    angle_gap: angleGap,
+  };
+}
+
+function readLooseStringField(text: string, key: string, nextKeys: string[]): string | null {
+  const start = findFieldValueStart(text, key);
+  if (start === -1 || text[start] !== '"') return null;
+  const valueStart = start + 1;
+  for (let i = valueStart; i < text.length; i++) {
+    if (text[i] !== '"') continue;
+    if (isEscaped(text, i)) continue;
+    const rest = text.slice(i + 1);
+    if (isFieldBoundary(rest, nextKeys)) {
+      return unescapeJsonishString(text.slice(valueStart, i));
+    }
+  }
+  return null;
+}
+
+function readLooseJsonField(text: string, key: string, nextKeys: string[]): unknown {
+  const start = findFieldValueStart(text, key);
+  if (start === -1) return null;
+  const direct = readBalancedJsonValue(text, start);
+  if (direct) {
+    try {
+      return JSON.parse(direct);
+    } catch {
+      return parseLooseStringArray(direct);
+    }
+  }
+
+  const boundary = findNextFieldBoundary(text, start, nextKeys);
+  if (boundary === -1) return null;
+  return parseLooseStringArray(text.slice(start, boundary));
+}
+
+function findFieldValueStart(text: string, key: string): number {
+  const match = new RegExp(`"${escapeRegExp(key)}"\\s*:`).exec(text);
+  if (!match) return -1;
+  let i = match.index + match[0].length;
+  while (i < text.length && /\s/.test(text[i] ?? "")) i++;
+  return i;
+}
+
+function readBalancedJsonValue(text: string, start: number): string | null {
+  const opener = text[start];
+  const closer = opener === "[" ? "]" : opener === "{" ? "}" : null;
+  if (!closer) return null;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '"' && !isEscaped(text, i)) inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === opener) {
+      depth++;
+    } else if (ch === closer) {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function findNextFieldBoundary(text: string, start: number, nextKeys: string[]): number {
+  for (let i = start; i < text.length; i++) {
+    if (text[i] !== '"') continue;
+    if (!isFieldBoundary(text.slice(i + 1), nextKeys)) continue;
+    return i;
+  }
+  return -1;
+}
+
+function isFieldBoundary(rest: string, nextKeys: string[]): boolean {
+  if (/^\s*}\s*$/.test(rest)) return true;
+  if (nextKeys.length === 0) return false;
+  const pattern = new RegExp(`^\\s*,\\s*"(${nextKeys.map(escapeRegExp).join("|")})"\\s*:`);
+  return pattern.test(rest);
+}
+
+function parseLooseStringArray(text: string): string[] {
+  const values: string[] = [];
+  for (const match of text.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)) {
+    values.push(unescapeJsonishString(match[1] ?? ""));
+  }
+  return values;
+}
+
+function unescapeJsonishString(value: string): string {
+  return value
+    .replace(/\\"/g, '"')
+    .replace(/\\\//g, "/")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\\/g, "\\");
+}
+
+function isEscaped(text: string, index: number): boolean {
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === "\\"; i--) backslashes++;
+  return backslashes % 2 === 1;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function loadVoiceProfile(outletId: string, userId: string): Promise<VoiceProfile | null> {
