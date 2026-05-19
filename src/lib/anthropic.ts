@@ -481,9 +481,7 @@ function* parseProxyJsonStreamFallback(
       stop_reason: message.stop_reason ?? null,
       stop_sequence: message.stop_sequence ?? null,
     },
-    usage: message.usage
-      ? { output_tokens: Number(message.usage.output_tokens ?? 0) }
-      : undefined,
+    usage: message.usage ? { output_tokens: Number(message.usage.output_tokens ?? 0) } : undefined,
   } as Anthropic.Messages.RawMessageStreamEvent;
   yield { type: "message_stop" } as Anthropic.Messages.RawMessageStreamEvent;
 }
