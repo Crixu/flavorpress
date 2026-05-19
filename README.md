@@ -77,7 +77,8 @@ bypasses browser session cookies.
 
 Admin CLIs:
 
-- `npm run auth:invite -- [--days N]` issues a single-use invite token.
+- `npm run auth:invite -- [--days N] [--plan trial|pro|custom]` issues a
+  single-use invite token.
 - `npm run auth:reset -- <email>` resets a user's password to a printed random
   temporary value and bumps the session version, killing any existing sessions.
 - `npm run auth:promote -- <email>` flips an existing user to admin.

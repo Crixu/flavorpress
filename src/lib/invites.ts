@@ -1,16 +1,22 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { db } from "./db";
+import { db, ensureSchema } from "./db";
+import { normalizePlanKey, type PlanKey } from "./plans";
 import { hashToken, isStoredTokenHash } from "./token-hash";
 
 export interface InviteRow {
   token: string;
   created_by_user_id: string | null;
   used_by_user_id: string | null;
+  plan: PlanKey;
   created_at: number;
   expires_at: number | null;
   used_at: number | null;
   revoked_at: number | null;
+}
+
+export interface ConsumedInvite {
+  plan: PlanKey;
 }
 
 export class InviteError extends Error {
@@ -34,14 +40,14 @@ async function findInviteRowRaw(
 ): Promise<{ row: Record<string, unknown> | undefined; legacy: boolean }> {
   const hashed = hashToken(token);
   const r = await db.execute({
-    sql: `SELECT token, created_by_user_id, used_by_user_id, created_at, expires_at, used_at, revoked_at
+    sql: `SELECT token, created_by_user_id, used_by_user_id, plan, created_at, expires_at, used_at, revoked_at
           FROM invites WHERE token = ?`,
     args: [hashed],
   });
   if (r.rows[0]) return { row: r.rows[0] as Record<string, unknown>, legacy: false };
   if (isStoredTokenHash(token)) return { row: undefined, legacy: false };
   const legacy = await db.execute({
-    sql: `SELECT token, created_by_user_id, used_by_user_id, created_at, expires_at, used_at, revoked_at
+    sql: `SELECT token, created_by_user_id, used_by_user_id, plan, created_at, expires_at, used_at, revoked_at
           FROM invites WHERE token = ?`,
     args: [token],
   });
@@ -51,19 +57,23 @@ async function findInviteRowRaw(
 export async function issueInvite(opts: {
   createdByUserId?: string | null;
   expiresAt?: number | null;
+  plan?: PlanKey | string | null;
 }): Promise<{ token: string; expiresAt: number | null }> {
+  await ensureSchema();
   const token = generateToken();
   const now = Date.now();
   const expiresAt = opts.expiresAt ?? null;
+  const plan = normalizePlanKey(opts.plan);
   await db.execute({
-    sql: `INSERT INTO invites (token, created_by_user_id, created_at, expires_at)
-          VALUES (?, ?, ?, ?)`,
-    args: [hashToken(token), opts.createdByUserId ?? null, now, expiresAt],
+    sql: `INSERT INTO invites (token, created_by_user_id, plan, created_at, expires_at)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [hashToken(token), opts.createdByUserId ?? null, plan, now, expiresAt],
   });
   return { token, expiresAt };
 }
 
 export async function readInvite(token: string): Promise<InviteRow | null> {
+  await ensureSchema();
   const { row, legacy } = await findInviteRowRaw(token);
   if (!row) return null;
   const revokedAt = row.revoked_at == null ? null : Number(row.revoked_at);
@@ -83,6 +93,7 @@ export async function readInvite(token: string): Promise<InviteRow | null> {
     token,
     created_by_user_id: row.created_by_user_id == null ? null : String(row.created_by_user_id),
     used_by_user_id: row.used_by_user_id == null ? null : String(row.used_by_user_id),
+    plan: normalizePlanKey(row.plan),
     created_at: Number(row.created_at),
     expires_at: expiresAt,
     used_at: usedAt,
@@ -90,7 +101,8 @@ export async function readInvite(token: string): Promise<InviteRow | null> {
   };
 }
 
-export async function consumeInvite(token: string, userId: string): Promise<void> {
+export async function consumeInvite(token: string, userId: string): Promise<ConsumedInvite> {
+  await ensureSchema();
   const now = Date.now();
   const hashed = hashToken(token);
   const r = await db.execute({
@@ -100,10 +112,10 @@ export async function consumeInvite(token: string, userId: string): Promise<void
             AND used_at IS NULL
             AND revoked_at IS NULL
             AND (expires_at IS NULL OR expires_at > ?)
-          RETURNING token`,
+          RETURNING plan`,
     args: [now, userId, hashed, now],
   });
-  if (r.rows.length > 0) return;
+  if (r.rows.length > 0) return { plan: normalizePlanKey(r.rows[0]!.plan) };
   if (isStoredTokenHash(token)) throw new InviteError("missing", "Invite token does not exist.");
   // Backward compat: try the plaintext row and upgrade to hashed on success.
   const legacy = await db.execute({
@@ -113,10 +125,10 @@ export async function consumeInvite(token: string, userId: string): Promise<void
             AND used_at IS NULL
             AND revoked_at IS NULL
             AND (expires_at IS NULL OR expires_at > ?)
-          RETURNING token`,
+          RETURNING plan`,
     args: [now, userId, hashed, token, now],
   });
-  if (legacy.rows.length > 0) return;
+  if (legacy.rows.length > 0) return { plan: normalizePlanKey(legacy.rows[0]!.plan) };
   const raw = await db.execute({
     sql: `SELECT used_at, expires_at, revoked_at FROM invites WHERE token = ? OR token = ?`,
     args: [hashed, token],
@@ -129,6 +141,7 @@ export async function consumeInvite(token: string, userId: string): Promise<void
 }
 
 export async function revokeInvite(token: string): Promise<boolean> {
+  await ensureSchema();
   const now = Date.now();
   const hashed = hashToken(token);
   const r = await db.execute({

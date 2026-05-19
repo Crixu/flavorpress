@@ -18,7 +18,14 @@ describe("invites", () => {
     expect(r.token.length).toBeGreaterThan(20);
     const row = await readInvite(r.token);
     expect(row?.token).toBe(r.token);
+    expect(row?.plan).toBe("trial");
     expect(row?.used_at).toBeNull();
+  });
+
+  it("attaches a plan to the invite", async () => {
+    const r = await issueInvite({ plan: "pro" });
+    const row = await readInvite(r.token);
+    expect(row?.plan).toBe("pro");
   });
 
   it("readInvite returns null when expired", async () => {
@@ -36,13 +43,19 @@ describe("invites", () => {
 
   it("consumeInvite marks used", async () => {
     const r = await issueInvite({});
-    await consumeInvite(r.token, "u_test");
+    const consumed = await consumeInvite(r.token, "u_test");
     const raw = await db.execute({
       sql: "SELECT used_at, used_by_user_id FROM invites WHERE token = ?",
       args: [hashToken(r.token)],
     });
+    expect(consumed.plan).toBe("trial");
     expect(raw.rows[0]?.used_at).not.toBeNull();
     expect(raw.rows[0]?.used_by_user_id).toBe("u_test");
+  });
+
+  it("returns the invite plan when consumed", async () => {
+    const r = await issueInvite({ plan: "custom" });
+    await expect(consumeInvite(r.token, "u_custom")).resolves.toEqual({ plan: "custom" });
   });
 
   it("stores invite tokens hashed, not plaintext", async () => {

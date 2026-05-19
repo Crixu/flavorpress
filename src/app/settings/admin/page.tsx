@@ -21,6 +21,7 @@ export const dynamic = "force-dynamic";
 interface PageProps {
   searchParams: Promise<{
     created_invite?: string;
+    created_plan?: string;
     error?: string;
     saved?: string;
     revoked?: string;
@@ -64,7 +65,8 @@ export default async function AdminPage({ searchParams }: PageProps) {
 
           {createdInviteUrl ? (
             <Banner kind="success">
-              Invite created: <code className="break-all">{createdInviteUrl}</code>
+              {planLabel(sp.created_plan ?? "trial")} invite created:{" "}
+              <code className="break-all">{createdInviteUrl}</code>
             </Banner>
           ) : null}
           {sp.saved ? <Banner kind="success">Saved {savedLabel(sp.saved)}.</Banner> : null}
@@ -90,6 +92,14 @@ export default async function AdminPage({ searchParams }: PageProps) {
 function InviteForm() {
   return (
     <form action={issueInviteAction} className="flex flex-wrap items-end gap-3">
+      <label className="grid gap-1.5">
+        <span className="fp-eyebrow">Plan</span>
+        <select name="plan" defaultValue="trial" className="fp-input min-w-32">
+          <option value="trial">Trial</option>
+          <option value="pro">Pro</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
       <label className="grid gap-1.5">
         <span className="fp-eyebrow">Expires</span>
         <select name="expiresInDays" defaultValue="14" className="fp-input min-w-36">
@@ -493,7 +503,7 @@ function InvitesSection({
             {invites.map((invite) => (
               <li
                 key={invite.token}
-                className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_120px_180px_112px] md:items-center"
+                className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_96px_120px_180px_112px] md:items-center"
               >
                 <div className="min-w-0">
                   <code
@@ -505,6 +515,9 @@ function InvitesSection({
                   <div className="mt-1 text-[11px]" style={{ color: "var(--fg-muted)" }}>
                     Created by {invite.createdByEmail ?? "system"} on {formatDate(invite.createdAt)}
                   </div>
+                </div>
+                <div>
+                  <span className="fp-chip">{planLabel(invite.plan)}</span>
                 </div>
                 <div>
                   <span
