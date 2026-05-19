@@ -13,7 +13,7 @@
  */
 
 import { db, ensureSchema } from "../db";
-import { createAnthropicClient, LocalClaudeError } from "../anthropic";
+import { createAnthropicClient, extractJson, LocalClaudeError } from "../anthropic";
 import { notifyFirstDraftCreated } from "../notifications";
 import { getBus } from "./event-bus";
 import { newTraceId, traceLogger } from "./trace";
@@ -80,6 +80,7 @@ export interface NotesSeed {
 const DEFAULT_WORD_COUNT = 1000;
 const MIN_WORD_COUNT = 100;
 const MAX_WORD_COUNT = 2000;
+const MAX_TOKEN_RETRY_MULTIPLIER = 2;
 
 function normalizeWordCount(value: number | undefined): number {
   if (!value || !Number.isFinite(value)) return DEFAULT_WORD_COUNT;
@@ -324,6 +325,8 @@ interface StreamArgs {
   wordCount: number;
   log: ReturnType<typeof traceLogger>;
   noVoiceCancel?: boolean;
+  maxTokens?: number;
+  maxTokenRetries?: number;
 }
 
 interface StreamResult {
@@ -357,9 +360,7 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
   }
 
   const model = await getAnthropicDraftModel(args.userId);
-  // Body tokens ~ words / 0.75; add headroom for headlines, alternates, quotes,
-  // and the JSON envelope itself. Floor at 1500 to keep small drafts honest.
-  const maxTokens = Math.max(1500, Math.round(args.wordCount / 0.75) + 600);
+  const maxTokens = args.maxTokens ?? draftMaxTokens(args.wordCount);
   const stream = client.messages.stream({
     model,
     max_tokens: maxTokens,
@@ -371,6 +372,7 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
   let canceled = false;
   let partialDelta: number | null = null;
   let streamingVoiceCheckFired = false;
+  let stopReason: string | null = null;
 
   try {
     for await (const event of stream) {
@@ -400,6 +402,8 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
             break;
           }
         }
+      } else if (event.type === "message_delta") {
+        stopReason = event.delta.stop_reason ?? stopReason;
       }
     }
   } catch (err) {
@@ -434,8 +438,28 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
     };
   }
 
+  if (stopReason === "max_tokens") {
+    if ((args.maxTokenRetries ?? 0) >= 1) {
+      throw new Error(
+        `Draft generator hit the Anthropic token limit before a complete JSON envelope (${collected.length} chars).`,
+      );
+    }
+    const retryMaxTokens = maxTokens * MAX_TOKEN_RETRY_MULTIPLIER;
+    await args.log.warn("draft.generate.stream", "token limit hit; retrying with more headroom", {
+      maxTokens,
+      retryMaxTokens,
+      collectedChars: collected.length,
+    });
+    return streamOnce({
+      ...args,
+      maxTokens: retryMaxTokens,
+      maxTokenRetries: (args.maxTokenRetries ?? 0) + 1,
+      noVoiceCancel: true,
+    });
+  }
+
   // The model was instructed to emit a JSON envelope. Extract it.
-  const parsed = parseJsonEnvelope(collected);
+  const parsed = parseDraftJsonEnvelope(collected);
   return {
     headline: parsed.headline,
     headlineAlternates: parsed.headlineAlternates,
@@ -448,6 +472,13 @@ async function streamOnce(args: StreamArgs): Promise<StreamResult> {
     streamingVoiceCheckFired,
     isStub: false,
   };
+}
+
+export function draftMaxTokens(wordCount: number): number {
+  // Body output is HTML inside a JSON string, so quotes and links add escaped
+  // characters beyond normal prose. Reserve enough room for that wrapper plus
+  // headlines, quote metadata, and angle metadata.
+  return Math.max(1800, Math.round(wordCount / 0.5) + 1200);
 }
 
 interface PromptBundle {
@@ -575,7 +606,7 @@ Generate the draft now in the JSON envelope.`;
   return { systemPrompt, userMessage, sourceNonce };
 }
 
-function parseJsonEnvelope(text: string): {
+export function parseDraftJsonEnvelope(text: string): {
   headline: string;
   headlineAlternates: string[];
   body: string;
@@ -590,22 +621,12 @@ function parseJsonEnvelope(text: string): {
     .trim();
   let parsed: Record<string, unknown> | null = null;
   try {
-    parsed = JSON.parse(cleaned);
+    parsed = extractJson<Record<string, unknown>>(cleaned);
   } catch {
-    // Fallback: pull the first {...} block.
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    if (m) {
-      try {
-        parsed = JSON.parse(m[0]);
-      } catch {
-        parsed = null;
-      }
-    }
+    parsed = null;
   }
   if (!parsed) {
-    throw new Error(
-      `Draft generator returned invalid JSON envelope (${cleaned.length} chars).`,
-    );
+    throw new Error(`Draft generator returned invalid JSON envelope (${cleaned.length} chars).`);
   }
 
   const headline = String(parsed.headline ?? "");
