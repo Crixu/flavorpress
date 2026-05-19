@@ -14,7 +14,9 @@ vi.mock("@/lib/v1/actions", () => ({
 }));
 
 import { DraftWizardSheet } from "../DraftWizardSheet";
+import { AI_THINKING_LINES, thinkingLineDurationMs } from "../AiThinkingLines";
 import { defaultDraftFormatOptions } from "@/lib/v1/draft-format";
+import { generateDraftAnglesAction } from "@/lib/v1/actions";
 
 const baseProps = {
   clusterId: "c1",
@@ -27,6 +29,23 @@ const baseProps = {
 };
 
 describe("DraftWizardSheet", () => {
+  it("keeps thirty distinct AI thinking lines available", () => {
+    expect(AI_THINKING_LINES).toHaveLength(30);
+    expect(new Set(AI_THINKING_LINES).size).toBe(30);
+  });
+
+  it("keeps longer thinking lines visible longer with a cap", () => {
+    const shortDuration = thinkingLineDurationMs("Short.");
+    const longDuration = thinkingLineDurationMs(
+      "This is a longer thinking line that needs more reading time.",
+    );
+    const cappedDuration = thinkingLineDurationMs("x".repeat(200));
+
+    expect(longDuration).toBeGreaterThan(shortDuration);
+    expect(shortDuration).toBe(2200);
+    expect(cappedDuration).toBe(4200);
+  });
+
   it("starts on step 1 with Format step", () => {
     render(<DraftWizardSheet {...baseProps} />);
     expect(screen.getByText(/Step 1 \/ 3/)).toBeInTheDocument();
@@ -60,6 +79,16 @@ describe("DraftWizardSheet", () => {
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(screen.getByText(/Step 3 \/ 3/)).toBeInTheDocument();
     expect(screen.getByText(/Back/)).toBeInTheDocument();
+  });
+
+  it("shows thinking copy while angles are loading", async () => {
+    vi.mocked(generateDraftAnglesAction).mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<DraftWizardSheet {...baseProps} />);
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+
+    expect(screen.getByRole("status")).toHaveTextContent(AI_THINKING_LINES[0]!);
   });
 
   it("goes back from step 2 to step 1", async () => {

@@ -21,6 +21,7 @@ import {
 } from "@/lib/v1/wizard-prefs-shared";
 import { SideSheet } from "@/components/wpds/SideSheet";
 import { Button } from "@/components/wpds/Button";
+import { AiThinkingLines } from "./AiThinkingLines";
 import "./DraftWizardSheet.css";
 
 type Step = 1 | 2 | 3;
@@ -184,6 +185,7 @@ export function DraftWizardSheet({
       </div>
 
       {error && <div className="wpds-wiz-error">{error}</div>}
+      {drafting && <AiThinkingLines context="draft" />}
 
       {step === 1 && (
         <div>
@@ -224,7 +226,7 @@ export function DraftWizardSheet({
       {step === 3 && (
         <div>
           <div className="wpds-wiz-label">Pick the angle</div>
-          {!angles && !angleError && <div className="wpds-wiz-loading">Loading angles…</div>}
+          {!angles && !angleError && <AiThinkingLines context="angles" />}
           {angleError && <div className="wpds-wiz-error">{angleError}</div>}
           {angles?.map((a) => (
             <div

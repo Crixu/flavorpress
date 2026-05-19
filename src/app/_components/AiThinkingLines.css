@@ -1,0 +1,79 @@
+.fp-ai-thinking {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  margin: 10px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-subtle) 82%, var(--surface-canvas));
+  color: var(--ink-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fp-ai-thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.fp-ai-thinking-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--ink-muted);
+  animation: fp-thinking-dot 1.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.fp-ai-thinking-dots span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.fp-ai-thinking-dots span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+.fp-ai-thinking-line {
+  min-width: 0;
+  animation: fp-thinking-line 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes fp-thinking-dot {
+  0%,
+  72%,
+  100% {
+    opacity: 0.34;
+    transform: translateY(0);
+  }
+  28% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes fp-thinking-line {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  12%,
+  78% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fp-ai-thinking-dots span,
+  .fp-ai-thinking-line {
+    animation: none;
+  }
+}
