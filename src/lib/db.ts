@@ -76,7 +76,7 @@ export const db: Client = buildClient();
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
 const SCHEMA_VERSION =
-  "2026-05-18.mcp-tokens-oauth-nonces-f10-ai-budget-f09-auth-rate-buckets-f11-tenant-settings";
+  "2026-05-19.mcp-tokens-oauth-nonces-f10-ai-budget-f09-auth-rate-buckets-f11-tenant-settings-invite-plan";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -660,6 +660,7 @@ export async function ensureSchema(): Promise<void> {
         token TEXT PRIMARY KEY,
         created_by_user_id TEXT,
         used_by_user_id TEXT,
+        plan TEXT NOT NULL DEFAULT 'trial',
         created_at INTEGER NOT NULL,
         expires_at INTEGER,
         used_at INTEGER,
@@ -1135,6 +1136,10 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("revoked_at")) {
         console.info("[migrate] invites: adding revoked_at column");
         await db.execute("ALTER TABLE invites ADD COLUMN revoked_at INTEGER");
+      }
+      if (!cols.includes("plan")) {
+        console.info("[migrate] invites: adding plan column");
+        await db.execute("ALTER TABLE invites ADD COLUMN plan TEXT NOT NULL DEFAULT 'trial'");
       }
     }
   } catch {

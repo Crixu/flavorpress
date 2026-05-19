@@ -9,6 +9,7 @@ import {
 } from "@/lib/wpcom-oauth";
 import { issueInvite } from "@/lib/invites";
 import { hashPassword } from "@/lib/password";
+import { getUserPlan } from "@/lib/plans";
 import { createUser, getUserByEmail } from "@/lib/users";
 
 let cookieJar: Map<string, string>;
@@ -61,6 +62,7 @@ function mockWpcomFlow(wpcomUser: { ID: number; username: string; email: string 
 
 beforeEach(async () => {
   await ensureSchema();
+  await db.execute("DELETE FROM user_plans");
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM invites");
   await db.execute("DELETE FROM deployment_state");
@@ -93,7 +95,7 @@ async function stateWithCookie(opts: {
 
 describe("wpcom callback signup", () => {
   it("creates a user from WP.com identity on valid invite", async () => {
-    const { token: invite } = await issueInvite({});
+    const { token: invite } = await issueInvite({ plan: "custom" });
     const state = await stateWithCookie({ nonce: "n_signup", mode: "signup", invite });
     mockWpcomFlow({ ID: 12345, username: "lucas", email: "lucas@wordpress.test" });
 
@@ -106,6 +108,7 @@ describe("wpcom callback signup", () => {
     expect(u?.wpcomUsername).toBe("lucas");
     expect(u?.emailVerifiedAt).not.toBeNull();
     expect(u?.isAdmin).toBe(true);
+    expect(await getUserPlan(u!.id)).toMatchObject({ plan: "custom" });
     expect(cookieJar.get(SESSION_COOKIE_NAME)).toMatch(/^v2\./);
     expect(cookieJar.get(WPCOM_OAUTH_STATE_COOKIE)).toBe("");
   });

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
 import { issueInvite, readInvite } from "@/lib/invites";
+import { getUserPlan } from "@/lib/plans";
 import { getUserByEmail } from "@/lib/users";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
 import { rateLimitKey } from "@/lib/rate-limit";
@@ -64,6 +65,7 @@ vi.mock("@/lib/email", async () => {
 
 beforeEach(async () => {
   await ensureSchema();
+  await db.execute("DELETE FROM user_plans");
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM invites");
   await db.execute("DELETE FROM email_verification_tokens");
@@ -109,6 +111,19 @@ describe("signupAction", () => {
     expect(cookieJar.get(SESSION_COOKIE_NAME)).toBeUndefined();
     const after = await readInvite(token);
     expect(after).toBeNull();
+  });
+
+  it("applies the invite plan to the new user", async () => {
+    const { token } = await issueInvite({ plan: "pro" });
+    await callSignup({
+      invite: token,
+      email: "pro@example.com",
+      password: "correct horse battery staple",
+    });
+    const u = await getUserByEmail("pro@example.com");
+    expect(u).not.toBeNull();
+    const plan = await getUserPlan(u!.id);
+    expect(plan.plan).toBe("pro");
   });
 
   it("rejects missing invite", async () => {
@@ -251,6 +266,8 @@ describe("signupAction", () => {
     expect(to).toMatch(/error=account/);
     expect(await getUserByEmail("failed-send@example.com")).toBeNull();
     expect(await readInvite(token)).not.toBeNull();
+    const plans = await db.execute("SELECT COUNT(*) AS n FROM user_plans");
+    expect(Number(plans.rows[0]!.n)).toBe(0);
     const tokens = await db.execute("SELECT COUNT(*) AS n FROM email_verification_tokens");
     expect(Number(tokens.rows[0]!.n)).toBe(0);
   });

@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { consumeInvite, readInvite, InviteError } from "@/lib/invites";
 import { createUser, getUserByEmail } from "@/lib/users";
+import { setUserPlan } from "@/lib/plans";
 import { issueVerificationToken } from "@/lib/email-tokens";
 import { sendEmail } from "@/lib/email";
 import { verificationEmail } from "@/lib/email-templates";
@@ -65,12 +66,13 @@ export async function signupAction(formData: FormData) {
 
   const hash = await hashPassword(password);
   const userId = newUserId();
+  let consumedInvite: Awaited<ReturnType<typeof consumeInvite>>;
 
   // Consume the invite before any user-table writes. If consumeInvite fails
   // (raced by a concurrent signup), no rollback is needed: the invite-table
   // change is the only write so far.
   try {
-    await consumeInvite(invite, userId);
+    consumedInvite = await consumeInvite(invite, userId);
   } catch (err) {
     if (err instanceof InviteError) redirect(signupErrorPath(invite, "invite"));
     throw err;
@@ -87,6 +89,7 @@ export async function signupAction(formData: FormData) {
       claimFirstAdmin: true,
       id: userId,
     });
+    await setUserPlan(userId, consumedInvite.plan);
   } catch {
     redirect(signupErrorPath(invite, "account"));
   }
@@ -107,6 +110,10 @@ export async function signupAction(formData: FormData) {
     await db.batch([
       {
         sql: "DELETE FROM email_verification_tokens WHERE user_id = ? AND used_at IS NULL",
+        args: [userId],
+      },
+      {
+        sql: "DELETE FROM user_plans WHERE user_id = ?",
         args: [userId],
       },
       {

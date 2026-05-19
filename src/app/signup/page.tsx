@@ -57,7 +57,7 @@ export default async function SignupPage({ searchParams }: PageProps) {
         <header style={{ marginBottom: 24, textAlign: "center" }}>
           <AuthLogo />
           <h1 style={headingStyle}>Create your FlavorPress account</h1>
-          <p style={subtitleStyle}>You were invited.</p>
+          <p style={subtitleStyle}>You were invited on the {planLabel(validInvite.plan)} plan.</p>
         </header>
 
         <Card>
@@ -135,3 +135,9 @@ const subtitleStyle: React.CSSProperties = {
   fontStyle: "italic",
   margin: 0,
 };
+
+function planLabel(plan: string): string {
+  if (plan === "pro") return "Pro";
+  if (plan === "custom") return "Custom";
+  return "Trial";
+}

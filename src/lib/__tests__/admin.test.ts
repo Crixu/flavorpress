@@ -70,7 +70,7 @@ describe("admin snapshot", () => {
   it("returns all unused invites and the five newest used invites", async () => {
     const now = Date.now();
     await insertInvite({ token: "active-old", createdAt: now - 20_000 });
-    await insertInvite({ token: "active-new", createdAt: now - 10_000 });
+    await insertInvite({ token: "active-new", plan: "pro", createdAt: now - 10_000 });
     await insertInvite({
       token: "expired-unused",
       createdAt: now - 9_000,
@@ -105,6 +105,7 @@ describe("admin snapshot", () => {
       "used-3",
       "used-4",
     ]);
+    expect(snapshot.invites.find((invite) => invite.token === "active-new")?.plan).toBe("pro");
   });
 });
 
@@ -149,16 +150,18 @@ async function insertInvite(opts: {
   usedAt?: number | null;
   revokedAt?: number | null;
   usedByUserId?: string | null;
+  plan?: string;
 }) {
   await db.execute({
     sql: `INSERT INTO invites (
-            token, created_by_user_id, used_by_user_id, created_at,
+            token, created_by_user_id, used_by_user_id, plan, created_at,
             expires_at, used_at, revoked_at
           )
-          VALUES (?, NULL, ?, ?, ?, ?, ?)`,
+          VALUES (?, NULL, ?, ?, ?, ?, ?, ?)`,
     args: [
       opts.token,
       opts.usedByUserId ?? null,
+      opts.plan ?? "trial",
       opts.createdAt,
       opts.expiresAt ?? null,
       opts.usedAt ?? null,

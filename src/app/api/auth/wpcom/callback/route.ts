@@ -5,6 +5,7 @@ import { SESSION_COOKIE_NAME, createSessionCookie, getSessionTtlSeconds } from "
 import { db } from "@/lib/db";
 import { consumeInvite, InviteError } from "@/lib/invites";
 import { notifySignupWithEmail } from "@/lib/notifications";
+import { setUserPlan } from "@/lib/plans";
 import {
   consumeWpcomState,
   exchangeCodeForUser,
@@ -110,8 +111,9 @@ export async function GET(req: Request) {
     if (byWpcom.rows.length > 0) return signupErr(state.invite, "account");
 
     const userId = newUserId();
+    let consumedInvite: Awaited<ReturnType<typeof consumeInvite>>;
     try {
-      await consumeInvite(state.invite, userId);
+      consumedInvite = await consumeInvite(state.invite, userId);
     } catch (err) {
       if (err instanceof InviteError) return signupErr(state.invite, "invite");
       throw err;
@@ -127,6 +129,7 @@ export async function GET(req: Request) {
         emailVerifiedAt: Date.now(),
         claimFirstAdmin: true,
       });
+      await setUserPlan(userId, consumedInvite.plan);
     } catch {
       return signupErr(state.invite, "account");
     }

@@ -23,6 +23,7 @@ export interface AdminInviteRow {
   token: string;
   createdByEmail: string | null;
   usedByEmail: string | null;
+  plan: PlanKey;
   createdAt: number;
   expiresAt: number | null;
   usedAt: number | null;
@@ -138,19 +139,19 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
           args: [],
         },
         {
-          sql: `SELECT i.token, i.created_at, i.expires_at, i.used_at, i.revoked_at,
+          sql: `SELECT i.token, i.plan, i.created_at, i.expires_at, i.used_at, i.revoked_at,
                        creator.email AS created_by_email,
                        used.email AS used_by_email
                 FROM (
-                  SELECT token, created_by_user_id, used_by_user_id, created_at,
+                  SELECT token, created_by_user_id, used_by_user_id, plan, created_at,
                          expires_at, used_at, revoked_at, 0 AS sort_bucket, created_at AS sort_at
                   FROM invites
                   WHERE used_at IS NULL
                   UNION ALL
-                  SELECT token, created_by_user_id, used_by_user_id, created_at,
+                  SELECT token, created_by_user_id, used_by_user_id, plan, created_at,
                          expires_at, used_at, revoked_at, 1 AS sort_bucket, used_at AS sort_at
                   FROM (
-                    SELECT token, created_by_user_id, used_by_user_id, created_at,
+                    SELECT token, created_by_user_id, used_by_user_id, plan, created_at,
                            expires_at, used_at, revoked_at
                     FROM invites
                     WHERE used_at IS NOT NULL
@@ -185,6 +186,7 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     token: String(row.token),
     createdByEmail: row.created_by_email == null ? null : String(row.created_by_email),
     usedByEmail: row.used_by_email == null ? null : String(row.used_by_email),
+    plan: normalizePlanKey(row.plan),
     createdAt: Number(row.created_at),
     expiresAt: row.expires_at == null ? null : Number(row.expires_at),
     usedAt: row.used_at == null ? null : Number(row.used_at),

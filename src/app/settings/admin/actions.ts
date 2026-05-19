@@ -22,10 +22,11 @@ export async function issueInviteAction(formData: FormData): Promise<void> {
   await ensureSchema();
   const session = await requireAdmin();
   const days = Number(formData.get("expiresInDays") ?? 14);
+  const plan = normalizePlanKey(String(formData.get("plan") ?? "trial"));
   const expiresAt = Number.isFinite(days) && days > 0 ? Date.now() + days * 24 * 3600 * 1000 : null;
-  const invite = await issueInvite({ createdByUserId: session.userId, expiresAt });
+  const invite = await issueInvite({ createdByUserId: session.userId, expiresAt, plan });
   revalidatePath("/settings/admin");
-  adminRedirect({ created_invite: invite.token });
+  adminRedirect({ created_invite: invite.token, created_plan: plan });
 }
 
 export async function revokeInviteAction(formData: FormData): Promise<void> {
