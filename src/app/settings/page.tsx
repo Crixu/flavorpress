@@ -21,9 +21,14 @@ import {
   requireSession,
   shouldShowAdminControls,
 } from "@/lib/session";
-import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
+import {
+  EXTENSION_METADATA,
+  extensionAllowedForPlan,
+  findExtensionMetadata,
+} from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
+import { getUserPlan } from "@/lib/plans";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 import { LibraryMaintenance } from "./_components/LibraryMaintenance";
 import { SettingsSidebar } from "./_components/SettingsSidebar";
@@ -62,7 +67,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const section = sp.section ?? "authentication";
 
-  const [snapshot, auth, draftCountR] = await Promise.all([
+  const [snapshot, auth, draftCountR, plan] = await Promise.all([
     loadSettingsSnapshot(
       session.userId,
       extensionSettingFields.map((f) => f.key),
@@ -77,6 +82,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ?`,
       args: [session.userId],
     }),
+    getUserPlan(session.userId),
   ]);
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
   if (section === "workflow-autopublish") redirect("/workflows");
@@ -119,6 +125,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             disabledExtensionIds={snapshot.disabledExtensionIds}
             adminDisabledExtensionIds={snapshot.adminDisabledExtensionIds}
             globallyDisabledExtensionIds={snapshot.globallyDisabledExtensionIds}
+            paidExtensionIds={snapshot.paidExtensionIds}
+            plan={plan.plan}
           />
         )}
         {section === "library" && <LibrarySectionPane draftCount={draftCount} />}
@@ -223,15 +231,20 @@ function ExtensionsSectionPane({
   disabledExtensionIds,
   adminDisabledExtensionIds,
   globallyDisabledExtensionIds,
+  paidExtensionIds,
+  plan,
 }: {
   snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
   disabledExtensionIds: string[];
   adminDisabledExtensionIds: string[];
   globallyDisabledExtensionIds: string[];
+  paidExtensionIds: string[];
+  plan: "trial" | "pro" | "custom";
 }) {
   const disabled = new Set(disabledExtensionIds);
   const adminDisabled = new Set(adminDisabledExtensionIds);
   const globallyDisabled = new Set(globallyDisabledExtensionIds);
+  const paid = new Set(paidExtensionIds);
 
   return (
     <div className="space-y-6">
@@ -245,16 +258,18 @@ function ExtensionsSectionPane({
       </div>
 
       <ul className="fp-card divide-y" style={{ borderColor: "var(--border)" }}>
-        {EXTENSION_METADATA.map((ext) => {
+        {EXTENSION_METADATA.filter((ext) => extensionAllowedForPlan(ext, plan, paid)).map((ext) => {
           const isGloballyDisabled = globallyDisabled.has(ext.id);
           const isAdminDisabled = adminDisabled.has(ext.id);
           const userDisabled = disabled.has(ext.id);
           const isEnabled = !userDisabled && !isGloballyDisabled && !isAdminDisabled;
+          const isPaid = paid.has(ext.id);
           return (
             <li key={ext.id} className="flex items-start gap-4 p-4">
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[14px] font-semibold">{ext.label}</span>
+                  {isPaid ? <span className="fp-chip fp-chip-indigo">Paid</span> : null}
                   {isGloballyDisabled ? (
                     <span className="fp-chip fp-chip-rose">Disabled by admin</span>
                   ) : isAdminDisabled ? (

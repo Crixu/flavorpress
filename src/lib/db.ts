@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // missing row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-21.workflow-folder-scope";
+const SCHEMA_VERSION = "2026-05-21.paid-editor-extensions";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -586,6 +586,62 @@ export async function ensureSchema(): Promise<void> {
       // show "ran Xm ago" and distinguish a successful empty thread from
       // "never run".
       `CREATE TABLE IF NOT EXISTS comment_courtroom_runs (
+        draft_id TEXT PRIMARY KEY,
+        ran_at INTEGER NOT NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS angle_builder_suggestions (
+        id TEXT PRIMARY KEY,
+        draft_id TEXT NOT NULL,
+        angle_index INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        label TEXT NOT NULL,
+        title TEXT NOT NULL,
+        thesis TEXT NOT NULL,
+        why TEXT NOT NULL,
+        source_cue TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_angle_builder_suggestions_draft
+        ON angle_builder_suggestions(draft_id, angle_index)`,
+      `CREATE TABLE IF NOT EXISTS angle_builder_runs (
+        draft_id TEXT PRIMARY KEY,
+        ran_at INTEGER NOT NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS evidence_panel_items (
+        id TEXT PRIMARY KEY,
+        draft_id TEXT NOT NULL,
+        item_index INTEGER NOT NULL,
+        claim_text TEXT NOT NULL,
+        status TEXT NOT NULL,
+        note TEXT NOT NULL,
+        source_title TEXT,
+        source_url TEXT,
+        quote_text TEXT,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_evidence_panel_items_draft
+        ON evidence_panel_items(draft_id, item_index)`,
+      `CREATE TABLE IF NOT EXISTS evidence_panel_runs (
+        draft_id TEXT PRIMARY KEY,
+        ran_at INTEGER NOT NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS voice_guard_notes (
+        id TEXT PRIMARY KEY,
+        draft_id TEXT NOT NULL,
+        note_index INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        span_text TEXT NOT NULL,
+        note TEXT NOT NULL,
+        suggestion TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_voice_guard_notes_draft
+        ON voice_guard_notes(draft_id, note_index)`,
+      `CREATE TABLE IF NOT EXISTS voice_guard_runs (
         draft_id TEXT PRIMARY KEY,
         ran_at INTEGER NOT NULL
       )`,

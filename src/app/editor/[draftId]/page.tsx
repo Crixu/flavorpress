@@ -15,7 +15,9 @@ import { deleteDraftAction, regenerateDraftAction } from "@/lib/v1/actions";
 import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
-import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
+import { getEffectiveDisabledExtensionIds, getPaidExtensionIds } from "@/lib/v1/settings";
+import { getUserPlan } from "@/lib/plans";
+import { extensionIdAllowedForPlan } from "@/extensions/registry";
 import type { Notes } from "@/lib/v1/notes-generator";
 import { parseResearchBoardState } from "@/lib/v1/research-board";
 import { AnglePicker } from "./AnglePicker";
@@ -196,16 +198,21 @@ export default async function EditorPage({ params }: PageProps) {
     );
   }
 
-  const [initialAnnotationsByExt, disabledExtensionIds] = await Promise.all([
-    loadAllAnnotations(String(d.id), session.userId),
-    getEffectiveDisabledExtensionIds(session.userId),
-  ]);
+  const [initialAnnotationsByExt, disabledExtensionIds, plan, paidExtensionIds] = await Promise.all(
+    [
+      loadAllAnnotations(String(d.id), session.userId),
+      getEffectiveDisabledExtensionIds(session.userId),
+      getUserPlan(session.userId),
+      getPaidExtensionIds(),
+    ],
+  );
   const totalAnnotations = Object.values(initialAnnotationsByExt).reduce(
     (n, payload) => n + payload.annotations.length,
     0,
   );
   const enabledExtensionIds = SERVER_EXTENSIONS.map((ext) => ext.id).filter(
-    (id) => !disabledExtensionIds.has(id),
+    (id) =>
+      !disabledExtensionIds.has(id) && extensionIdAllowedForPlan(id, plan.plan, paidExtensionIds),
   );
 
   const headlineAlternates = d.headline_alternates

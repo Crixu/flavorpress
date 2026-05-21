@@ -10,6 +10,7 @@ import { findExtensionMetadata } from "@/extensions/registry";
 import {
   getGloballyDisabledExtensionIds,
   setExtensionGloballyEnabled,
+  setExtensionPaidPlanRequired,
   setUserExtensionAccess,
 } from "@/lib/v1/settings";
 
@@ -121,6 +122,31 @@ export async function toggleGlobalExtensionAction(formData: FormData): Promise<v
       saved: "global_extension",
       extension: extensionId,
       state: enabled ? "enabled" : "disabled",
+    },
+    path,
+  );
+}
+
+export async function togglePaidExtensionAction(formData: FormData): Promise<void> {
+  await ensureSchema();
+  await requireAdmin();
+  const extensionId = String(formData.get("extensionId") ?? "");
+  const paidRequired = String(formData.get("paidRequired") ?? "") === "1";
+  const path = "/settings/admin/extensions";
+  if (!findExtensionMetadata(extensionId)) {
+    adminRedirect({ error: "invalid_extension" }, path);
+  }
+  await setExtensionPaidPlanRequired(extensionId, paidRequired);
+  revalidatePath(path);
+  revalidatePath("/settings");
+  revalidatePath("/settings/admin");
+  revalidatePath("/settings/admin/users/[userId]", "page");
+  revalidatePath("/editor", "layout");
+  adminRedirect(
+    {
+      saved: "extension_plan",
+      extension: extensionId,
+      state: paidRequired ? "paid" : "included",
     },
     path,
   );

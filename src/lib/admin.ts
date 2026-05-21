@@ -6,6 +6,7 @@ import {
   getAdminDisabledExtensionIds,
   getDisabledExtensionIds,
   getGloballyDisabledExtensionIds,
+  getPaidExtensionIds,
 } from "./v1/settings";
 
 export interface AdminUserRow {
@@ -88,6 +89,7 @@ export interface AdminExtensionAccessUserRow {
   email: string;
   status: "active" | "suspended";
   isAdmin: boolean;
+  plan: PlanKey;
   adminDisabledExtensionIds: string[];
   selfDisabledExtensionIds: string[];
 }
@@ -95,6 +97,7 @@ export interface AdminExtensionAccessUserRow {
 export interface AdminExtensionAccessSnapshot {
   users: AdminExtensionAccessUserRow[];
   globallyDisabledExtensionIds: string[];
+  paidExtensionIds: string[];
   now: number;
 }
 
@@ -230,12 +233,13 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
 
 export async function loadAdminExtensionAccessSnapshot(): Promise<AdminExtensionAccessSnapshot> {
   await ensureSchema();
-  const [rows, globallyDisabled] = await Promise.all([
+  const [rows, globallyDisabled, paidExtensions] = await Promise.all([
     db.batch(
       [
         {
-          sql: `SELECT id, email, status, is_admin
-                FROM users
+          sql: `SELECT u.id, u.email, u.status, u.is_admin, p.plan AS plan
+                FROM users u
+                LEFT JOIN user_plans p ON p.user_id = u.id
                 ORDER BY email ASC`,
           args: [],
         },
@@ -256,6 +260,7 @@ export async function loadAdminExtensionAccessSnapshot(): Promise<AdminExtension
       "read",
     ),
     getGloballyDisabledExtensionIds(),
+    getPaidExtensionIds(),
   ]);
   const [usersR, accessR, selfSettingsR] = rows;
   const adminDisabledByUser = new Map<string, string[]>();
@@ -288,6 +293,7 @@ export async function loadAdminExtensionAccessSnapshot(): Promise<AdminExtension
       email: String(row.email),
       status: String(row.status) === "suspended" ? "suspended" : "active",
       isAdmin: Number(row.is_admin) === 1,
+      plan: normalizePlanKey(row.plan),
       adminDisabledExtensionIds: (adminDisabledByUser.get(String(row.id)) ?? []).sort(),
       selfDisabledExtensionIds: selfDisabledByUser.get(String(row.id)) ?? [],
     }),
@@ -296,6 +302,7 @@ export async function loadAdminExtensionAccessSnapshot(): Promise<AdminExtension
   return {
     users,
     globallyDisabledExtensionIds: [...globallyDisabled].sort(),
+    paidExtensionIds: [...paidExtensions].sort(),
     now: Date.now(),
   };
 }
