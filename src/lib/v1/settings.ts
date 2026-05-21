@@ -19,6 +19,10 @@ export const SETTING_KEYS = {
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
 
+const DEPLOYMENT_SETTING_KEYS = {
+  globallyDisabledExtensions: "globally_disabled_extensions",
+} as const;
+
 const DEFAULT_DRAFT_MODEL = "claude-haiku-4-5-20251001";
 const SENSITIVE_SETTING_PATTERN = /(^|_)(api_key|password|secret|token|credential)(_|$)/i;
 
@@ -102,6 +106,7 @@ export interface SettingsSnapshot {
   anthropicApiKey: { hasValue: boolean; source: "db" | "env" | "none"; preview: string | null };
   anthropicDraftModel: { value: string; source: "db" | "env" | "default" };
   disabledExtensionIds: string[];
+  globallyDisabledExtensionIds: string[];
   /**
    * Values for extension-registered settings, keyed by setting key.
    * Sourced strictly from the DB; extensions decide their own env-var
@@ -142,6 +147,75 @@ export async function setExtensionEnabled(
   await setSetting(SETTING_KEYS.disabledExtensions, userId, JSON.stringify([...current].sort()));
 }
 
+/**
+ * Deployment-wide kill switch for extensions. Stored once in
+ * deployment_settings (singleton, no user_id scope) so an admin can flip
+ * an extension off for every user at once. Effective state at runtime is
+ * the union of this set with the user's own disabled set; see
+ * getEffectiveDisabledExtensionIds.
+ */
+export async function getGloballyDisabledExtensionIds(): Promise<Set<string>> {
+  await ensureSchema();
+  const r = await db.execute({
+    sql: `SELECT value FROM deployment_settings WHERE key = ?`,
+    args: [DEPLOYMENT_SETTING_KEYS.globallyDisabledExtensions],
+  });
+  if (r.rows.length === 0) return new Set();
+  const raw = r.rows[0]!.value;
+  if (raw === null || raw === undefined) return new Set();
+  try {
+    const parsed = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+export async function setExtensionGloballyEnabled(
+  extensionId: string,
+  enabled: boolean,
+): Promise<void> {
+  await ensureSchema();
+  const current = await getGloballyDisabledExtensionIds();
+  if (enabled) current.delete(extensionId);
+  else current.add(extensionId);
+  const now = Date.now();
+  if (current.size === 0) {
+    await db.execute({
+      sql: `DELETE FROM deployment_settings WHERE key = ?`,
+      args: [DEPLOYMENT_SETTING_KEYS.globallyDisabledExtensions],
+    });
+    return;
+  }
+  await db.execute({
+    sql: `INSERT INTO deployment_settings (key, value, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at`,
+    args: [
+      DEPLOYMENT_SETTING_KEYS.globallyDisabledExtensions,
+      JSON.stringify([...current].sort()),
+      now,
+    ],
+  });
+}
+
+/**
+ * The set the runtime should gate on. Union of the deployment-wide kill
+ * switch and the user's own preferences, so a globally-disabled extension
+ * stays off even for users who had never disabled it.
+ */
+export async function getEffectiveDisabledExtensionIds(userId: string): Promise<Set<string>> {
+  const [global, user] = await Promise.all([
+    getGloballyDisabledExtensionIds(),
+    getDisabledExtensionIds(userId),
+  ]);
+  for (const id of user) global.add(id);
+  return global;
+}
+
 function previewSecret(value: string): string {
   if (value.length <= 8) return "•".repeat(value.length);
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
@@ -152,10 +226,11 @@ export async function loadSettingsSnapshot(
   extensionSettingKeys: string[] = [],
 ): Promise<SettingsSnapshot> {
   await ensureSchema();
-  const [dbApiKey, dbModel, disabled, extensionValues] = await Promise.all([
+  const [dbApiKey, dbModel, disabled, globallyDisabled, extensionValues] = await Promise.all([
     getSetting(SETTING_KEYS.anthropicApiKey, userId),
     getSetting(SETTING_KEYS.anthropicDraftModel, userId),
     getDisabledExtensionIds(userId),
+    getGloballyDisabledExtensionIds(),
     Promise.all(extensionSettingKeys.map(async (k) => [k, await getSetting(k, userId)] as const)),
   ]);
 
@@ -183,6 +258,7 @@ export async function loadSettingsSnapshot(
       source: dbModel ? "db" : process.env.ANTHROPIC_DRAFT_MODEL ? "env" : "default",
     },
     disabledExtensionIds: [...disabled].sort(),
+    globallyDisabledExtensionIds: [...globallyDisabled].sort(),
     extensionSettings,
   };
 }

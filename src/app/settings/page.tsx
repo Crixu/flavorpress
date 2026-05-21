@@ -88,7 +88,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   ]);
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
   const workflowAutopublishAvailable =
-    !snapshot.disabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID);
+    !snapshot.disabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID) &&
+    !snapshot.globallyDisabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID);
   if (section === "workflow-autopublish" && !workflowAutopublishAvailable) {
     redirect("/settings?section=extensions");
   }
@@ -121,6 +122,9 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         ) : null}
         {sp.error === "invalid_key" ? <Banner kind="error">Unknown setting key.</Banner> : null}
         {sp.error === "invalid_extension" ? <Banner kind="error">Unknown extension.</Banner> : null}
+        {sp.error === "extension_locked_by_admin" ? (
+          <Banner kind="error">That extension is disabled by your admin.</Banner>
+        ) : null}
 
         {section === "authentication" && (
           <AuthSectionPane mode={auth.mode} hasApiKey={auth.apiKey !== null} snapshot={snapshot} />
@@ -130,6 +134,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <ExtensionsSectionPane
             snapshot={snapshot}
             disabledExtensionIds={snapshot.disabledExtensionIds}
+            globallyDisabledExtensionIds={snapshot.globallyDisabledExtensionIds}
           />
         )}
         {section === "workflow-autopublish" && (
@@ -235,11 +240,14 @@ function ModelsSectionPane({
 function ExtensionsSectionPane({
   snapshot,
   disabledExtensionIds,
+  globallyDisabledExtensionIds,
 }: {
   snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
   disabledExtensionIds: string[];
+  globallyDisabledExtensionIds: string[];
 }) {
   const disabled = new Set(disabledExtensionIds);
+  const globallyDisabled = new Set(globallyDisabledExtensionIds);
 
   return (
     <div className="space-y-6">
@@ -254,31 +262,45 @@ function ExtensionsSectionPane({
 
       <ul className="fp-card divide-y" style={{ borderColor: "var(--border)" }}>
         {EXTENSION_METADATA.map((ext) => {
-          const isEnabled = !disabled.has(ext.id);
+          const isGloballyDisabled = globallyDisabled.has(ext.id);
+          const userDisabled = disabled.has(ext.id);
+          const isEnabled = !userDisabled && !isGloballyDisabled;
           return (
             <li key={ext.id} className="flex items-start gap-4 p-4">
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[14px] font-semibold">{ext.label}</span>
-                  <span className={isEnabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}>
-                    {isEnabled ? "Enabled" : "Disabled"}
-                  </span>
+                  {isGloballyDisabled ? (
+                    <span className="fp-chip fp-chip-rose">Disabled by admin</span>
+                  ) : (
+                    <span
+                      className={isEnabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}
+                    >
+                      {isEnabled ? "Enabled" : "Disabled"}
+                    </span>
+                  )}
                 </div>
                 <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
                   {ext.description}
                 </p>
               </div>
-              <form action={toggleExtensionAction} className="shrink-0">
-                <input type="hidden" name="section" value="extensions" />
-                <input type="hidden" name="extensionId" value={ext.id} />
-                <input type="hidden" name="enabled" value={isEnabled ? "0" : "1"} />
-                <SubmitButton
-                  className={isEnabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
-                  pendingLabel={isEnabled ? "Disabling" : "Enabling"}
-                >
-                  {isEnabled ? "Disable" : "Enable"}
-                </SubmitButton>
-              </form>
+              {isGloballyDisabled ? (
+                <button type="button" className="fp-btn fp-btn-ghost shrink-0" disabled>
+                  Locked
+                </button>
+              ) : (
+                <form action={toggleExtensionAction} className="shrink-0">
+                  <input type="hidden" name="section" value="extensions" />
+                  <input type="hidden" name="extensionId" value={ext.id} />
+                  <input type="hidden" name="enabled" value={isEnabled ? "0" : "1"} />
+                  <SubmitButton
+                    className={isEnabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
+                    pendingLabel={isEnabled ? "Disabling" : "Enabling"}
+                  >
+                    {isEnabled ? "Disable" : "Enable"}
+                  </SubmitButton>
+                </form>
+              )}
             </li>
           );
         })}

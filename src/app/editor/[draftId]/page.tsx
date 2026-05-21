@@ -15,7 +15,7 @@ import { deleteDraftAction, regenerateDraftAction } from "@/lib/v1/actions";
 import { loadAllAnnotations, SERVER_EXTENSIONS } from "@/extensions/server";
 import { ExtensionsArticle } from "@/extensions/Article";
 import { ExtensionsPanels } from "@/extensions/Panels";
-import { getDisabledExtensionIds } from "@/lib/v1/settings";
+import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
 import type { Notes } from "@/lib/v1/notes-generator";
 import { parseResearchBoardState } from "@/lib/v1/research-board";
 import { AnglePicker } from "./AnglePicker";
@@ -198,7 +198,7 @@ export default async function EditorPage({ params }: PageProps) {
 
   const [initialAnnotationsByExt, disabledExtensionIds] = await Promise.all([
     loadAllAnnotations(String(d.id), session.userId),
-    getDisabledExtensionIds(session.userId),
+    getEffectiveDisabledExtensionIds(session.userId),
   ]);
   const totalAnnotations = Object.values(initialAnnotationsByExt).reduce(
     (n, payload) => n + payload.annotations.length,

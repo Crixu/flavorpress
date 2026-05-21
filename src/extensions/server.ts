@@ -13,7 +13,7 @@ import type { InitialAnnotationsByExtension, ServerExtensionEntry } from "./type
 import { commentCourtroomServerEntry } from "./comment-courtroom/server";
 import { factCheckServerEntry } from "./fact-check/server";
 import { relatedImagesServerEntry } from "./related-images/server";
-import { getDisabledExtensionIds } from "@/lib/v1/settings";
+import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
 
 export const SERVER_EXTENSIONS: ServerExtensionEntry[] = [
   factCheckServerEntry,
@@ -31,7 +31,7 @@ export async function loadAllAnnotations(
   draftId: string,
   userId: string,
 ): Promise<InitialAnnotationsByExtension> {
-  const disabled = await getDisabledExtensionIds(userId);
+  const disabled = await getEffectiveDisabledExtensionIds(userId);
   const active = SERVER_EXTENSIONS.filter((ext) => !disabled.has(ext.id));
   const results = await Promise.all(
     active.map(async (ext) => {

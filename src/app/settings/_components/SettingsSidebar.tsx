@@ -41,13 +41,22 @@ export function SettingsSidebar({
         </Link>
       ))}
       {showAdmin ? (
-        <Link
-          href="/settings/admin"
-          className={`fp-settings-item ${active === "admin" ? "on" : ""}`}
-        >
-          <div className="fp-settings-item-label">Admin</div>
-          <div className="fp-settings-item-hint">Users · plans · sources</div>
-        </Link>
+        <>
+          <Link
+            href="/settings/admin"
+            className={`fp-settings-item ${active === "admin" ? "on" : ""}`}
+          >
+            <div className="fp-settings-item-label">Admin</div>
+            <div className="fp-settings-item-hint">Users · plans · sources</div>
+          </Link>
+          <Link
+            href="/settings/admin/extensions"
+            className={`fp-settings-item ${active === "admin-extensions" ? "on" : ""}`}
+          >
+            <div className="fp-settings-item-label">Admin / Extensions</div>
+            <div className="fp-settings-item-hint">Global kill switches</div>
+          </Link>
+        </>
       ) : null}
     </div>
   );

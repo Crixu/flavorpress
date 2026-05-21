@@ -2,7 +2,7 @@ import "server-only";
 import { db, ensureSchema } from "./db";
 import { limitsForPlan, normalizePlanKey, type PlanKey, type PlanLimits } from "./plans";
 import { loadReadingToWritingMetrics, type ReadingToWritingMetrics } from "./v1/analytics";
-import { getDisabledExtensionIds } from "./v1/settings";
+import { getDisabledExtensionIds, getGloballyDisabledExtensionIds } from "./v1/settings";
 
 export interface AdminUserRow {
   id: string;
@@ -85,6 +85,7 @@ export interface AdminUserDetailSnapshot {
   folders: AdminFolderRow[];
   sources: AdminSourceRow[];
   disabledExtensionIds: string[];
+  globallyDisabledExtensionIds: string[];
   now: number;
 }
 
@@ -212,7 +213,7 @@ export async function loadAdminUserDetailSnapshot(
 ): Promise<AdminUserDetailSnapshot | null> {
   await ensureSchema();
 
-  const [detailRows, disabledExtensionIds] = await Promise.all([
+  const [detailRows, disabledExtensionIds, globallyDisabledExtensionIds] = await Promise.all([
     db.batch(
       [
         {
@@ -268,6 +269,7 @@ export async function loadAdminUserDetailSnapshot(
       "read",
     ),
     getDisabledExtensionIds(userId),
+    getGloballyDisabledExtensionIds(),
   ]);
   const [userR, outletsR, foldersR, sourcesR] = detailRows;
 
@@ -313,6 +315,7 @@ export async function loadAdminUserDetailSnapshot(
     folders,
     sources,
     disabledExtensionIds: [...disabledExtensionIds].sort(),
+    globallyDisabledExtensionIds: [...globallyDisabledExtensionIds].sort(),
     now: Date.now(),
   };
 }
