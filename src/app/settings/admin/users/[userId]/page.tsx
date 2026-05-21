@@ -69,15 +69,17 @@ export default async function AdminUserPage({ params, searchParams }: PageProps)
             </div>
           </header>
 
-          {sp.saved === "extension" &&
+          {sp.saved === "extension_access" &&
           sp.extension &&
           (sp.state === "enabled" || sp.state === "disabled") ? (
             <Banner>
-              {sp.state === "enabled" ? "Enabled" : "Disabled"} {extensionLabelFor(sp.extension)}{" "}
-              for this user.
+              {sp.state === "enabled" ? "Allowed access to" : "Blocked access to"}{" "}
+              {extensionLabelFor(sp.extension)} for this user.
             </Banner>
           ) : null}
-          {sp.saved && sp.saved !== "extension" ? <Banner>Saved source change.</Banner> : null}
+          {sp.saved && sp.saved !== "extension_access" ? (
+            <Banner>Saved source change.</Banner>
+          ) : null}
           {sp.error === "invalid_extension" ? <ErrorBanner>Unknown extension.</ErrorBanner> : null}
           {sp.error === "extension_locked_globally" ? (
             <ErrorBanner>
@@ -89,6 +91,7 @@ export default async function AdminUserPage({ params, searchParams }: PageProps)
           <ExtensionsSection
             userId={snapshot.user.id}
             disabledExtensionIds={snapshot.disabledExtensionIds}
+            adminDisabledExtensionIds={snapshot.adminDisabledExtensionIds}
             globallyDisabledExtensionIds={snapshot.globallyDisabledExtensionIds}
           />
           <OutletsSection outlets={snapshot.outlets} />
@@ -145,20 +148,23 @@ function Metric({ label, value, over = false }: { label: string; value: string; 
 function ExtensionsSection({
   userId,
   disabledExtensionIds,
+  adminDisabledExtensionIds,
   globallyDisabledExtensionIds,
 }: {
   userId: string;
   disabledExtensionIds: string[];
+  adminDisabledExtensionIds: string[];
   globallyDisabledExtensionIds: string[];
 }) {
   const disabled = new Set(disabledExtensionIds);
+  const adminDisabled = new Set(adminDisabledExtensionIds);
   const globallyDisabled = new Set(globallyDisabledExtensionIds);
   return (
     <section className="space-y-3">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Extensions</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-          Control which source helpers and editor inspectors run for this user. Globally-disabled
+          Control which source helpers and editor inspectors this user can access. Globally-disabled
           extensions are locked here; manage them in{" "}
           <Link href="/settings/admin/extensions" className="underline">
             Admin / Extensions
@@ -170,8 +176,8 @@ function ExtensionsSection({
         <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
           {EXTENSION_METADATA.map((extension) => {
             const isGloballyDisabled = globallyDisabled.has(extension.id);
+            const isAdminDisabled = adminDisabled.has(extension.id);
             const userDisabled = disabled.has(extension.id);
-            const enabled = !userDisabled && !isGloballyDisabled;
             return (
               <li
                 key={extension.id}
@@ -182,14 +188,12 @@ function ExtensionsSection({
                     <span className="truncate text-sm font-semibold">{extension.label}</span>
                     {isGloballyDisabled ? (
                       <span className="fp-chip fp-chip-rose">Disabled globally</span>
+                    ) : isAdminDisabled ? (
+                      <span className="fp-chip fp-chip-rose">Access blocked</span>
+                    ) : userDisabled ? (
+                      <span className="fp-chip fp-chip-amber">User disabled</span>
                     ) : (
-                      <span
-                        className={
-                          enabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"
-                        }
-                      >
-                        {enabled ? "Enabled" : "Disabled"}
-                      </span>
+                      <span className="fp-chip fp-chip-emerald">Access allowed</span>
                     )}
                   </div>
                   <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
@@ -206,12 +210,12 @@ function ExtensionsSection({
                   <form action={toggleUserExtensionForAdminAction} className="md:justify-self-end">
                     <input type="hidden" name="userId" value={userId} />
                     <input type="hidden" name="extensionId" value={extension.id} />
-                    <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
+                    <input type="hidden" name="enabled" value={isAdminDisabled ? "1" : "0"} />
                     <SubmitButton
-                      className={enabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
-                      pendingLabel={enabled ? "Disabling" : "Enabling"}
+                      className={isAdminDisabled ? "fp-btn fp-btn-primary" : "fp-btn fp-btn-ghost"}
+                      pendingLabel={isAdminDisabled ? "Allowing" : "Blocking"}
                     >
-                      {enabled ? "Disable" : "Enable"}
+                      {isAdminDisabled ? "Allow access" : "Block access"}
                     </SubmitButton>
                   </form>
                 )}

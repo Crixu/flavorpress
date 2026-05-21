@@ -9,8 +9,8 @@ import { normalizePlanKey, setUserPlan } from "@/lib/plans";
 import { findExtensionMetadata } from "@/extensions/registry";
 import {
   getGloballyDisabledExtensionIds,
-  setExtensionEnabled,
   setExtensionGloballyEnabled,
+  setUserExtensionAccess,
 } from "@/lib/v1/settings";
 
 async function requireAdmin() {
@@ -132,8 +132,10 @@ export async function toggleUserExtensionForAdminAction(formData: FormData): Pro
   const userId = String(formData.get("userId") ?? "");
   const extensionId = String(formData.get("extensionId") ?? "");
   const enabled = String(formData.get("enabled") ?? "") === "1";
+  const returnTo = String(formData.get("returnTo") ?? "");
   if (!userId) throw new Error("userId required.");
-  const path = `/settings/admin/users/${userId}`;
+  const path =
+    returnTo === "extensions" ? "/settings/admin/extensions" : `/settings/admin/users/${userId}`;
   if (!findExtensionMetadata(extensionId)) {
     adminRedirect({ error: "invalid_extension" }, path);
   }
@@ -146,13 +148,15 @@ export async function toggleUserExtensionForAdminAction(formData: FormData): Pro
     adminRedirect({ error: "extension_locked_globally" }, path);
   }
 
-  await setExtensionEnabled(extensionId, enabled, userId);
+  await setUserExtensionAccess(extensionId, userId, enabled);
   revalidatePath("/settings/admin");
+  revalidatePath("/settings/admin/extensions");
   revalidatePath(path);
+  revalidatePath("/settings");
   revalidatePath("/editor", "layout");
   adminRedirect(
     {
-      saved: "extension",
+      saved: "extension_access",
       extension: extensionId,
       state: enabled ? "enabled" : "disabled",
     },

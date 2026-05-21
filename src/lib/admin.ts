@@ -2,7 +2,11 @@ import "server-only";
 import { db, ensureSchema } from "./db";
 import { limitsForPlan, normalizePlanKey, type PlanKey, type PlanLimits } from "./plans";
 import { loadReadingToWritingMetrics, type ReadingToWritingMetrics } from "./v1/analytics";
-import { getDisabledExtensionIds, getGloballyDisabledExtensionIds } from "./v1/settings";
+import {
+  getAdminDisabledExtensionIds,
+  getDisabledExtensionIds,
+  getGloballyDisabledExtensionIds,
+} from "./v1/settings";
 
 export interface AdminUserRow {
   id: string;
@@ -79,12 +83,28 @@ export interface AdminSnapshot {
   now: number;
 }
 
+export interface AdminExtensionAccessUserRow {
+  id: string;
+  email: string;
+  status: "active" | "suspended";
+  isAdmin: boolean;
+  adminDisabledExtensionIds: string[];
+  selfDisabledExtensionIds: string[];
+}
+
+export interface AdminExtensionAccessSnapshot {
+  users: AdminExtensionAccessUserRow[];
+  globallyDisabledExtensionIds: string[];
+  now: number;
+}
+
 export interface AdminUserDetailSnapshot {
   user: AdminUserRow;
   outlets: AdminOutletRow[];
   folders: AdminFolderRow[];
   sources: AdminSourceRow[];
   disabledExtensionIds: string[];
+  adminDisabledExtensionIds: string[];
   globallyDisabledExtensionIds: string[];
   now: number;
 }
@@ -208,12 +228,89 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
   return { users, invites, outletStats, readingToWriting, now };
 }
 
+export async function loadAdminExtensionAccessSnapshot(): Promise<AdminExtensionAccessSnapshot> {
+  await ensureSchema();
+  const [rows, globallyDisabled] = await Promise.all([
+    db.batch(
+      [
+        {
+          sql: `SELECT id, email, status, is_admin
+                FROM users
+                ORDER BY email ASC`,
+          args: [],
+        },
+        {
+          sql: `SELECT user_id, extension_id
+                FROM user_extension_access
+                WHERE enabled = 0
+                ORDER BY user_id ASC, extension_id ASC`,
+          args: [],
+        },
+        {
+          sql: `SELECT user_id, value
+                FROM user_settings
+                WHERE key = 'disabled_extensions'`,
+          args: [],
+        },
+      ],
+      "read",
+    ),
+    getGloballyDisabledExtensionIds(),
+  ]);
+  const [usersR, accessR, selfSettingsR] = rows;
+  const adminDisabledByUser = new Map<string, string[]>();
+  for (const row of accessR.rows as Record<string, unknown>[]) {
+    const userId = String(row.user_id);
+    const list = adminDisabledByUser.get(userId) ?? [];
+    list.push(String(row.extension_id));
+    adminDisabledByUser.set(userId, list);
+  }
+
+  const selfDisabledByUser = new Map<string, string[]>();
+  for (const row of selfSettingsR.rows as Record<string, unknown>[]) {
+    const userId = String(row.user_id);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(String(row.value ?? ""));
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(parsed)) continue;
+    selfDisabledByUser.set(
+      userId,
+      parsed.filter((id): id is string => typeof id === "string").sort(),
+    );
+  }
+
+  const users: AdminExtensionAccessUserRow[] = (usersR.rows as Record<string, unknown>[]).map(
+    (row) => ({
+      id: String(row.id),
+      email: String(row.email),
+      status: String(row.status) === "suspended" ? "suspended" : "active",
+      isAdmin: Number(row.is_admin) === 1,
+      adminDisabledExtensionIds: (adminDisabledByUser.get(String(row.id)) ?? []).sort(),
+      selfDisabledExtensionIds: selfDisabledByUser.get(String(row.id)) ?? [],
+    }),
+  );
+
+  return {
+    users,
+    globallyDisabledExtensionIds: [...globallyDisabled].sort(),
+    now: Date.now(),
+  };
+}
+
 export async function loadAdminUserDetailSnapshot(
   userId: string,
 ): Promise<AdminUserDetailSnapshot | null> {
   await ensureSchema();
 
-  const [detailRows, disabledExtensionIds, globallyDisabledExtensionIds] = await Promise.all([
+  const [
+    detailRows,
+    disabledExtensionIds,
+    adminDisabledExtensionIds,
+    globallyDisabledExtensionIds,
+  ] = await Promise.all([
     db.batch(
       [
         {
@@ -269,6 +366,7 @@ export async function loadAdminUserDetailSnapshot(
       "read",
     ),
     getDisabledExtensionIds(userId),
+    getAdminDisabledExtensionIds(userId),
     getGloballyDisabledExtensionIds(),
   ]);
   const [userR, outletsR, foldersR, sourcesR] = detailRows;
@@ -315,6 +413,7 @@ export async function loadAdminUserDetailSnapshot(
     folders,
     sources,
     disabledExtensionIds: [...disabledExtensionIds].sort(),
+    adminDisabledExtensionIds: [...adminDisabledExtensionIds].sort(),
     globallyDisabledExtensionIds: [...globallyDisabledExtensionIds].sort(),
     now: Date.now(),
   };

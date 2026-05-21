@@ -8,7 +8,9 @@ import {
   runFactCheck,
   suggestFactCheckFix,
 } from "./server";
+import { requireEnabledExtensionSession } from "../access";
 import type { ExtensionAnnotation } from "../types";
+import { FACT_CHECK_ID, FACT_CHECK_LABEL } from "./types";
 
 export interface RunResult {
   ok: true;
@@ -25,6 +27,7 @@ export async function runFactCheckAction(formData: FormData): Promise<RunResult 
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
   try {
+    await requireEnabledExtensionSession(FACT_CHECK_ID, FACT_CHECK_LABEL);
     const result = await runFactCheck(draftId);
     revalidatePath(`/editor/${draftId}`);
     return {
@@ -58,6 +61,7 @@ export async function suggestFactCheckFixAction(
   if (!draftId) return { ok: false, error: "draftId required." };
   if (!claimId) return { ok: false, error: "claimId required." };
   try {
+    await requireEnabledExtensionSession(FACT_CHECK_ID, FACT_CHECK_LABEL);
     const result = await suggestFactCheckFix(draftId, claimId);
     return {
       ok: true,
@@ -90,6 +94,7 @@ export async function applyFactCheckFixAction(formData: FormData): Promise<Apply
     return { ok: false, error: "Suggestion missing; re-suggest before applying." };
   }
   try {
+    await requireEnabledExtensionSession(FACT_CHECK_ID, FACT_CHECK_LABEL);
     const result = await applyFactCheckFix(draftId, claimId, original, replacement);
     revalidatePath(`/editor/${draftId}`);
     return {
@@ -108,7 +113,15 @@ export async function applyFactCheckFixAction(formData: FormData): Promise<Apply
 export async function clearFactCheckAction(formData: FormData): Promise<{ ok: true } | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
-  await clearFactCheckClaims(draftId);
-  revalidatePath(`/editor/${draftId}`);
-  return { ok: true };
+  try {
+    await requireEnabledExtensionSession(FACT_CHECK_ID, FACT_CHECK_LABEL);
+    await clearFactCheckClaims(draftId);
+    revalidatePath(`/editor/${draftId}`);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

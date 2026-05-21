@@ -6,6 +6,7 @@ beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM event_log");
   await db.execute("DELETE FROM user_plans");
+  await db.execute("DELETE FROM user_extension_access");
   await db.execute("DELETE FROM user_settings");
   await db.execute("DELETE FROM outlets");
   await db.execute("DELETE FROM sources");
@@ -121,6 +122,20 @@ describe("admin snapshot", () => {
     const snapshot = await loadAdminUserDetailSnapshot("admin-user-a");
 
     expect(snapshot?.disabledExtensionIds).toEqual(["fact-check"]);
+  });
+
+  it("returns admin-blocked extensions for a user detail view", async () => {
+    const now = Date.now();
+    await insertUser("admin-user-a", "a@example.com", now);
+    await db.execute({
+      sql: `INSERT INTO user_extension_access (user_id, extension_id, enabled, updated_at)
+            VALUES (?, 'related-images', 0, ?)`,
+      args: ["admin-user-a", now],
+    });
+
+    const snapshot = await loadAdminUserDetailSnapshot("admin-user-a");
+
+    expect(snapshot?.adminDisabledExtensionIds).toEqual(["related-images"]);
   });
 });
 

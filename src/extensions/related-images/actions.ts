@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/session";
 import {
   clearRelatedImages,
   getLicenseFilter,
@@ -9,7 +8,14 @@ import {
   runRelatedImageSearch,
   setLicenseFilter,
 } from "./server";
-import { LICENSE_CODES, type LicenseCode, type RelatedImageResult } from "./types";
+import { requireEnabledExtensionSession } from "../access";
+import {
+  LICENSE_CODES,
+  RELATED_IMAGES_ID,
+  RELATED_IMAGES_LABEL,
+  type LicenseCode,
+  type RelatedImageResult,
+} from "./types";
 
 export interface RelatedImagesPayload {
   results: RelatedImageResult[];
@@ -30,18 +36,26 @@ export interface RunError {
 export async function loadRelatedImagesAction(formData: FormData): Promise<RunOk | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
-  const session = await requireSession();
-  const [{ results, ranAt }, licenseFilter] = await Promise.all([
-    loadRelatedImages(draftId),
-    getLicenseFilter(session.userId),
-  ]);
-  return { ok: true, payload: { results, ranAt, licenseFilter } };
+  try {
+    const session = await requireEnabledExtensionSession(RELATED_IMAGES_ID, RELATED_IMAGES_LABEL);
+    const [{ results, ranAt }, licenseFilter] = await Promise.all([
+      loadRelatedImages(draftId),
+      getLicenseFilter(session.userId),
+    ]);
+    return { ok: true, payload: { results, ranAt, licenseFilter } };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function runRelatedImagesAction(formData: FormData): Promise<RunOk | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
   try {
+    await requireEnabledExtensionSession(RELATED_IMAGES_ID, RELATED_IMAGES_LABEL);
     const { results, ranAt, licenseFilter } = await runRelatedImageSearch(draftId);
     revalidatePath(`/editor/${draftId}`);
     return {
@@ -61,14 +75,22 @@ export async function clearRelatedImagesAction(
 ): Promise<{ ok: true } | RunError> {
   const draftId = String(formData.get("draftId") ?? "");
   if (!draftId) return { ok: false, error: "draftId required." };
-  await clearRelatedImages(draftId);
-  revalidatePath(`/editor/${draftId}`);
-  return { ok: true };
+  try {
+    await requireEnabledExtensionSession(RELATED_IMAGES_ID, RELATED_IMAGES_LABEL);
+    await clearRelatedImages(draftId);
+    revalidatePath(`/editor/${draftId}`);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function setLicenseFilterAction(formData: FormData): Promise<RunOk | RunError> {
   try {
-    const session = await requireSession();
+    const session = await requireEnabledExtensionSession(RELATED_IMAGES_ID, RELATED_IMAGES_LABEL);
     const draftId = String(formData.get("draftId") ?? "");
     const raw = String(formData.get("codes") ?? "");
     const codes = raw
