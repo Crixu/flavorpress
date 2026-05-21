@@ -21,6 +21,11 @@ import {
   REDDIT_SOURCE_LABEL,
 } from "./reddit-source/types";
 import { RELATED_IMAGES_ID, RELATED_IMAGES_LABEL } from "./related-images/types";
+import {
+  WORKFLOW_AUTOPUBLISH_DESCRIPTION,
+  WORKFLOW_AUTOPUBLISH_ID,
+  WORKFLOW_AUTOPUBLISH_LABEL,
+} from "./workflow-autopublish/types";
 import { X_SOURCE_DESCRIPTION, X_SOURCE_ID, X_SOURCE_LABEL } from "./x-source/types";
 
 export interface ExtensionMetadata {
@@ -56,6 +61,11 @@ export const EXTENSION_METADATA: ExtensionMetadata[] = [
     id: COMMENT_COURTROOM_ID,
     label: COMMENT_COURTROOM_LABEL,
     description: COMMENT_COURTROOM_DESCRIPTION,
+  },
+  {
+    id: WORKFLOW_AUTOPUBLISH_ID,
+    label: WORKFLOW_AUTOPUBLISH_LABEL,
+    description: WORKFLOW_AUTOPUBLISH_DESCRIPTION,
   },
 ];
 

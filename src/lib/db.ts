@@ -75,8 +75,7 @@ export const db: Client = buildClient();
 // missing row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION =
-  "2026-05-19.mcp-tokens-oauth-nonces-f10-ai-budget-f09-auth-rate-buckets-f11-tenant-settings-invite-plan";
+const SCHEMA_VERSION = "2026-05-21.workflow-autopublish-extension";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -590,6 +589,43 @@ export async function ensureSchema(): Promise<void> {
         draft_id TEXT PRIMARY KEY,
         ran_at INTEGER NOT NULL
       )`,
+
+      // Workflow autopublish extension. This is opt-in per outlet and
+      // deliberately lives outside the core source and draft loop.
+      `CREATE TABLE IF NOT EXISTS workflow_autopublish_configs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        outlet_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        interval_hours INTEGER NOT NULL DEFAULT 12,
+        auto_update INTEGER NOT NULL DEFAULT 1,
+        fresh_source_window_hours INTEGER NOT NULL DEFAULT 24,
+        next_run_at INTEGER,
+        last_run_at INTEGER,
+        last_draft_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(user_id, outlet_id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_workflow_autopublish_due
+        ON workflow_autopublish_configs(enabled, next_run_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_workflow_autopublish_user
+        ON workflow_autopublish_configs(user_id, outlet_id)`,
+
+      `CREATE TABLE IF NOT EXISTS workflow_autopublish_log (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        outlet_id TEXT NOT NULL,
+        draft_id TEXT,
+        cluster_id TEXT,
+        status TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_workflow_autopublish_log_user
+        ON workflow_autopublish_log(user_id, created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_workflow_autopublish_log_outlet
+        ON workflow_autopublish_log(outlet_id, created_at DESC)`,
 
       // LLM-extracted topic tags per inbound item. Each row is one tag
       // attached to an item, with a confidence score (defaults to 1.0 when the

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const cronMocks = vi.hoisted(() => ({
   ensureRegisteredCapabilities: vi.fn(async () => undefined),
   runDuePolls: vi.fn(async () => ({ ok: true })),
+  runDueAutopublishWorkflows: vi.fn(async () => ({ published: 0 })),
 }));
 
 vi.mock("@/lib/v1/bootstrap", () => ({
@@ -13,6 +14,10 @@ vi.mock("@/lib/v1/bootstrap", () => ({
 
 vi.mock("@/lib/v1/scheduler", () => ({
   runDuePolls: cronMocks.runDuePolls,
+}));
+
+vi.mock("@/extensions/workflow-autopublish/server", () => ({
+  runDueAutopublishWorkflows: cronMocks.runDueAutopublishWorkflows,
 }));
 
 import { GET as pollEarly } from "../poll-early/route";
@@ -33,6 +38,7 @@ beforeEach(() => {
   vi.stubEnv("NODE_ENV", "test");
   cronMocks.ensureRegisteredCapabilities.mockClear();
   cronMocks.runDuePolls.mockClear();
+  cronMocks.runDueAutopublishWorkflows.mockClear();
 });
 
 afterEach(() => {
@@ -69,7 +75,10 @@ describe("cron route auth", () => {
       const body = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body).toEqual({ ok: true });
+      expect(body).toEqual({
+        polling: { ok: true },
+        workflows: { published: 0 },
+      });
       expect(cronMocks.ensureRegisteredCapabilities).toHaveBeenCalledTimes(1);
       expect(cronMocks.runDuePolls).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -80,6 +89,9 @@ describe("cron route auth", () => {
           deferTimedOutTask: expect.any(Function),
         }),
       );
+      expect(cronMocks.runDueAutopublishWorkflows).toHaveBeenCalledWith({
+        maxBatch: undefined,
+      });
     },
   );
 
