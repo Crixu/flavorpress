@@ -8,12 +8,14 @@ import {
   type AdminOutletRow,
   type AdminSourceRow,
 } from "@/lib/admin";
+import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { SubmitButton } from "../../../../_components/SubmitButton";
 import { SettingsSidebar } from "../../../_components/SettingsSidebar";
 import {
   deleteSourceForAdminAction,
   pauseSourceForAdminAction,
   resumeSourceForAdminAction,
+  toggleUserExtensionForAdminAction,
 } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,10 @@ export const dynamic = "force-dynamic";
 interface PageProps {
   params: Promise<{ userId: string }>;
   searchParams: Promise<{
+    error?: string;
+    extension?: string;
     saved?: string;
+    state?: string;
   }>;
 }
 
@@ -64,9 +69,22 @@ export default async function AdminUserPage({ params, searchParams }: PageProps)
             </div>
           </header>
 
-          {sp.saved ? <Banner>Saved source change.</Banner> : null}
+          {sp.saved === "extension" &&
+          sp.extension &&
+          (sp.state === "enabled" || sp.state === "disabled") ? (
+            <Banner>
+              {sp.state === "enabled" ? "Enabled" : "Disabled"} {extensionLabelFor(sp.extension)}{" "}
+              for this user.
+            </Banner>
+          ) : null}
+          {sp.saved && sp.saved !== "extension" ? <Banner>Saved source change.</Banner> : null}
+          {sp.error === "invalid_extension" ? <ErrorBanner>Unknown extension.</ErrorBanner> : null}
 
           <UserSummary snapshot={snapshot} />
+          <ExtensionsSection
+            userId={snapshot.user.id}
+            disabledExtensionIds={snapshot.disabledExtensionIds}
+          />
           <OutletsSection outlets={snapshot.outlets} />
           <FoldersSection folders={snapshot.folders} />
           <SourcesSection sources={snapshot.sources} now={snapshot.now} />
@@ -115,6 +133,62 @@ function Metric({ label, value, over = false }: { label: string; value: string; 
         {value}
       </div>
     </div>
+  );
+}
+
+function ExtensionsSection({
+  userId,
+  disabledExtensionIds,
+}: {
+  userId: string;
+  disabledExtensionIds: string[];
+}) {
+  const disabled = new Set(disabledExtensionIds);
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Extensions</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
+          Control which source helpers and editor inspectors run for this user.
+        </p>
+      </div>
+      <div className="fp-card overflow-hidden">
+        <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
+          {EXTENSION_METADATA.map((extension) => {
+            const enabled = !disabled.has(extension.id);
+            return (
+              <li
+                key={extension.id}
+                className="grid gap-4 px-5 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-sm font-semibold">{extension.label}</span>
+                    <span className={enabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}>
+                      {enabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+                    {extension.description}
+                  </p>
+                </div>
+                <form action={toggleUserExtensionForAdminAction} className="md:justify-self-end">
+                  <input type="hidden" name="userId" value={userId} />
+                  <input type="hidden" name="extensionId" value={extension.id} />
+                  <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
+                  <SubmitButton
+                    className={enabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
+                    pendingLabel={enabled ? "Disabling" : "Enabling"}
+                  >
+                    {enabled ? "Disable" : "Enable"}
+                  </SubmitButton>
+                </form>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </section>
   );
 }
 
@@ -305,6 +379,21 @@ function Banner({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+function ErrorBanner({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="rounded-lg px-4 py-3 text-sm"
+      style={{ background: "var(--rose-tint)", color: "var(--rose)" }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function extensionLabelFor(id: string) {
+  return findExtensionMetadata(id)?.label ?? "extension";
 }
 
 function planLabel(plan: string) {

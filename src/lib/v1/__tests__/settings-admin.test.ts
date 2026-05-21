@@ -194,3 +194,25 @@ describe("toggleExtensionAction - per-user", () => {
     expect(to).toBe("/settings?section=extensions&extension=fact-check&state=disabled");
   });
 });
+
+describe("toggleUserExtensionForAdminAction", () => {
+  it("admin toggles a selected user's extension without changing their own", async () => {
+    const adminId = await makeUser({ email: "admin@example.com", isAdmin: true });
+    const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
+    await loginAs(adminId);
+
+    const { toggleUserExtensionForAdminAction } = await import("@/app/settings/admin/actions");
+    const { getDisabledExtensionIds } = await import("@/lib/v1/settings");
+    const to = await callRedirect(toggleUserExtensionForAdminAction, {
+      userId,
+      extensionId: "fact-check",
+      enabled: "0",
+    });
+
+    expect(to).toBe(
+      `/settings/admin/users/${userId}?saved=extension&extension=fact-check&state=disabled`,
+    );
+    await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set(["fact-check"]));
+    await expect(getDisabledExtensionIds(adminId)).resolves.toEqual(new Set());
+  });
+});

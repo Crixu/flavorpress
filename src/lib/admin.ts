@@ -2,6 +2,7 @@ import "server-only";
 import { db, ensureSchema } from "./db";
 import { limitsForPlan, normalizePlanKey, type PlanKey, type PlanLimits } from "./plans";
 import { loadReadingToWritingMetrics, type ReadingToWritingMetrics } from "./v1/analytics";
+import { getDisabledExtensionIds } from "./v1/settings";
 
 export interface AdminUserRow {
   id: string;
@@ -83,6 +84,7 @@ export interface AdminUserDetailSnapshot {
   outlets: AdminOutletRow[];
   folders: AdminFolderRow[];
   sources: AdminSourceRow[];
+  disabledExtensionIds: string[];
   now: number;
 }
 
@@ -210,60 +212,64 @@ export async function loadAdminUserDetailSnapshot(
 ): Promise<AdminUserDetailSnapshot | null> {
   await ensureSchema();
 
-  const [userR, outletsR, foldersR, sourcesR] = await db.batch(
-    [
-      {
-        sql: `SELECT u.id, u.email, u.status, u.is_admin, u.created_at, u.last_active_at,
-                     COUNT(DISTINCT o.id) AS outlet_count,
-                     COUNT(DISTINCT s.id) AS source_count,
-                     COUNT(DISTINCT f.id) AS folder_count,
-                     COUNT(DISTINCT e.idempotency_key) AS wp_push_count,
-                     p.plan AS plan,
-                     p.custom_outlet_limit AS custom_outlet_limit,
-                     p.custom_source_limit AS custom_source_limit,
-                     p.custom_folder_limit AS custom_folder_limit,
-                     p.poll_all_enabled AS poll_all_enabled
-              FROM users u
-              LEFT JOIN outlets o ON o.user_id = u.id
-              LEFT JOIN sources s ON s.user_id = u.id
-              LEFT JOIN source_folders f ON f.user_id = u.id
-              LEFT JOIN event_log e ON e.user_id = u.id AND e.type = 'wordpress.pushed'
-              LEFT JOIN user_plans p ON p.user_id = u.id
-              WHERE u.id = ?
-              GROUP BY u.id`,
-        args: [userId],
-      },
-      {
-        sql: `SELECT id, base_url, display_name, kind, app_password_encrypted,
-                     is_default, last_error, created_at
-              FROM outlets
-              WHERE user_id = ?
-              ORDER BY is_default DESC, created_at DESC`,
-        args: [userId],
-      },
-      {
-        sql: `SELECT f.id, f.name, f.created_at, COUNT(s.id) AS source_count
-              FROM source_folders f
-              LEFT JOIN sources s ON s.folder_id = f.id AND s.user_id = f.user_id
-              WHERE f.user_id = ?
-              GROUP BY f.id
-              ORDER BY f.sort_order ASC, f.name ASC`,
-        args: [userId],
-      },
-      {
-        sql: `SELECT s.id, s.user_id, u.email AS user_email, s.kind, s.url,
-                     s.display_name, f.name AS folder_name, s.active,
-                     s.paused_until, s.last_error, s.created_at
-              FROM sources s
-              JOIN users u ON u.id = s.user_id
-              LEFT JOIN source_folders f ON f.id = s.folder_id
-              WHERE s.user_id = ?
-              ORDER BY f.name IS NULL ASC, f.name ASC, s.created_at DESC`,
-        args: [userId],
-      },
-    ],
-    "read",
-  );
+  const [detailRows, disabledExtensionIds] = await Promise.all([
+    db.batch(
+      [
+        {
+          sql: `SELECT u.id, u.email, u.status, u.is_admin, u.created_at, u.last_active_at,
+                       COUNT(DISTINCT o.id) AS outlet_count,
+                       COUNT(DISTINCT s.id) AS source_count,
+                       COUNT(DISTINCT f.id) AS folder_count,
+                       COUNT(DISTINCT e.idempotency_key) AS wp_push_count,
+                       p.plan AS plan,
+                       p.custom_outlet_limit AS custom_outlet_limit,
+                       p.custom_source_limit AS custom_source_limit,
+                       p.custom_folder_limit AS custom_folder_limit,
+                       p.poll_all_enabled AS poll_all_enabled
+                FROM users u
+                LEFT JOIN outlets o ON o.user_id = u.id
+                LEFT JOIN sources s ON s.user_id = u.id
+                LEFT JOIN source_folders f ON f.user_id = u.id
+                LEFT JOIN event_log e ON e.user_id = u.id AND e.type = 'wordpress.pushed'
+                LEFT JOIN user_plans p ON p.user_id = u.id
+                WHERE u.id = ?
+                GROUP BY u.id`,
+          args: [userId],
+        },
+        {
+          sql: `SELECT id, base_url, display_name, kind, app_password_encrypted,
+                       is_default, last_error, created_at
+                FROM outlets
+                WHERE user_id = ?
+                ORDER BY is_default DESC, created_at DESC`,
+          args: [userId],
+        },
+        {
+          sql: `SELECT f.id, f.name, f.created_at, COUNT(s.id) AS source_count
+                FROM source_folders f
+                LEFT JOIN sources s ON s.folder_id = f.id AND s.user_id = f.user_id
+                WHERE f.user_id = ?
+                GROUP BY f.id
+                ORDER BY f.sort_order ASC, f.name ASC`,
+          args: [userId],
+        },
+        {
+          sql: `SELECT s.id, s.user_id, u.email AS user_email, s.kind, s.url,
+                       s.display_name, f.name AS folder_name, s.active,
+                       s.paused_until, s.last_error, s.created_at
+                FROM sources s
+                JOIN users u ON u.id = s.user_id
+                LEFT JOIN source_folders f ON f.id = s.folder_id
+                WHERE s.user_id = ?
+                ORDER BY f.name IS NULL ASC, f.name ASC, s.created_at DESC`,
+          args: [userId],
+        },
+      ],
+      "read",
+    ),
+    getDisabledExtensionIds(userId),
+  ]);
+  const [userR, outletsR, foldersR, sourcesR] = detailRows;
 
   const userRow = (userR.rows as Record<string, unknown>[])[0];
   if (!userRow) return null;
@@ -301,5 +307,12 @@ export async function loadAdminUserDetailSnapshot(
     createdAt: Number(row.created_at),
   }));
 
-  return { user, outlets, folders, sources, now: Date.now() };
+  return {
+    user,
+    outlets,
+    folders,
+    sources,
+    disabledExtensionIds: [...disabledExtensionIds].sort(),
+    now: Date.now(),
+  };
 }
