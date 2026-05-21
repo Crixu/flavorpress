@@ -305,13 +305,37 @@ async function runOneWorkflow(
       return "skipped";
     }
 
-    // Atomically advance the cluster from 'fired' to 'published' before
-    // calling WordPress so a partial failure after publish cannot lead to
-    // a duplicate post on the next interval. We revert on WP failure.
+    // Atomically advance the cluster to 'published' before calling
+    // WordPress so a partial failure after publish cannot lead to a
+    // duplicate post on the next interval. generateDraft() moves the
+    // cluster from 'fired' to 'drafted', so accept that state only when
+    // the draft we are about to publish still belongs to this cluster.
     const claimed = await db.execute({
       sql: `UPDATE clusters SET state = 'published'
-            WHERE id = ? AND user_id = ? AND state = 'fired'`,
-      args: [draft.clusterId, config.userId],
+            WHERE id = ?
+              AND user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM drafts already_published
+                WHERE already_published.user_id = clusters.user_id
+                  AND already_published.cluster_id = clusters.id
+                  AND already_published.wp_post_id IS NOT NULL
+              )
+              AND (
+                state = 'fired'
+                OR (
+                  state = 'drafted'
+                  AND EXISTS (
+                    SELECT 1 FROM drafts publishable
+                    WHERE publishable.id = ?
+                      AND publishable.user_id = clusters.user_id
+                      AND publishable.cluster_id = clusters.id
+                      AND publishable.outlet_id = ?
+                      AND publishable.wp_post_id IS NULL
+                      AND publishable.state IN ('pre-rendered', 'shown', 'edited')
+                  )
+                )
+              )`,
+      args: [draft.clusterId, config.userId, draft.id, config.outletId],
     });
     if (claimed.rowsAffected === 0) {
       await logRun(
