@@ -3,10 +3,22 @@ export const WORKFLOW_AUTOPUBLISH_LABEL = "Workflow autopublish";
 export const WORKFLOW_AUTOPUBLISH_DESCRIPTION =
   "Runs an opt-in Workflow that drafts from fresh fired clusters and publishes to WordPress on a configured cadence.";
 
-export const WORKFLOW_INTERVAL_OPTIONS = [6, 12, 24] as const;
+export const WORKFLOW_DEFAULT_INTERVAL_HOURS = 12;
+export const WORKFLOW_INTERVAL_MIN_HOURS = 1;
+export const WORKFLOW_INTERVAL_MAX_HOURS = 48;
 export const WORKFLOW_FRESHNESS_OPTIONS = [12, 24, 48] as const;
 export const WORKFLOW_FOLDER_ALL = "all";
 export const WORKFLOW_FOLDER_UNGROUPED = "ungrouped";
+
+export function normalizeWorkflowIntervalHours(raw: unknown): number {
+  if (raw === null || raw === undefined || raw === "") return WORKFLOW_DEFAULT_INTERVAL_HOURS;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return WORKFLOW_DEFAULT_INTERVAL_HOURS;
+  return Math.min(
+    WORKFLOW_INTERVAL_MAX_HOURS,
+    Math.max(WORKFLOW_INTERVAL_MIN_HOURS, Math.trunc(n)),
+  );
+}
 
 export type WorkflowAutopublishStatus = "published" | "skipped" | "failed";
 

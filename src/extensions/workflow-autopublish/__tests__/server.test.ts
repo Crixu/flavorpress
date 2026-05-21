@@ -55,10 +55,41 @@ describe("workflow autopublish config", () => {
     expect(state.workflows[0]!.folderScope).toBe(folderId);
     expect(state.workflows[0]!.folderLabel).toBe("Coffee");
     expect(state.workflows[0]!.config.enabled).toBe(true);
-    expect(state.workflows[0]!.config.intervalHours).toBe(12);
+    expect(state.workflows[0]!.config.intervalHours).toBe(48);
     expect(state.workflows[0]!.config.autoUpdate).toBe(false);
     expect(state.workflows[0]!.config.freshSourceWindowHours).toBe(24);
     expect(state.workflows[0]!.config.nextRunAt).toBeTypeOf("number");
+  });
+
+  it("clamps the cadence between one and forty-eight hours", async () => {
+    const { userA } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      enabled: true,
+      intervalHours: 0,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+
+    let state = await loadWorkflowAutopublishState(userA.id);
+    expect(state.workflows[0]!.config.intervalHours).toBe(1);
+
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      enabled: true,
+      intervalHours: 99,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+
+    state = await loadWorkflowAutopublishState(userA.id);
+    expect(state.workflows[0]!.config.intervalHours).toBe(48);
   });
 
   it("preserves an existing deleted folder scope when saving unchanged settings", async () => {

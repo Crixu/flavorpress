@@ -8,7 +8,7 @@ import {
   WORKFLOW_FOLDER_ALL,
   WORKFLOW_AUTOPUBLISH_ID,
   WORKFLOW_FRESHNESS_OPTIONS,
-  WORKFLOW_INTERVAL_OPTIONS,
+  normalizeWorkflowIntervalHours,
 } from "./types";
 import { saveWorkflowAutopublishConfig } from "./server";
 
@@ -29,7 +29,7 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
       ? String(formData.get("previousFolderScope"))
       : null,
     enabled: String(formData.get("enabled") ?? "") === "1",
-    intervalHours: parseOption(formData.get("intervalHours"), WORKFLOW_INTERVAL_OPTIONS, 12),
+    intervalHours: normalizeWorkflowIntervalHours(formData.get("intervalHours")),
     autoUpdate: String(formData.get("autoUpdate") ?? "") === "1",
     freshSourceWindowHours: parseOption(
       formData.get("freshSourceWindowHours"),

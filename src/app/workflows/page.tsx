@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import {
   WORKFLOW_AUTOPUBLISH_ID,
+  WORKFLOW_DEFAULT_INTERVAL_HOURS,
   WORKFLOW_FRESHNESS_OPTIONS,
-  WORKFLOW_INTERVAL_OPTIONS,
+  WORKFLOW_INTERVAL_MAX_HOURS,
+  WORKFLOW_INTERVAL_MIN_HOURS,
 } from "@/extensions/workflow-autopublish/types";
 import { saveWorkflowAutopublishAction } from "@/extensions/workflow-autopublish/actions";
 import { loadWorkflowAutopublishState } from "@/extensions/workflow-autopublish/server";
@@ -248,18 +250,17 @@ function WorkflowForm({
         </label>
         <label className="space-y-1 text-[12px] font-medium">
           <span>Cadence</span>
-          <select
+          <input
+            type="number"
             name="intervalHours"
-            defaultValue={config?.intervalHours ?? 12}
+            min={WORKFLOW_INTERVAL_MIN_HOURS}
+            max={WORKFLOW_INTERVAL_MAX_HOURS}
+            step={1}
+            inputMode="numeric"
+            defaultValue={config?.intervalHours ?? WORKFLOW_DEFAULT_INTERVAL_HOURS}
             className="fp-input w-full text-[13px]"
             disabled={!connected}
-          >
-            {WORKFLOW_INTERVAL_OPTIONS.map((hours) => (
-              <option key={hours} value={hours}>
-                Every {hours} hours
-              </option>
-            ))}
-          </select>
+          />
         </label>
         <label className="space-y-1 text-[12px] font-medium">
           <span>Freshness</span>
@@ -354,7 +355,7 @@ function workflowStateLine(
   if (!workflow.connected) return "Reconnect this Voice before autopublish can run.";
   if (!workflow.config.enabled) return "This Workflow has no scheduled run.";
   if (!workflow.config.nextRunAt) return "Enabled, waiting for cron to schedule the next run.";
-  return `Publishes at most one fresh fired cluster every ${workflow.config.intervalHours} hours.`;
+  return `Publishes at most one fresh fired cluster ${formatCadence(workflow.config.intervalHours)}.`;
 }
 
 function formatDateTime(ms: number): string {
@@ -364,6 +365,10 @@ function formatDateTime(ms: number): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(ms));
+}
+
+function formatCadence(hours: number): string {
+  return hours === 1 ? "every hour" : `every ${hours} hours`;
 }
 
 function Banner({ kind, children }: { kind: "success" | "error"; children: React.ReactNode }) {
