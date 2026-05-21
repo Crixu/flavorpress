@@ -51,9 +51,7 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       {sp.saved === "workflow_autopublish" ? <Banner kind="success">Saved Workflow.</Banner> : null}
-      {sp.saved === "workflow_deleted" ? (
-        <Banner kind="success">Workflow deleted.</Banner>
-      ) : null}
+      {sp.saved === "workflow_deleted" ? <Banner kind="success">Workflow deleted.</Banner> : null}
       {sp.error === "extension_locked_by_admin" ? (
         <Banner kind="error">That extension is disabled by your admin.</Banner>
       ) : null}
@@ -106,10 +104,19 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
                   />
                 ))}
               </section>
-              <details className="fp-disclosure rounded-lg border" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
+              <details
+                className="fp-disclosure rounded-lg border"
+                style={{ borderColor: "var(--border)", background: "var(--bg)" }}
+              >
                 <summary className="fp-disclosure-summary flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-[13px] font-medium">
                   <span>+ Add workflow</span>
-                  <span aria-hidden className="fp-disclosure-arrow" style={{ color: "var(--fg-muted)" }}>›</span>
+                  <span
+                    aria-hidden
+                    className="fp-disclosure-arrow"
+                    style={{ color: "var(--fg-muted)" }}
+                  >
+                    ›
+                  </span>
                 </summary>
                 <div className="border-t px-4 py-4" style={{ borderColor: "var(--border)" }}>
                   <WorkflowForm

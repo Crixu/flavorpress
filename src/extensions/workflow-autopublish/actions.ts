@@ -45,7 +45,9 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
 export async function deleteWorkflowAutopublishAction(formData: FormData): Promise<void> {
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
-  const folderScope = String(formData.get("folderScope") ?? "");
+  const folderScope = String(
+    formData.get("previousFolderScope") ?? formData.get("folderScope") ?? "",
+  );
   if (!outletId || !folderScope) throw new Error("outletId and folderScope required.");
   const disabled = await getEffectiveDisabledExtensionIds(session.userId);
   if (disabled.has(WORKFLOW_AUTOPUBLISH_ID)) {
