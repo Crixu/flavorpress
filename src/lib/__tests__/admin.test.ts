@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
-import { loadAdminSnapshot } from "@/lib/admin";
+import { loadAdminSnapshot, loadAdminUserDetailSnapshot } from "@/lib/admin";
 
 beforeEach(async () => {
   await ensureSchema();
   await db.execute("DELETE FROM event_log");
   await db.execute("DELETE FROM user_plans");
+  await db.execute("DELETE FROM user_settings");
   await db.execute("DELETE FROM outlets");
   await db.execute("DELETE FROM sources");
   await db.execute("DELETE FROM source_folders");
@@ -106,6 +107,20 @@ describe("admin snapshot", () => {
       "used-4",
     ]);
     expect(snapshot.invites.find((invite) => invite.token === "active-new")?.plan).toBe("pro");
+  });
+
+  it("returns disabled extensions for a user detail view", async () => {
+    const now = Date.now();
+    await insertUser("admin-user-a", "a@example.com", now);
+    await db.execute({
+      sql: `INSERT INTO user_settings (user_id, key, value, updated_at)
+            VALUES (?, 'disabled_extensions', ?, ?)`,
+      args: ["admin-user-a", JSON.stringify(["fact-check"]), now],
+    });
+
+    const snapshot = await loadAdminUserDetailSnapshot("admin-user-a");
+
+    expect(snapshot?.disabledExtensionIds).toEqual(["fact-check"]);
   });
 });
 

@@ -6,6 +6,8 @@ import { issueInvite, revokeInvite } from "@/lib/invites";
 import { db, ensureSchema } from "@/lib/db";
 import { requireSession, shouldShowAdminControls } from "@/lib/session";
 import { normalizePlanKey, setUserPlan } from "@/lib/plans";
+import { findExtensionMetadata } from "@/extensions/registry";
+import { setExtensionEnabled } from "@/lib/v1/settings";
 
 async function requireAdmin() {
   const session = await requireSession();
@@ -93,6 +95,35 @@ export async function setUserPlanAction(formData: FormData): Promise<void> {
   revalidatePath("/voice");
   revalidatePath("/voice/[outletId]", "page");
   adminRedirect({ saved: "plan" });
+}
+
+export async function toggleUserExtensionForAdminAction(formData: FormData): Promise<void> {
+  await ensureSchema();
+  await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const extensionId = String(formData.get("extensionId") ?? "");
+  const enabled = String(formData.get("enabled") ?? "") === "1";
+  if (!userId) throw new Error("userId required.");
+  const path = `/settings/admin/users/${userId}`;
+  if (!findExtensionMetadata(extensionId)) {
+    adminRedirect({ error: "invalid_extension" }, path);
+  }
+
+  const userR = await db.execute({ sql: `SELECT id FROM users WHERE id = ?`, args: [userId] });
+  if (userR.rows.length === 0) redirect("/settings/admin");
+
+  await setExtensionEnabled(extensionId, enabled, userId);
+  revalidatePath("/settings/admin");
+  revalidatePath(path);
+  revalidatePath("/editor", "layout");
+  adminRedirect(
+    {
+      saved: "extension",
+      extension: extensionId,
+      state: enabled ? "enabled" : "disabled",
+    },
+    path,
+  );
 }
 
 export async function pauseSourceForAdminAction(formData: FormData): Promise<void> {
