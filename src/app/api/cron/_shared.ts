@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { after, NextResponse } from "next/server";
+import { runDueAutopublishWorkflows } from "@/extensions/workflow-autopublish/server";
 import { ensureRegisteredCapabilities } from "@/lib/v1/bootstrap";
 import { runDuePolls } from "@/lib/v1/scheduler";
 
@@ -56,9 +57,18 @@ export async function handlePollCron(req: Request): Promise<NextResponse> {
     timeBudgetMs: readTimeBudgetMs(),
     deferTimedOutTask: (task) => after(() => task),
   });
-  return NextResponse.json(result, {
-    headers: {
-      "cache-control": "no-store",
-    },
+  const workflows = await runDueAutopublishWorkflows({
+    maxBatch: readMaxBatch(),
   });
+  return NextResponse.json(
+    {
+      polling: result,
+      workflows,
+    },
+    {
+      headers: {
+        "cache-control": "no-store",
+      },
+    },
+  );
 }
