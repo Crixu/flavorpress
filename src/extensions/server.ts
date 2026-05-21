@@ -10,15 +10,23 @@ import "server-only";
  */
 
 import type { InitialAnnotationsByExtension, ServerExtensionEntry } from "./types";
+import { angleBuilderServerEntry } from "./angle-builder/server";
 import { commentCourtroomServerEntry } from "./comment-courtroom/server";
+import { evidencePanelServerEntry } from "./evidence-panel/server";
 import { factCheckServerEntry } from "./fact-check/server";
 import { relatedImagesServerEntry } from "./related-images/server";
-import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
+import { voiceGuardServerEntry } from "./voice-guard/server";
+import { getEffectiveDisabledExtensionIds, getPaidExtensionIds } from "@/lib/v1/settings";
+import { getUserPlan } from "@/lib/plans";
+import { extensionIdAllowedForPlan } from "./registry";
 
 export const SERVER_EXTENSIONS: ServerExtensionEntry[] = [
   factCheckServerEntry,
   relatedImagesServerEntry,
   commentCourtroomServerEntry,
+  angleBuilderServerEntry,
+  evidencePanelServerEntry,
+  voiceGuardServerEntry,
 ];
 
 /**
@@ -31,8 +39,15 @@ export async function loadAllAnnotations(
   draftId: string,
   userId: string,
 ): Promise<InitialAnnotationsByExtension> {
-  const disabled = await getEffectiveDisabledExtensionIds(userId);
-  const active = SERVER_EXTENSIONS.filter((ext) => !disabled.has(ext.id));
+  const [disabled, plan, paidExtensionIds] = await Promise.all([
+    getEffectiveDisabledExtensionIds(userId),
+    getUserPlan(userId),
+    getPaidExtensionIds(),
+  ]);
+  const active = SERVER_EXTENSIONS.filter(
+    (ext) =>
+      !disabled.has(ext.id) && extensionIdAllowedForPlan(ext.id, plan.plan, paidExtensionIds),
+  );
   const results = await Promise.all(
     active.map(async (ext) => {
       const load = await ext.loadAnnotations(draftId);

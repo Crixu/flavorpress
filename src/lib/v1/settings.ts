@@ -9,6 +9,7 @@
 
 import { db, ensureSchema } from "../db";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-crypto";
+import { DEFAULT_PAID_EXTENSION_IDS, findExtensionMetadata } from "@/extensions/registry";
 
 export const SETTING_KEYS = {
   anthropicApiKey: "anthropic_api_key",
@@ -21,6 +22,7 @@ export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
 
 const DEPLOYMENT_SETTING_KEYS = {
   globallyDisabledExtensions: "globally_disabled_extensions",
+  paidExtensions: "paid_extensions",
 } as const;
 
 const DEFAULT_DRAFT_MODEL = "claude-haiku-4-5-20251001";
@@ -108,6 +110,7 @@ export interface SettingsSnapshot {
   disabledExtensionIds: string[];
   adminDisabledExtensionIds: string[];
   globallyDisabledExtensionIds: string[];
+  paidExtensionIds: string[];
   /**
    * Values for extension-registered settings, keyed by setting key.
    * Sourced strictly from the DB; extensions decide their own env-var
@@ -245,6 +248,44 @@ export async function setExtensionGloballyEnabled(
   });
 }
 
+export async function getPaidExtensionIds(): Promise<Set<string>> {
+  await ensureSchema();
+  const r = await db.execute({
+    sql: `SELECT value FROM deployment_settings WHERE key = ?`,
+    args: [DEPLOYMENT_SETTING_KEYS.paidExtensions],
+  });
+  if (r.rows.length === 0) return new Set(DEFAULT_PAID_EXTENSION_IDS);
+  const raw = r.rows[0]!.value;
+  if (raw === null || raw === undefined) return new Set(DEFAULT_PAID_EXTENSION_IDS);
+  try {
+    const parsed = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(parsed)) return new Set(DEFAULT_PAID_EXTENSION_IDS);
+    return new Set(
+      parsed.filter((x): x is string => typeof x === "string" && Boolean(findExtensionMetadata(x))),
+    );
+  } catch {
+    return new Set(DEFAULT_PAID_EXTENSION_IDS);
+  }
+}
+
+export async function setExtensionPaidPlanRequired(
+  extensionId: string,
+  paidRequired: boolean,
+): Promise<void> {
+  await ensureSchema();
+  const current = await getPaidExtensionIds();
+  if (paidRequired) current.add(extensionId);
+  else current.delete(extensionId);
+  await db.execute({
+    sql: `INSERT INTO deployment_settings (key, value, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at`,
+    args: [DEPLOYMENT_SETTING_KEYS.paidExtensions, JSON.stringify([...current].sort()), Date.now()],
+  });
+}
+
 /**
  * The set the runtime should gate on. Union of the deployment-wide kill
  * switch, admin-enforced user blocks, and the user's own preferences.
@@ -270,13 +311,14 @@ export async function loadSettingsSnapshot(
   extensionSettingKeys: string[] = [],
 ): Promise<SettingsSnapshot> {
   await ensureSchema();
-  const [dbApiKey, dbModel, disabled, adminDisabled, globallyDisabled, extensionValues] =
+  const [dbApiKey, dbModel, disabled, adminDisabled, globallyDisabled, paid, extensionValues] =
     await Promise.all([
       getSetting(SETTING_KEYS.anthropicApiKey, userId),
       getSetting(SETTING_KEYS.anthropicDraftModel, userId),
       getDisabledExtensionIds(userId),
       getAdminDisabledExtensionIds(userId),
       getGloballyDisabledExtensionIds(),
+      getPaidExtensionIds(),
       Promise.all(extensionSettingKeys.map(async (k) => [k, await getSetting(k, userId)] as const)),
     ]);
 
@@ -306,6 +348,7 @@ export async function loadSettingsSnapshot(
     disabledExtensionIds: [...disabled].sort(),
     adminDisabledExtensionIds: [...adminDisabled].sort(),
     globallyDisabledExtensionIds: [...globallyDisabled].sort(),
+    paidExtensionIds: [...paid].sort(),
     extensionSettings,
   };
 }

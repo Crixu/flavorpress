@@ -6,13 +6,15 @@ import { requireSession } from "@/lib/session";
 import {
   getAdminDisabledExtensionIds,
   getGloballyDisabledExtensionIds,
+  getPaidExtensionIds,
   setExtensionEnabled,
   setSetting,
   SETTING_KEYS,
 } from "./settings";
-import { findExtensionMetadata } from "@/extensions/registry";
+import { extensionIdAllowedForPlan, findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
+import { getUserPlan } from "@/lib/plans";
 
 const ANTHROPIC_KEY_PATTERN = /^sk-ant-[a-zA-Z0-9_-]{10,}$/;
 const SETTINGS_SECTIONS = new Set([
@@ -115,6 +117,13 @@ export async function toggleExtensionAction(formData: FormData): Promise<void> {
   const session = await requireSession();
   const extensionId = String(formData.get("extensionId") ?? "");
   if (!findExtensionMetadata(extensionId)) {
+    redirect(settingsRedirectUrl(formData, { error: "invalid_extension" }));
+  }
+  const [plan, paidExtensionIds] = await Promise.all([
+    getUserPlan(session.userId),
+    getPaidExtensionIds(),
+  ]);
+  if (!extensionIdAllowedForPlan(extensionId, plan.plan, paidExtensionIds)) {
     redirect(settingsRedirectUrl(formData, { error: "invalid_extension" }));
   }
   const enabled = String(formData.get("enabled") ?? "") === "1";

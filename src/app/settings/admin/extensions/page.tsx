@@ -6,7 +6,11 @@ import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry
 import { loadAdminExtensionAccessSnapshot, type AdminExtensionAccessUserRow } from "@/lib/admin";
 import { SubmitButton } from "../../../_components/SubmitButton";
 import { SettingsSidebar } from "../../_components/SettingsSidebar";
-import { toggleGlobalExtensionAction, toggleUserExtensionForAdminAction } from "../actions";
+import {
+  toggleGlobalExtensionAction,
+  togglePaidExtensionAction,
+  toggleUserExtensionForAdminAction,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +78,14 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
               {extensionLabelFor(sp.extension)}.
             </Banner>
           ) : null}
+          {sp.saved === "extension_plan" &&
+          sp.extension &&
+          (sp.state === "paid" || sp.state === "included") ? (
+            <Banner kind="success">
+              {extensionLabelFor(sp.extension)} is now{" "}
+              {sp.state === "paid" ? "paid-plan only" : "included in all plans"}.
+            </Banner>
+          ) : null}
           {sp.error === "invalid_extension" ? (
             <Banner kind="error">Unknown extension.</Banner>
           ) : null}
@@ -85,13 +97,15 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
             <div>
               <h2 className="text-lg font-semibold tracking-tight">Deployment access</h2>
               <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-                A global block wins over every user-level setting.
+                A global block wins over every user-level setting. Paid-plan gates hide the
+                extension from trial editor rails.
               </p>
             </div>
             <div className="fp-card overflow-hidden">
               <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
                 {EXTENSION_METADATA.map((extension) => {
                   const isGloballyDisabled = globallyDisabled.has(extension.id);
+                  const isPaid = access.paidExtensionIds.includes(extension.id);
                   const adminBlockedCount = access.users.filter((user) =>
                     user.adminDisabledExtensionIds.includes(extension.id),
                   ).length;
@@ -106,6 +120,11 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="truncate text-sm font-semibold">{extension.label}</span>
+                          {isPaid ? (
+                            <span className="fp-chip fp-chip-indigo">Paid</span>
+                          ) : (
+                            <span className="fp-chip">Included</span>
+                          )}
                           <span
                             className={
                               isGloballyDisabled
@@ -132,22 +151,34 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
                           {extension.description}
                         </p>
                       </div>
-                      <form action={toggleGlobalExtensionAction} className="md:justify-self-end">
-                        <input type="hidden" name="extensionId" value={extension.id} />
-                        <input
-                          type="hidden"
-                          name="enabled"
-                          value={isGloballyDisabled ? "1" : "0"}
-                        />
-                        <SubmitButton
-                          className={
-                            isGloballyDisabled ? "fp-btn fp-btn-primary" : "fp-btn fp-btn-ghost"
-                          }
-                          pendingLabel={isGloballyDisabled ? "Enabling" : "Disabling"}
-                        >
-                          {isGloballyDisabled ? "Enable globally" : "Disable globally"}
-                        </SubmitButton>
-                      </form>
+                      <div className="flex flex-wrap gap-2 md:justify-self-end">
+                        <form action={togglePaidExtensionAction}>
+                          <input type="hidden" name="extensionId" value={extension.id} />
+                          <input type="hidden" name="paidRequired" value={isPaid ? "0" : "1"} />
+                          <SubmitButton
+                            className={isPaid ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
+                            pendingLabel={isPaid ? "Including" : "Marking paid"}
+                          >
+                            {isPaid ? "Include in trial" : "Mark paid"}
+                          </SubmitButton>
+                        </form>
+                        <form action={toggleGlobalExtensionAction}>
+                          <input type="hidden" name="extensionId" value={extension.id} />
+                          <input
+                            type="hidden"
+                            name="enabled"
+                            value={isGloballyDisabled ? "1" : "0"}
+                          />
+                          <SubmitButton
+                            className={
+                              isGloballyDisabled ? "fp-btn fp-btn-primary" : "fp-btn fp-btn-ghost"
+                            }
+                            pendingLabel={isGloballyDisabled ? "Enabling" : "Disabling"}
+                          >
+                            {isGloballyDisabled ? "Enable globally" : "Disable globally"}
+                          </SubmitButton>
+                        </form>
+                      </div>
                     </li>
                   );
                 })}
@@ -158,6 +189,7 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
           <UserAccessSection
             users={access.users}
             globallyDisabledExtensionIds={access.globallyDisabledExtensionIds}
+            paidExtensionIds={access.paidExtensionIds}
           />
         </div>
       </div>
@@ -168,11 +200,14 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
 function UserAccessSection({
   users,
   globallyDisabledExtensionIds,
+  paidExtensionIds,
 }: {
   users: AdminExtensionAccessUserRow[];
   globallyDisabledExtensionIds: string[];
+  paidExtensionIds: string[];
 }) {
   const globallyDisabled = new Set(globallyDisabledExtensionIds);
+  const paid = new Set(paidExtensionIds);
   return (
     <section className="space-y-3">
       <div>
@@ -189,6 +224,7 @@ function UserAccessSection({
         <div className="space-y-4">
           {EXTENSION_METADATA.map((extension) => {
             const isGloballyDisabled = globallyDisabled.has(extension.id);
+            const isPaid = paid.has(extension.id);
             return (
               <div key={extension.id} className="fp-card overflow-hidden">
                 <div
@@ -198,6 +234,7 @@ function UserAccessSection({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-sm font-semibold">{extension.label}</h3>
+                      {isPaid ? <span className="fp-chip fp-chip-indigo">Paid</span> : null}
                       {isGloballyDisabled ? (
                         <span className="fp-chip fp-chip-rose">Disabled globally</span>
                       ) : (
@@ -219,6 +256,7 @@ function UserAccessSection({
                       user={user}
                       extensionId={extension.id}
                       isGloballyDisabled={isGloballyDisabled}
+                      isPaid={isPaid}
                     />
                   ))}
                 </ul>
@@ -235,24 +273,30 @@ function UserAccessRow({
   user,
   extensionId,
   isGloballyDisabled,
+  isPaid,
 }: {
   user: AdminExtensionAccessUserRow;
   extensionId: string;
   isGloballyDisabled: boolean;
+  isPaid: boolean;
 }) {
   const isAdminDisabled = user.adminDisabledExtensionIds.includes(extensionId);
   const isSelfDisabled = user.selfDisabledExtensionIds.includes(extensionId);
+  const planLocked = isPaid && user.plan === "trial";
   return (
     <li className="grid gap-4 px-5 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate text-sm font-medium">{user.email}</span>
           {user.isAdmin ? <span className="fp-chip fp-chip-indigo">Admin</span> : null}
+          <span className="fp-chip">{planLabel(user.plan)}</span>
           {user.status === "suspended" ? (
             <span className="fp-chip fp-chip-rose">Suspended</span>
           ) : null}
           {isGloballyDisabled ? (
             <span className="fp-chip fp-chip-rose">Globally blocked</span>
+          ) : planLocked ? (
+            <span className="fp-chip fp-chip-amber">Plan locked</span>
           ) : isAdminDisabled ? (
             <span className="fp-chip fp-chip-rose">Access blocked</span>
           ) : (
@@ -263,7 +307,7 @@ function UserAccessRow({
           ) : null}
         </div>
       </div>
-      {isGloballyDisabled ? (
+      {isGloballyDisabled || planLocked ? (
         <button type="button" className="fp-btn fp-btn-ghost md:justify-self-end" disabled>
           Locked
         </button>
@@ -302,4 +346,10 @@ function Banner({ kind, children }: { kind: "success" | "error"; children: React
 
 function extensionLabelFor(id: string) {
   return findExtensionMetadata(id)?.label ?? "extension";
+}
+
+function planLabel(plan: "trial" | "pro" | "custom"): string {
+  if (plan === "pro") return "Pro";
+  if (plan === "custom") return "Custom";
+  return "Trial";
 }

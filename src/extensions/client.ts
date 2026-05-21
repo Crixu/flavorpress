@@ -8,12 +8,18 @@
  */
 
 import type { ClientExtensionEntry } from "./types";
+import { angleBuilderClientEntry } from "./angle-builder";
 import { commentCourtroomClientEntry } from "./comment-courtroom";
+import { evidencePanelClientEntry } from "./evidence-panel";
 import { factCheckClientEntry } from "./fact-check";
 import { relatedImagesClientEntry } from "./related-images";
+import { voiceGuardClientEntry } from "./voice-guard";
 
 export const CLIENT_EXTENSIONS: ClientExtensionEntry[] = [
   factCheckClientEntry,
   relatedImagesClientEntry,
   commentCourtroomClientEntry,
+  angleBuilderClientEntry,
+  evidencePanelClientEntry,
+  voiceGuardClientEntry,
 ];

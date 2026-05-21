@@ -10,10 +10,20 @@
  */
 
 import {
+  ANGLE_BUILDER_DESCRIPTION,
+  ANGLE_BUILDER_ID,
+  ANGLE_BUILDER_LABEL,
+} from "./angle-builder/types";
+import {
   COMMENT_COURTROOM_DESCRIPTION,
   COMMENT_COURTROOM_ID,
   COMMENT_COURTROOM_LABEL,
 } from "./comment-courtroom/types";
+import {
+  EVIDENCE_PANEL_DESCRIPTION,
+  EVIDENCE_PANEL_ID,
+  EVIDENCE_PANEL_LABEL,
+} from "./evidence-panel/types";
 import { FACT_CHECK_ID, FACT_CHECK_LABEL } from "./fact-check/types";
 import {
   REDDIT_SOURCE_DESCRIPTION,
@@ -21,6 +31,7 @@ import {
   REDDIT_SOURCE_LABEL,
 } from "./reddit-source/types";
 import { RELATED_IMAGES_ID, RELATED_IMAGES_LABEL } from "./related-images/types";
+import { VOICE_GUARD_DESCRIPTION, VOICE_GUARD_ID, VOICE_GUARD_LABEL } from "./voice-guard/types";
 import {
   WORKFLOW_AUTOPUBLISH_DESCRIPTION,
   WORKFLOW_AUTOPUBLISH_ID,
@@ -32,6 +43,7 @@ export interface ExtensionMetadata {
   id: string;
   label: string;
   description: string;
+  defaultPaid?: boolean;
 }
 
 export const EXTENSION_METADATA: ExtensionMetadata[] = [
@@ -63,6 +75,24 @@ export const EXTENSION_METADATA: ExtensionMetadata[] = [
     description: COMMENT_COURTROOM_DESCRIPTION,
   },
   {
+    id: ANGLE_BUILDER_ID,
+    label: ANGLE_BUILDER_LABEL,
+    description: ANGLE_BUILDER_DESCRIPTION,
+    defaultPaid: true,
+  },
+  {
+    id: EVIDENCE_PANEL_ID,
+    label: EVIDENCE_PANEL_LABEL,
+    description: EVIDENCE_PANEL_DESCRIPTION,
+    defaultPaid: true,
+  },
+  {
+    id: VOICE_GUARD_ID,
+    label: VOICE_GUARD_LABEL,
+    description: VOICE_GUARD_DESCRIPTION,
+    defaultPaid: true,
+  },
+  {
     id: WORKFLOW_AUTOPUBLISH_ID,
     label: WORKFLOW_AUTOPUBLISH_LABEL,
     description: WORKFLOW_AUTOPUBLISH_DESCRIPTION,
@@ -71,4 +101,26 @@ export const EXTENSION_METADATA: ExtensionMetadata[] = [
 
 export function findExtensionMetadata(id: string): ExtensionMetadata | undefined {
   return EXTENSION_METADATA.find((ext) => ext.id === id);
+}
+
+export const DEFAULT_PAID_EXTENSION_IDS = EXTENSION_METADATA.filter((ext) => ext.defaultPaid).map(
+  (ext) => ext.id,
+);
+
+export function extensionAllowedForPlan(
+  extension: ExtensionMetadata,
+  plan: "trial" | "pro" | "custom",
+  paidExtensionIds: ReadonlySet<string> = new Set(DEFAULT_PAID_EXTENSION_IDS),
+): boolean {
+  if (paidExtensionIds.has(extension.id)) return plan === "pro" || plan === "custom";
+  return true;
+}
+
+export function extensionIdAllowedForPlan(
+  extensionId: string,
+  plan: "trial" | "pro" | "custom",
+  paidExtensionIds: ReadonlySet<string> = new Set(DEFAULT_PAID_EXTENSION_IDS),
+): boolean {
+  const extension = findExtensionMetadata(extensionId);
+  return extension ? extensionAllowedForPlan(extension, plan, paidExtensionIds) : false;
 }
