@@ -72,6 +72,7 @@ beforeEach(async () => {
   await db.execute("DELETE FROM user_settings");
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM app_settings");
+  await db.execute("DELETE FROM deployment_settings WHERE key = 'globally_disabled_extensions'");
   cookieJar = new Map();
   process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
   delete process.env.FLAVORPRESS_AUTH;
@@ -214,5 +215,109 @@ describe("toggleUserExtensionForAdminAction", () => {
     );
     await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set(["fact-check"]));
     await expect(getDisabledExtensionIds(adminId)).resolves.toEqual(new Set());
+  });
+
+  it("refuses to toggle when the extension is globally disabled", async () => {
+    const adminId = await makeUser({ email: "admin@example.com", isAdmin: true });
+    const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
+    await loginAs(adminId);
+    const { setExtensionGloballyEnabled, getDisabledExtensionIds } = await import(
+      "@/lib/v1/settings"
+    );
+    await setExtensionGloballyEnabled("fact-check", false);
+
+    const { toggleUserExtensionForAdminAction } = await import("@/app/settings/admin/actions");
+    const to = await callRedirect(toggleUserExtensionForAdminAction, {
+      userId,
+      extensionId: "fact-check",
+      enabled: "1",
+    });
+
+    expect(to).toBe(
+      `/settings/admin/users/${userId}?error=extension_locked_globally`,
+    );
+    await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set());
+  });
+});
+
+describe("global extension kill switch", () => {
+  it("setExtensionGloballyEnabled stores and clears the deployment row", async () => {
+    const { setExtensionGloballyEnabled, getGloballyDisabledExtensionIds } = await import(
+      "@/lib/v1/settings"
+    );
+    await setExtensionGloballyEnabled("fact-check", false);
+    await setExtensionGloballyEnabled("related-images", false);
+    await expect(getGloballyDisabledExtensionIds()).resolves.toEqual(
+      new Set(["fact-check", "related-images"]),
+    );
+
+    await setExtensionGloballyEnabled("fact-check", true);
+    await expect(getGloballyDisabledExtensionIds()).resolves.toEqual(new Set(["related-images"]));
+
+    await setExtensionGloballyEnabled("related-images", true);
+    await expect(getGloballyDisabledExtensionIds()).resolves.toEqual(new Set());
+    const r = await db.execute({
+      sql: `SELECT 1 FROM deployment_settings WHERE key = 'globally_disabled_extensions'`,
+    });
+    expect(r.rows.length).toBe(0);
+  });
+
+  it("getEffectiveDisabledExtensionIds unions global and per-user disables", async () => {
+    const userId = await makeUser({ email: "writer@example.com" });
+    const { setExtensionGloballyEnabled, setExtensionEnabled, getEffectiveDisabledExtensionIds } =
+      await import("@/lib/v1/settings");
+    await setExtensionGloballyEnabled("fact-check", false);
+    await setExtensionEnabled("related-images", false, userId);
+    await expect(getEffectiveDisabledExtensionIds(userId)).resolves.toEqual(
+      new Set(["fact-check", "related-images"]),
+    );
+
+    const otherId = await makeUser({ email: "other@example.com" });
+    await expect(getEffectiveDisabledExtensionIds(otherId)).resolves.toEqual(
+      new Set(["fact-check"]),
+    );
+  });
+
+  it("toggleGlobalExtensionAction requires admin and persists the kill switch", async () => {
+    const writerId = await makeUser({ email: "writer@example.com", isAdmin: false });
+    const adminId = await makeUser({ email: "admin@example.com", isAdmin: true });
+    const { toggleGlobalExtensionAction } = await import("@/app/settings/admin/actions");
+    const { getGloballyDisabledExtensionIds } = await import("@/lib/v1/settings");
+
+    await loginAs(writerId);
+    const denied = await callRedirect(toggleGlobalExtensionAction, {
+      extensionId: "fact-check",
+      enabled: "0",
+    });
+    expect(denied).toBe("/settings");
+    await expect(getGloballyDisabledExtensionIds()).resolves.toEqual(new Set());
+
+    await loginAs(adminId);
+    const to = await callRedirect(toggleGlobalExtensionAction, {
+      extensionId: "fact-check",
+      enabled: "0",
+    });
+    expect(to).toBe(
+      "/settings/admin/extensions?saved=global_extension&extension=fact-check&state=disabled",
+    );
+    await expect(getGloballyDisabledExtensionIds()).resolves.toEqual(new Set(["fact-check"]));
+  });
+
+  it("user toggleExtensionAction refuses when the extension is globally disabled", async () => {
+    const userId = await makeUser({ email: "writer@example.com" });
+    await loginAs(userId);
+    const { setExtensionGloballyEnabled, getDisabledExtensionIds } = await import(
+      "@/lib/v1/settings"
+    );
+    await setExtensionGloballyEnabled("fact-check", false);
+
+    const { toggleExtensionAction } = await import("@/lib/v1/settings-actions");
+    const to = await callRedirect(toggleExtensionAction, {
+      section: "extensions",
+      extensionId: "fact-check",
+      enabled: "1",
+    });
+    expect(to).toBe("/settings?section=extensions&error=extension_locked_by_admin");
+    await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set());
   });
 });
