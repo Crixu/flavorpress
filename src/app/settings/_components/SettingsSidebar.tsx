@@ -38,6 +38,13 @@ export function SettingsSidebar({ active, showAdmin = false }: Props) {
             <div className="fp-settings-item-hint">Users · plans · sources</div>
           </Link>
           <Link
+            href="/settings/admin/users"
+            className={`fp-settings-item ${active === "admin-users" ? "on" : ""}`}
+          >
+            <div className="fp-settings-item-label">Admin / Users</div>
+            <div className="fp-settings-item-hint">Roles · plans · sources</div>
+          </Link>
+          <Link
             href="/settings/admin/extensions"
             className={`fp-settings-item ${active === "admin-extensions" ? "on" : ""}`}
           >

@@ -47,12 +47,12 @@ export default async function AdminUserPage({ params, searchParams }: PageProps)
 
   return (
     <div className="fp-settings-shell">
-      <SettingsSidebar active="admin" showAdmin />
+      <SettingsSidebar active="admin-users" showAdmin />
       <div className="fp-settings-detail">
         <div className="space-y-8">
           <header className="space-y-4">
-            <Link href="/settings/admin" className="fp-btn fp-btn-ghost">
-              Back to admin
+            <Link href="/settings/admin/users" className="fp-btn fp-btn-ghost">
+              Back to users
             </Link>
             <div>
               <div className="fp-eyebrow">Admin / User sources</div>

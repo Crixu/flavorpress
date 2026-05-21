@@ -25,6 +25,12 @@ function adminRedirect(params: Record<string, string>, path = "/settings/admin")
   redirect(`${path}?${sp.toString()}`);
 }
 
+function userAdminPath(formData: FormData): string {
+  return String(formData.get("returnTo") ?? "") === "users"
+    ? "/settings/admin/users"
+    : "/settings/admin";
+}
+
 export async function issueInviteAction(formData: FormData): Promise<void> {
   await ensureSchema();
   const session = await requireAdmin();
@@ -51,8 +57,9 @@ export async function setUserAdminAction(formData: FormData): Promise<void> {
   const session = await requireAdmin();
   const userId = String(formData.get("userId") ?? "");
   const admin = String(formData.get("admin") ?? "") === "1";
+  const path = userAdminPath(formData);
   if (!userId) throw new Error("userId required.");
-  if (userId === session.userId && !admin) adminRedirect({ error: "self_admin" });
+  if (userId === session.userId && !admin) adminRedirect({ error: "self_admin" }, path);
   await db.execute({
     sql: `UPDATE users
           SET is_admin = ?, session_version = session_version + 1
@@ -60,7 +67,8 @@ export async function setUserAdminAction(formData: FormData): Promise<void> {
     args: [admin ? 1 : 0, userId],
   });
   revalidatePath("/settings/admin");
-  adminRedirect({ saved: "role" });
+  revalidatePath("/settings/admin/users");
+  adminRedirect({ saved: "role" }, path);
 }
 
 export async function setUserStatusAction(formData: FormData): Promise<void> {
@@ -68,8 +76,11 @@ export async function setUserStatusAction(formData: FormData): Promise<void> {
   const session = await requireAdmin();
   const userId = String(formData.get("userId") ?? "");
   const status = String(formData.get("status") ?? "") === "suspended" ? "suspended" : "active";
+  const path = userAdminPath(formData);
   if (!userId) throw new Error("userId required.");
-  if (userId === session.userId && status === "suspended") adminRedirect({ error: "self_status" });
+  if (userId === session.userId && status === "suspended") {
+    adminRedirect({ error: "self_status" }, path);
+  }
   await db.execute({
     sql: `UPDATE users
           SET status = ?, session_version = session_version + 1
@@ -77,7 +88,8 @@ export async function setUserStatusAction(formData: FormData): Promise<void> {
     args: [status, userId],
   });
   revalidatePath("/settings/admin");
-  adminRedirect({ saved: "status" });
+  revalidatePath("/settings/admin/users");
+  adminRedirect({ saved: "status" }, path);
 }
 
 export async function setUserPlanAction(formData: FormData): Promise<void> {
@@ -86,6 +98,7 @@ export async function setUserPlanAction(formData: FormData): Promise<void> {
   const userId = String(formData.get("userId") ?? "");
   const rawPlan = String(formData.get("plan") ?? "trial");
   const plan = normalizePlanKey(rawPlan);
+  const path = userAdminPath(formData);
   if (!userId) throw new Error("userId required.");
   await setUserPlan(userId, plan, {
     outlets: Number(formData.get("customOutletLimit") ?? 0),
@@ -94,12 +107,13 @@ export async function setUserPlanAction(formData: FormData): Promise<void> {
     pollAllEnabled: formData.get("pollAllEnabled") === "1",
   });
   revalidatePath("/settings/admin");
+  revalidatePath("/settings/admin/users");
   revalidatePath(`/settings/admin/users/${userId}`);
   revalidatePath("/");
   revalidatePath("/sources");
   revalidatePath("/voice");
   revalidatePath("/voice/[outletId]", "page");
-  adminRedirect({ saved: "plan" });
+  adminRedirect({ saved: "plan" }, path);
 }
 
 export async function toggleGlobalExtensionAction(formData: FormData): Promise<void> {
