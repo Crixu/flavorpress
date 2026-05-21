@@ -9,16 +9,28 @@ const ITEMS = [
   { key: "library", label: "Library", hint: "Maintenance · export · clear" },
 ];
 
+const WORKFLOW_ITEM = {
+  key: "workflow-autopublish",
+  label: "Workflow autopublish",
+  hint: "Cadence · logs · outlets",
+};
+
 interface Props {
   active: string;
   showAdmin?: boolean;
+  showWorkflowAutopublish?: boolean;
 }
 
-export function SettingsSidebar({ active, showAdmin = false }: Props) {
+export function SettingsSidebar({
+  active,
+  showAdmin = false,
+  showWorkflowAutopublish = false,
+}: Props) {
+  const items = showWorkflowAutopublish ? [...ITEMS, WORKFLOW_ITEM] : ITEMS;
   return (
     <div className="fp-settings-side">
       <h5 className="fp-settings-side-h">Settings</h5>
-      {ITEMS.map((item) => (
+      {items.map((item) => (
         <Link
           key={item.key}
           href={`/settings?section=${item.key}`}

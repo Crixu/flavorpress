@@ -87,10 +87,19 @@ export default async function SettingsPage({ searchParams }: PageProps) {
     loadWorkflowAutopublishState(session.userId),
   ]);
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
+  const workflowAutopublishAvailable =
+    !snapshot.disabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID);
+  if (section === "workflow-autopublish" && !workflowAutopublishAvailable) {
+    redirect("/settings?section=extensions");
+  }
 
   return (
     <div className="fp-settings-shell">
-      <SettingsSidebar active={section} showAdmin={shouldShowAdminControls(session)} />
+      <SettingsSidebar
+        active={section}
+        showAdmin={shouldShowAdminControls(session)}
+        showWorkflowAutopublish={workflowAutopublishAvailable}
+      />
       <div className="fp-settings-detail">
         {sp.saved ? <Banner kind="success">Saved {labelFor(sp.saved)}.</Banner> : null}
         {sp.cleared ? (
@@ -121,8 +130,10 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <ExtensionsSectionPane
             snapshot={snapshot}
             disabledExtensionIds={snapshot.disabledExtensionIds}
-            workflowState={workflowState}
           />
+        )}
+        {section === "workflow-autopublish" && (
+          <WorkflowAutopublishPane disabled={false} state={workflowState} />
         )}
         {section === "library" && <LibrarySectionPane draftCount={draftCount} />}
       </div>
@@ -224,11 +235,9 @@ function ModelsSectionPane({
 function ExtensionsSectionPane({
   snapshot,
   disabledExtensionIds,
-  workflowState,
 }: {
   snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
   disabledExtensionIds: string[];
-  workflowState: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>;
 }) {
   const disabled = new Set(disabledExtensionIds);
 
@@ -301,11 +310,6 @@ function ExtensionsSectionPane({
           })}
         </div>
       )}
-
-      <WorkflowAutopublishPane
-        disabled={disabled.has(WORKFLOW_AUTOPUBLISH_ID)}
-        state={workflowState}
-      />
     </div>
   );
 }
@@ -317,6 +321,12 @@ function WorkflowAutopublishPane({
   disabled: boolean;
   state: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>;
 }) {
+  const enabledCount = state.outlets.filter((outlet) => outlet.config.enabled).length;
+  const nextRunAt = state.outlets
+    .map((outlet) => outlet.config.nextRunAt)
+    .filter((value): value is number => value !== null)
+    .sort((a, b) => a - b)[0];
+
   return (
     <section className="fp-card p-5 space-y-5">
       <div>
@@ -338,21 +348,40 @@ function WorkflowAutopublishPane({
         </p>
       ) : (
         <div className="space-y-4">
+          <div
+            className="grid gap-3 rounded-lg border p-3 text-[12.5px] sm:grid-cols-3"
+            style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}
+          >
+            <WorkflowField
+              label="Outlets"
+              value={`${enabledCount}/${state.outlets.length} enabled`}
+            />
+            <WorkflowField
+              label="Next due run"
+              value={nextRunAt ? formatDateTime(nextRunAt) : "None scheduled"}
+            />
+            <WorkflowField label="Recent runs" value={`${state.logs.length} shown`} />
+          </div>
+
           {state.outlets.map((outlet) => (
             <form
               key={outlet.id}
               action={saveWorkflowAutopublishAction}
-              className="rounded-lg border p-4"
+              className="rounded-lg border p-4 space-y-4"
               style={{ borderColor: "var(--border)" }}
             >
               <input type="hidden" name="outletId" value={outlet.id} />
+              <input type="hidden" name="section" value="workflow-autopublish" />
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold">{outlet.label}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-semibold">{outlet.label}</div>
+                    <span className={workflowStateChip(outlet, disabled).className}>
+                      {workflowStateChip(outlet, disabled).label}
+                    </span>
+                  </div>
                   <p className="mt-1 text-[12px]" style={{ color: "var(--fg-muted)" }}>
-                    {outlet.connected
-                      ? "Publishes with this outlet's stored WordPress credentials."
-                      : "Reconnect this outlet before autopublish can run."}
+                    {workflowStateLine(outlet, disabled)}
                   </p>
                 </div>
                 <label className="inline-flex items-center gap-2 text-[13px]">
@@ -367,7 +396,31 @@ function WorkflowAutopublishPane({
                 </label>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <WorkflowField
+                  label="Next run"
+                  value={
+                    outlet.config.nextRunAt
+                      ? formatDateTime(outlet.config.nextRunAt)
+                      : "Not scheduled"
+                  }
+                />
+                <WorkflowField
+                  label="Last result"
+                  value={
+                    outlet.lastLog
+                      ? `${outlet.lastLog.status} at ${formatDateTime(outlet.lastLog.createdAt)}`
+                      : "No run yet"
+                  }
+                  tone={outlet.lastLog?.status}
+                />
+                <WorkflowField
+                  label="Last message"
+                  value={outlet.lastLog?.message ?? "No activity recorded"}
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
                 <label className="space-y-1 text-[12px] font-medium">
                   <span>Cadence</span>
                   <select
@@ -410,7 +463,7 @@ function WorkflowAutopublishPane({
                 </label>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <SubmitButton
                   className="fp-btn fp-btn-primary"
                   pendingLabel="Saving"
@@ -420,7 +473,7 @@ function WorkflowAutopublishPane({
                 </SubmitButton>
                 <span className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
                   {outlet.config.lastRunAt
-                    ? `Last ran ${new Date(outlet.config.lastRunAt).toLocaleString()}`
+                    ? `Last ran ${formatDateTime(outlet.config.lastRunAt)}`
                     : "No run yet."}
                 </span>
               </div>
@@ -450,7 +503,7 @@ function WorkflowAutopublishPane({
                     {entry.status}
                   </span>
                   <span style={{ color: "var(--fg-muted)" }}>
-                    {new Date(entry.createdAt).toLocaleString()}
+                    {entry.outletLabel} · {formatDateTime(entry.createdAt)}
                   </span>
                 </div>
                 <p className="mt-1" style={{ color: "var(--fg-muted)" }}>
@@ -463,6 +516,72 @@ function WorkflowAutopublishPane({
       ) : null}
     </section>
   );
+}
+
+function WorkflowField({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "published" | "skipped" | "failed";
+}) {
+  const color =
+    tone === "published"
+      ? "var(--emerald)"
+      : tone === "failed"
+        ? "var(--rose)"
+        : tone === "skipped"
+          ? "var(--amber)"
+          : "var(--fg)";
+  return (
+    <div className="min-w-0">
+      <div
+        className="text-[11px] font-medium uppercase tracking-wide"
+        style={{ color: "var(--fg-muted)" }}
+      >
+        {label}
+      </div>
+      <div className="mt-1 truncate text-[13px] font-medium" style={{ color }} title={value}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function workflowStateChip(
+  outlet: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["outlets"][number],
+  disabled: boolean,
+): { label: string; className: string } {
+  if (disabled) return { label: "Blocked", className: "fp-chip fp-chip-rose" };
+  if (!outlet.connected) return { label: "Disconnected", className: "fp-chip fp-chip-rose" };
+  if (!outlet.config.enabled) return { label: "Off", className: "fp-chip" };
+  if (!outlet.config.nextRunAt) return { label: "On", className: "fp-chip fp-chip-emerald" };
+  if (outlet.config.nextRunAt <= Date.now()) {
+    return { label: "Due", className: "fp-chip fp-chip-amber" };
+  }
+  return { label: "Scheduled", className: "fp-chip fp-chip-emerald" };
+}
+
+function workflowStateLine(
+  outlet: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["outlets"][number],
+  disabled: boolean,
+): string {
+  if (disabled) return "Global extension toggle is disabled.";
+  if (!outlet.connected) return "Reconnect this outlet before autopublish can run.";
+  if (!outlet.config.enabled) return "This outlet has no scheduled autopublish run.";
+  if (!outlet.config.nextRunAt) return "Enabled, waiting for cron to schedule the next run.";
+  return `Publishes at most one fresh fired cluster every ${outlet.config.intervalHours} hours.`;
+}
+
+function formatDateTime(ms: number): string {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(ms));
 }
 
 /* ---------------------------------------------------------------------------

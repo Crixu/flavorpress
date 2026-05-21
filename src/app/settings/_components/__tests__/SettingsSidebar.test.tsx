@@ -9,6 +9,13 @@ describe("SettingsSidebar", () => {
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("Extensions")).toBeInTheDocument();
     expect(screen.getByText("Library")).toBeInTheDocument();
+    expect(screen.queryByText("Workflow autopublish")).not.toBeInTheDocument();
+  });
+
+  it("shows workflow autopublish when available", () => {
+    render(<SettingsSidebar active="workflow-autopublish" showWorkflowAutopublish />);
+    expect(screen.getByText("Workflow autopublish")).toBeInTheDocument();
+    expect(screen.getByText("Workflow autopublish").closest("a")?.className).toMatch(/on/);
   });
 
   it("marks the active section", () => {

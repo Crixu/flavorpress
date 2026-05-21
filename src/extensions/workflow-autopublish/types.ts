@@ -26,6 +26,7 @@ export interface WorkflowAutopublishConfig {
 export interface WorkflowAutopublishLogEntry {
   id: string;
   outletId: string;
+  outletLabel: string;
   draftId: string | null;
   clusterId: string | null;
   status: WorkflowAutopublishStatus;
