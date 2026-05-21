@@ -14,14 +14,13 @@ import {
   WORKFLOW_FOLDER_UNGROUPED,
   WORKFLOW_AUTOPUBLISH_ID,
   WORKFLOW_FRESHNESS_OPTIONS,
-  WORKFLOW_INTERVAL_OPTIONS,
+  normalizeWorkflowIntervalHours,
   type WorkflowAutopublishConfig,
   type WorkflowAutopublishFolderOption,
   type WorkflowAutopublishLogEntry,
   type WorkflowAutopublishStatus,
 } from "./types";
 
-const DEFAULT_INTERVAL_HOURS = 12;
 const DEFAULT_FRESH_SOURCE_WINDOW_HOURS = 24;
 const DEFAULT_MAX_BATCH = 2;
 
@@ -171,11 +170,7 @@ export async function saveWorkflowAutopublishConfig(
       ? previousFolderScope
       : await normalizeFolderScope(input.userId, requestedFolderScope);
 
-  const intervalHours = normalizeOption(
-    input.intervalHours,
-    WORKFLOW_INTERVAL_OPTIONS,
-    DEFAULT_INTERVAL_HOURS,
-  );
+  const intervalHours = normalizeWorkflowIntervalHours(input.intervalHours);
   const freshSourceWindowHours = normalizeOption(
     input.freshSourceWindowHours,
     WORKFLOW_FRESHNESS_OPTIONS,
