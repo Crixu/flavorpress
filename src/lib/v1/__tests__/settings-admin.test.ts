@@ -402,6 +402,6 @@ describe("global extension kill switch", () => {
       enabled: "1",
     });
 
-    expect(to).toBe("/settings?section=workflow-autopublish&error=extension_locked_by_admin");
+    expect(to).toBe("/settings?section=extensions&error=extension_locked_by_admin");
   });
 });

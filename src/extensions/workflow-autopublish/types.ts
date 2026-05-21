@@ -5,6 +5,8 @@ export const WORKFLOW_AUTOPUBLISH_DESCRIPTION =
 
 export const WORKFLOW_INTERVAL_OPTIONS = [6, 12, 24] as const;
 export const WORKFLOW_FRESHNESS_OPTIONS = [12, 24, 48] as const;
+export const WORKFLOW_FOLDER_ALL = "all";
+export const WORKFLOW_FOLDER_UNGROUPED = "ungrouped";
 
 export type WorkflowAutopublishStatus = "published" | "skipped" | "failed";
 
@@ -12,6 +14,7 @@ export interface WorkflowAutopublishConfig {
   id: string;
   userId: string;
   outletId: string;
+  folderScope: string;
   enabled: boolean;
   intervalHours: number;
   autoUpdate: boolean;
@@ -27,9 +30,16 @@ export interface WorkflowAutopublishLogEntry {
   id: string;
   outletId: string;
   outletLabel: string;
+  folderScope: string;
+  folderLabel: string;
   draftId: string | null;
   clusterId: string | null;
   status: WorkflowAutopublishStatus;
   message: string;
   createdAt: number;
+}
+
+export interface WorkflowAutopublishFolderOption {
+  scope: string;
+  label: string;
 }

@@ -10,10 +10,13 @@ import { getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
 import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "@/lib/v1/trust";
 import {
+  WORKFLOW_FOLDER_ALL,
+  WORKFLOW_FOLDER_UNGROUPED,
   WORKFLOW_AUTOPUBLISH_ID,
   WORKFLOW_FRESHNESS_OPTIONS,
   WORKFLOW_INTERVAL_OPTIONS,
   type WorkflowAutopublishConfig,
+  type WorkflowAutopublishFolderOption,
   type WorkflowAutopublishLogEntry,
   type WorkflowAutopublishStatus,
 } from "./types";
@@ -26,6 +29,7 @@ interface ConfigRow {
   id: string;
   user_id: string;
   outlet_id: string;
+  folder_scope: string;
   enabled: number;
   interval_hours: number;
   auto_update: number;
@@ -56,6 +60,15 @@ export interface WorkflowAutopublishState {
     id: string;
     label: string;
     connected: boolean;
+  }[];
+  folderOptions: WorkflowAutopublishFolderOption[];
+  workflows: {
+    id: string;
+    outletId: string;
+    outletLabel: string;
+    connected: boolean;
+    folderScope: string;
+    folderLabel: string;
     config: WorkflowAutopublishConfig;
     lastLog: WorkflowAutopublishLogEntry | null;
   }[];
@@ -73,6 +86,8 @@ export interface WorkflowAutopublishRunResult {
 export interface WorkflowAutopublishSaveInput {
   outletId: string;
   userId: string;
+  folderScope: string;
+  previousFolderScope?: string | null;
   enabled: boolean;
   intervalHours: number;
   autoUpdate: boolean;
@@ -83,14 +98,15 @@ export async function loadWorkflowAutopublishState(
   userId: string,
 ): Promise<WorkflowAutopublishState> {
   await ensureSchema();
-  const [outlets, configsR, logsR] = await Promise.all([
+  const [outlets, folderOptions, configsR, logsR] = await Promise.all([
     listOutlets(userId),
+    listWorkflowFolderOptions(userId),
     db.execute({
       sql: `SELECT * FROM workflow_autopublish_configs WHERE user_id = ?`,
       args: [userId],
     }),
     db.execute({
-      sql: `SELECT id, outlet_id, draft_id, cluster_id, status, message, created_at
+      sql: `SELECT id, outlet_id, folder_scope, draft_id, cluster_id, status, message, created_at
             FROM workflow_autopublish_log
             WHERE user_id = ?
             ORDER BY created_at DESC
@@ -99,19 +115,16 @@ export async function loadWorkflowAutopublishState(
     }),
   ]);
 
-  const configByOutlet = new Map(
-    configsR.rows.map((row) => {
-      const config = configFromRow(row as unknown as ConfigRow);
-      return [config.outletId, config] as const;
-    }),
-  );
+  const configs = configsR.rows.map((row) => configFromRow(row as unknown as ConfigRow));
   const outletLabelById = new Map(
     outlets.map((outlet) => [outlet.id, outlet.displayName ?? outlet.baseUrl] as const),
   );
-  const logs = logsR.rows.map((row) => logEntryFromRow(row, outletLabelById));
-  const lastLogByOutlet = new Map<string, WorkflowAutopublishLogEntry>();
+  const folderLabelByScope = new Map(folderOptions.map((folder) => [folder.scope, folder.label]));
+  const logs = logsR.rows.map((row) => logEntryFromRow(row, outletLabelById, folderLabelByScope));
+  const lastLogByWorkflow = new Map<string, WorkflowAutopublishLogEntry>();
   for (const log of logs) {
-    if (!lastLogByOutlet.has(log.outletId)) lastLogByOutlet.set(log.outletId, log);
+    const key = workflowKey(log.outletId, log.folderScope);
+    if (!lastLogByWorkflow.has(key)) lastLogByWorkflow.set(key, log);
   }
 
   return {
@@ -119,9 +132,23 @@ export async function loadWorkflowAutopublishState(
       id: outlet.id,
       label: outlet.displayName ?? outlet.baseUrl,
       connected: outlet.connected,
-      config: configByOutlet.get(outlet.id) ?? defaultConfig(userId, outlet.id),
-      lastLog: lastLogByOutlet.get(outlet.id) ?? null,
     })),
+    folderOptions,
+    workflows: configs.map((config) => {
+      const outlet = outlets.find((candidate) => candidate.id === config.outletId);
+      const outletLabel = outlet ? (outlet.displayName ?? outlet.baseUrl) : "Unknown outlet";
+      const folderLabel = labelForFolderScope(config.folderScope, folderLabelByScope);
+      return {
+        id: workflowKey(config.outletId, config.folderScope),
+        outletId: config.outletId,
+        outletLabel,
+        connected: outlet?.connected ?? false,
+        folderScope: config.folderScope,
+        folderLabel,
+        config,
+        lastLog: lastLogByWorkflow.get(workflowKey(config.outletId, config.folderScope)) ?? null,
+      };
+    }),
     logs,
   };
 }
@@ -135,6 +162,14 @@ export async function saveWorkflowAutopublishConfig(
     args: [input.outletId, input.userId],
   });
   if (outlet.rows.length === 0) throw new Error("Outlet not found.");
+  const requestedFolderScope = input.folderScope.trim();
+  const previousFolderScope = input.previousFolderScope?.trim() || null;
+  const folderScope =
+    previousFolderScope &&
+    requestedFolderScope === previousFolderScope &&
+    (await workflowConfigExists(input.userId, input.outletId, previousFolderScope))
+      ? previousFolderScope
+      : await normalizeFolderScope(input.userId, requestedFolderScope);
 
   const intervalHours = normalizeOption(
     input.intervalHours,
@@ -150,10 +185,10 @@ export async function saveWorkflowAutopublishConfig(
   const nextRunAt = input.enabled ? now : null;
   await db.execute({
     sql: `INSERT INTO workflow_autopublish_configs
-            (id, user_id, outlet_id, enabled, interval_hours, auto_update,
+            (id, user_id, outlet_id, folder_scope, enabled, interval_hours, auto_update,
              fresh_source_window_hours, next_run_at, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(user_id, outlet_id) DO UPDATE SET
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, outlet_id, folder_scope) DO UPDATE SET
             enabled = excluded.enabled,
             interval_hours = excluded.interval_hours,
             auto_update = excluded.auto_update,
@@ -172,6 +207,7 @@ export async function saveWorkflowAutopublishConfig(
       crypto.randomUUID(),
       input.userId,
       input.outletId,
+      folderScope,
       input.enabled ? 1 : 0,
       intervalHours,
       input.autoUpdate ? 1 : 0,
@@ -181,6 +217,14 @@ export async function saveWorkflowAutopublishConfig(
       now,
     ],
   });
+
+  if (previousFolderScope && previousFolderScope !== folderScope) {
+    await db.execute({
+      sql: `DELETE FROM workflow_autopublish_configs
+            WHERE user_id = ? AND outlet_id = ? AND folder_scope = ?`,
+      args: [input.userId, input.outletId, previousFolderScope],
+    });
+  }
 }
 
 export async function runDueAutopublishWorkflows(
@@ -411,13 +455,29 @@ async function selectFreshCluster(
   now: number,
 ): Promise<SelectedCluster | null> {
   const oldestAllowed = now - config.freshSourceWindowHours * 60 * 60 * 1000;
+  const folderClause =
+    config.folderScope === WORKFLOW_FOLDER_ALL
+      ? ""
+      : config.folderScope === WORKFLOW_FOLDER_UNGROUPED
+        ? "AND s.folder_id IS NULL"
+        : "AND s.folder_id = ?";
+  const args: (string | number)[] = [config.userId, oldestAllowed];
+  if (
+    config.folderScope !== WORKFLOW_FOLDER_ALL &&
+    config.folderScope !== WORKFLOW_FOLDER_UNGROUPED
+  ) {
+    args.push(config.folderScope);
+  }
+  args.push(config.outletId, config.outletId);
   const r = await db.execute({
     sql: `SELECT c.id, MAX(i.published_at) AS latest_published_at
           FROM clusters c
           JOIN items i ON i.cluster_id = c.id AND i.user_id = c.user_id
+          JOIN sources s ON s.id = i.source_id AND s.user_id = i.user_id
           WHERE c.user_id = ?
             AND c.state = 'fired'
             AND i.published_at >= ?
+            ${folderClause}
             AND (
               NOT EXISTS (
                 SELECT 1 FROM outlet_sources os_any WHERE os_any.outlet_id = ?
@@ -436,7 +496,7 @@ async function selectFreshCluster(
           GROUP BY c.id
           ORDER BY COALESCE(c.ranker_score, 0) DESC, latest_published_at DESC
           LIMIT 1`,
-    args: [config.userId, oldestAllowed, config.outletId, config.outletId],
+    args,
   });
   if (r.rows.length === 0) return null;
   return {
@@ -470,12 +530,13 @@ async function logRun(
 ): Promise<void> {
   await db.execute({
     sql: `INSERT INTO workflow_autopublish_log
-            (id, user_id, outlet_id, draft_id, cluster_id, status, message, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, user_id, outlet_id, folder_scope, draft_id, cluster_id, status, message, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       crypto.randomUUID(),
       config.userId,
       config.outletId,
+      config.folderScope,
       ids.draftId ?? null,
       ids.clusterId ?? null,
       status,
@@ -490,6 +551,7 @@ function configFromRow(row: ConfigRow): WorkflowAutopublishConfig {
     id: String(row.id),
     userId: String(row.user_id),
     outletId: String(row.outlet_id),
+    folderScope: String(row.folder_scope ?? WORKFLOW_FOLDER_ALL),
     enabled: Number(row.enabled) === 1,
     intervalHours: Number(row.interval_hours),
     autoUpdate: Number(row.auto_update) === 1,
@@ -505,12 +567,16 @@ function configFromRow(row: ConfigRow): WorkflowAutopublishConfig {
 function logEntryFromRow(
   row: Record<string, unknown>,
   outletLabelById: Map<string, string>,
+  folderLabelByScope: Map<string, string>,
 ): WorkflowAutopublishLogEntry {
   const outletId = String(row.outlet_id);
+  const folderScope = String(row.folder_scope ?? WORKFLOW_FOLDER_ALL);
   return {
     id: String(row.id),
     outletId,
     outletLabel: outletLabelById.get(outletId) ?? "Unknown outlet",
+    folderScope,
+    folderLabel: labelForFolderScope(folderScope, folderLabelByScope),
     draftId: row.draft_id === null ? null : String(row.draft_id),
     clusterId: row.cluster_id === null ? null : String(row.cluster_id),
     status: String(row.status) as WorkflowAutopublishStatus,
@@ -519,22 +585,68 @@ function logEntryFromRow(
   };
 }
 
-function defaultConfig(userId: string, outletId: string): WorkflowAutopublishConfig {
-  const now = Date.now();
-  return {
-    id: "",
-    userId,
-    outletId,
-    enabled: false,
-    intervalHours: DEFAULT_INTERVAL_HOURS,
-    autoUpdate: true,
-    freshSourceWindowHours: DEFAULT_FRESH_SOURCE_WINDOW_HOURS,
-    nextRunAt: null,
-    lastRunAt: null,
-    lastDraftId: null,
-    createdAt: now,
-    updatedAt: now,
-  };
+async function listWorkflowFolderOptions(
+  userId: string,
+): Promise<WorkflowAutopublishFolderOption[]> {
+  const [foldersR, ungroupedR] = await Promise.all([
+    db.execute({
+      sql: `SELECT id, name FROM source_folders
+            WHERE user_id = ?
+            ORDER BY sort_order ASC, name ASC`,
+      args: [userId],
+    }),
+    db.execute({
+      sql: `SELECT COUNT(*) AS n FROM sources
+            WHERE user_id = ? AND folder_id IS NULL`,
+      args: [userId],
+    }),
+  ]);
+  const options: WorkflowAutopublishFolderOption[] = [
+    { scope: WORKFLOW_FOLDER_ALL, label: "All folders" },
+    ...foldersR.rows.map((row) => ({
+      scope: String(row.id),
+      label: String(row.name),
+    })),
+  ];
+  if (Number(ungroupedR.rows[0]?.n ?? 0) > 0) {
+    options.push({ scope: WORKFLOW_FOLDER_UNGROUPED, label: "Ungrouped" });
+  }
+  return options;
+}
+
+async function normalizeFolderScope(userId: string, raw: string): Promise<string> {
+  const scope = raw.trim();
+  if (!scope || scope === WORKFLOW_FOLDER_ALL) return WORKFLOW_FOLDER_ALL;
+  if (scope === WORKFLOW_FOLDER_UNGROUPED) return WORKFLOW_FOLDER_UNGROUPED;
+  const folder = await db.execute({
+    sql: `SELECT 1 FROM source_folders WHERE id = ? AND user_id = ?`,
+    args: [scope, userId],
+  });
+  return folder.rows.length > 0 ? scope : WORKFLOW_FOLDER_ALL;
+}
+
+async function workflowConfigExists(
+  userId: string,
+  outletId: string,
+  folderScope: string,
+): Promise<boolean> {
+  const r = await db.execute({
+    sql: `SELECT 1 FROM workflow_autopublish_configs
+          WHERE user_id = ? AND outlet_id = ? AND folder_scope = ?
+          LIMIT 1`,
+    args: [userId, outletId, folderScope],
+  });
+  return r.rows.length > 0;
+}
+
+function labelForFolderScope(scope: string, folderLabelByScope: Map<string, string>): string {
+  if (scope === WORKFLOW_FOLDER_ALL) return "All folders";
+  if (scope === WORKFLOW_FOLDER_UNGROUPED) return "Ungrouped";
+  return folderLabelByScope.get(scope) ?? "Deleted folder";
+}
+
+function workflowKey(outletId: string, folderScope: string): string {
+  return `${outletId}:${folderScope}`;
 }
 
 function normalizeOption<T extends readonly number[]>(
