@@ -6,7 +6,10 @@ import {
   WORKFLOW_INTERVAL_MAX_HOURS,
   WORKFLOW_INTERVAL_MIN_HOURS,
 } from "@/extensions/workflow-autopublish/types";
-import { saveWorkflowAutopublishAction } from "@/extensions/workflow-autopublish/actions";
+import {
+  deleteWorkflowAutopublishAction,
+  saveWorkflowAutopublishAction,
+} from "@/extensions/workflow-autopublish/actions";
 import { loadWorkflowAutopublishState } from "@/extensions/workflow-autopublish/server";
 import { ensureSchema } from "@/lib/db";
 import { AuthRequiredError, canAccessSettings, requireSession } from "@/lib/session";
@@ -48,6 +51,9 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       {sp.saved === "workflow_autopublish" ? <Banner kind="success">Saved Workflow.</Banner> : null}
+      {sp.saved === "workflow_deleted" ? (
+        <Banner kind="success">Workflow deleted.</Banner>
+      ) : null}
       {sp.error === "extension_locked_by_admin" ? (
         <Banner kind="error">That extension is disabled by your admin.</Banner>
       ) : null}
@@ -82,25 +88,40 @@ export default async function WorkflowsPage({ searchParams }: PageProps) {
             <WorkflowField label="Recent runs" value={`${state.logs.length} shown`} />
           </section>
 
-          <WorkflowForm
-            title="New Workflow"
-            outlets={state.outlets}
-            folderOptions={state.folderOptions}
-          />
-
-          {state.workflows.length > 0 ? (
-            <section className="space-y-3">
-              {state.workflows.map((workflow) => (
-                <WorkflowForm
-                  key={workflow.id}
-                  title={`${workflow.outletLabel} · ${workflow.folderLabel}`}
-                  outlets={state.outlets}
-                  folderOptions={state.folderOptions}
-                  workflow={workflow}
-                />
-              ))}
-            </section>
-          ) : null}
+          {state.workflows.length === 0 ? (
+            <WorkflowForm
+              title="New Workflow"
+              outlets={state.outlets}
+              folderOptions={state.folderOptions}
+            />
+          ) : (
+            <>
+              <section className="space-y-2">
+                {state.workflows.map((workflow) => (
+                  <WorkflowDisclosure
+                    key={workflow.id}
+                    outlets={state.outlets}
+                    folderOptions={state.folderOptions}
+                    workflow={workflow}
+                  />
+                ))}
+              </section>
+              <details className="fp-disclosure rounded-lg border" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
+                <summary className="fp-disclosure-summary flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-[13px] font-medium">
+                  <span>+ Add workflow</span>
+                  <span aria-hidden className="fp-disclosure-arrow" style={{ color: "var(--fg-muted)" }}>›</span>
+                </summary>
+                <div className="border-t px-4 py-4" style={{ borderColor: "var(--border)" }}>
+                  <WorkflowForm
+                    title="New Workflow"
+                    outlets={state.outlets}
+                    folderOptions={state.folderOptions}
+                    bare
+                  />
+                </div>
+              </details>
+            </>
+          )}
         </>
       )}
 
@@ -145,11 +166,15 @@ function WorkflowForm({
   outlets,
   folderOptions,
   workflow,
+  bare = false,
+  hideHeader = false,
 }: {
   title: string;
   outlets: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["outlets"];
   folderOptions: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["folderOptions"];
   workflow?: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["workflows"][number];
+  bare?: boolean;
+  hideHeader?: boolean;
 }) {
   const config = workflow?.config;
   const connected = workflow ? workflow.connected : outlets.some((outlet) => outlet.connected);
@@ -158,45 +183,45 @@ function WorkflowForm({
     workflow && config && !folderOptions.some((folder) => folder.scope === config.folderScope)
       ? [{ scope: config.folderScope, label: workflow.folderLabel }, ...folderOptions]
       : folderOptions;
+  const wrapperClass = bare ? "space-y-4" : "rounded-lg border p-4 space-y-4";
+  const wrapperStyle = bare ? undefined : { borderColor: "var(--border)", background: "var(--bg)" };
   return (
-    <form
-      action={saveWorkflowAutopublishAction}
-      className="rounded-lg border p-4 space-y-4"
-      style={{ borderColor: "var(--border)", background: "var(--bg)" }}
-    >
+    <form action={saveWorkflowAutopublishAction} className={wrapperClass} style={wrapperStyle}>
       {workflow ? (
         <>
           <input type="hidden" name="outletId" value={workflow.outletId} />
           <input type="hidden" name="previousFolderScope" value={workflow.folderScope} />
         </>
       ) : null}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold">{title}</h2>
-            {workflow ? (
-              <span className={workflowStateChip(workflow).className}>
-                {workflowStateChip(workflow).label}
-              </span>
-            ) : null}
+      {hideHeader ? null : (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold">{title}</h2>
+              {workflow ? (
+                <span className={workflowStateChip(workflow).className}>
+                  {workflowStateChip(workflow).label}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-[12px]" style={{ color: "var(--fg-muted)" }}>
+              {workflow ? workflowStateLine(workflow) : "Create one scheduled lane."}
+            </p>
           </div>
-          <p className="mt-1 text-[12px]" style={{ color: "var(--fg-muted)" }}>
-            {workflow ? workflowStateLine(workflow) : "Create one scheduled lane."}
-          </p>
+          <label className="inline-flex items-center gap-2 text-[13px]">
+            <input
+              type="checkbox"
+              name="enabled"
+              value="1"
+              defaultChecked={config?.enabled ?? true}
+              disabled={!connected}
+            />
+            Enabled
+          </label>
         </div>
-        <label className="inline-flex items-center gap-2 text-[13px]">
-          <input
-            type="checkbox"
-            name="enabled"
-            value="1"
-            defaultChecked={config?.enabled ?? true}
-            disabled={!connected}
-          />
-          Enabled
-        </label>
-      </div>
+      )}
 
-      {workflow ? (
+      {workflow && !hideHeader ? (
         <div className="grid gap-3 sm:grid-cols-3">
           <WorkflowField
             label="Next run"
@@ -290,12 +315,81 @@ function WorkflowForm({
           />
           Auto update before publish
         </label>
+        {hideHeader ? (
+          <label className="inline-flex items-center gap-2 text-[13px]">
+            <input
+              type="checkbox"
+              name="enabled"
+              value="1"
+              defaultChecked={config?.enabled ?? true}
+              disabled={!connected}
+            />
+            Enabled
+          </label>
+        ) : null}
         <SubmitButton className="fp-btn fp-btn-primary" pendingLabel="Saving" disabled={!connected}>
           Save Workflow
         </SubmitButton>
         <PendingMessage>Writing Workflow settings.</PendingMessage>
+        {workflow ? (
+          <button
+            type="submit"
+            formAction={deleteWorkflowAutopublishAction}
+            formNoValidate
+            className="fp-btn fp-btn-danger ml-auto"
+          >
+            Delete workflow
+          </button>
+        ) : null}
       </div>
     </form>
+  );
+}
+
+function WorkflowDisclosure({
+  outlets,
+  folderOptions,
+  workflow,
+}: {
+  outlets: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["outlets"];
+  folderOptions: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["folderOptions"];
+  workflow: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["workflows"][number];
+}) {
+  const chip = workflowStateChip(workflow);
+  const nextRunLabel = workflow.config.nextRunAt
+    ? `next ${formatDateTime(workflow.config.nextRunAt)}`
+    : workflow.config.enabled
+      ? "next run pending"
+      : "off";
+  return (
+    <details
+      className="fp-disclosure rounded-lg border"
+      style={{ borderColor: "var(--border)", background: "var(--bg)" }}
+    >
+      <summary className="fp-disclosure-summary flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 text-[13px]">
+        <span className={chip.className}>{chip.label}</span>
+        <span className="min-w-0 truncate font-medium">
+          {workflow.outletLabel} <span style={{ color: "var(--fg-muted)" }}>·</span>{" "}
+          {workflow.folderLabel}
+        </span>
+        <span className="ml-auto text-[12px]" style={{ color: "var(--fg-muted)" }}>
+          {formatCadence(workflow.config.intervalHours)} · {nextRunLabel}
+        </span>
+        <span aria-hidden className="fp-disclosure-arrow" style={{ color: "var(--fg-muted)" }}>
+          ›
+        </span>
+      </summary>
+      <div className="border-t px-4 py-4" style={{ borderColor: "var(--border)" }}>
+        <WorkflowForm
+          title={`${workflow.outletLabel} · ${workflow.folderLabel}`}
+          outlets={outlets}
+          folderOptions={folderOptions}
+          workflow={workflow}
+          bare
+          hideHeader
+        />
+      </div>
+    </details>
   );
 }
 

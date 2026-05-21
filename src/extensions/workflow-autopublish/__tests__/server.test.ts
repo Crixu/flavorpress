@@ -8,6 +8,7 @@ import {
 import { setExtensionEnabled } from "@/lib/v1/settings";
 import { WORKFLOW_AUTOPUBLISH_ID, WORKFLOW_FOLDER_ALL } from "../types";
 import {
+  deleteWorkflowAutopublishConfig,
   loadWorkflowAutopublishState,
   runDueAutopublishWorkflows,
   saveWorkflowAutopublishConfig,
@@ -127,6 +128,111 @@ describe("workflow autopublish config", () => {
     expect(state.workflows[0]!.folderScope).toBe(folderId);
     expect(state.workflows[0]!.folderLabel).toBe("Deleted folder");
     expect(state.workflows[0]!.config.intervalHours).toBe(24);
+  });
+
+  it("reschedules next_run_at when cadence changes after a prior run", async () => {
+    const { userA } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      enabled: true,
+      intervalHours: 24,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+
+    const fakeLastRunAt = Date.now() - 5 * 60 * 1000;
+    await db.execute({
+      sql: `UPDATE workflow_autopublish_configs SET last_run_at = ?, next_run_at = ?
+            WHERE user_id = ? AND outlet_id = ?`,
+      args: [fakeLastRunAt, fakeLastRunAt + 24 * 60 * 60 * 1000, userA.id, outletId],
+    });
+
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      previousFolderScope: WORKFLOW_FOLDER_ALL,
+      enabled: true,
+      intervalHours: 1,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+
+    const state = await loadWorkflowAutopublishState(userA.id);
+    const workflow = state.workflows[0]!;
+    expect(workflow.config.intervalHours).toBe(1);
+    expect(workflow.config.nextRunAt).toBe(fakeLastRunAt + 60 * 60 * 1000);
+  });
+
+  it("schedules next_run_at to now when re-enabling a workflow with no prior run", async () => {
+    const { userA } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      enabled: false,
+      intervalHours: 6,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+
+    const before = Date.now();
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      previousFolderScope: WORKFLOW_FOLDER_ALL,
+      enabled: true,
+      intervalHours: 6,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+    const after = Date.now();
+
+    const state = await loadWorkflowAutopublishState(userA.id);
+    const nextRunAt = state.workflows[0]!.config.nextRunAt;
+    expect(nextRunAt).not.toBeNull();
+    expect(nextRunAt!).toBeGreaterThanOrEqual(before);
+    expect(nextRunAt!).toBeLessThanOrEqual(after);
+  });
+
+  it("deletes a workflow by (user, outlet, folder) and is idempotent on a missing row", async () => {
+    const { userA } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      enabled: true,
+      intervalHours: 12,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+
+    await deleteWorkflowAutopublishConfig({
+      userId: userA.id,
+      outletId,
+      folderScope: WORKFLOW_FOLDER_ALL,
+    });
+
+    let state = await loadWorkflowAutopublishState(userA.id);
+    expect(state.workflows).toHaveLength(0);
+
+    await deleteWorkflowAutopublishConfig({
+      userId: userA.id,
+      outletId,
+      folderScope: WORKFLOW_FOLDER_ALL,
+    });
+
+    state = await loadWorkflowAutopublishState(userA.id);
+    expect(state.workflows).toHaveLength(0);
   });
 
   it("skips due runs when the extension toggle is disabled", async () => {
