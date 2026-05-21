@@ -15,7 +15,13 @@ import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
 
 const ANTHROPIC_KEY_PATTERN = /^sk-ant-[a-zA-Z0-9_-]{10,}$/;
-const SETTINGS_SECTIONS = new Set(["authentication", "models", "extensions", "library"]);
+const SETTINGS_SECTIONS = new Set([
+  "authentication",
+  "models",
+  "extensions",
+  "library",
+  "workflow-autopublish",
+]);
 
 type Validator = (value: string) => string | null;
 
@@ -122,6 +128,7 @@ export async function toggleExtensionAction(formData: FormData): Promise<void> {
   }
   await setExtensionEnabled(extensionId, enabled, session.userId);
   revalidatePath("/settings");
+  revalidatePath("/", "layout");
   revalidatePath("/editor", "layout");
   redirect(
     settingsRedirectUrl(formData, {

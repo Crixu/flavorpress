@@ -387,4 +387,21 @@ describe("global extension kill switch", () => {
       error: "Simulate comments is disabled in Settings.",
     });
   });
+
+  it("workflow autopublish action refuses when admin blocked extension access", async () => {
+    const userId = await makeUser({ email: "writer@example.com" });
+    await loginAs(userId);
+    const { setUserExtensionAccess } = await import("@/lib/v1/settings");
+    await setUserExtensionAccess("workflow-autopublish", userId, false);
+
+    const { saveWorkflowAutopublishAction } =
+      await import("@/extensions/workflow-autopublish/actions");
+    const to = await callRedirect(saveWorkflowAutopublishAction, {
+      section: "workflow-autopublish",
+      outletId: "open-tab-outlet",
+      enabled: "1",
+    });
+
+    expect(to).toBe("/settings?section=workflow-autopublish&error=extension_locked_by_admin");
+  });
 });
