@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/session";
-import { setExtensionEnabled, setSetting, SETTING_KEYS } from "./settings";
+import {
+  getGloballyDisabledExtensionIds,
+  setExtensionEnabled,
+  setSetting,
+  SETTING_KEYS,
+} from "./settings";
 import { findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
@@ -106,6 +111,10 @@ export async function toggleExtensionAction(formData: FormData): Promise<void> {
     redirect(settingsRedirectUrl(formData, { error: "invalid_extension" }));
   }
   const enabled = String(formData.get("enabled") ?? "") === "1";
+  const globallyDisabled = await getGloballyDisabledExtensionIds();
+  if (globallyDisabled.has(extensionId)) {
+    redirect(settingsRedirectUrl(formData, { error: "extension_locked_by_admin" }));
+  }
   await setExtensionEnabled(extensionId, enabled, session.userId);
   revalidatePath("/settings");
   revalidatePath("/editor", "layout");

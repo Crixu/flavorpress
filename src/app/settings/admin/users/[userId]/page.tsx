@@ -79,11 +79,17 @@ export default async function AdminUserPage({ params, searchParams }: PageProps)
           ) : null}
           {sp.saved && sp.saved !== "extension" ? <Banner>Saved source change.</Banner> : null}
           {sp.error === "invalid_extension" ? <ErrorBanner>Unknown extension.</ErrorBanner> : null}
+          {sp.error === "extension_locked_globally" ? (
+            <ErrorBanner>
+              That extension is disabled globally. Re-enable it in Admin / Extensions first.
+            </ErrorBanner>
+          ) : null}
 
           <UserSummary snapshot={snapshot} />
           <ExtensionsSection
             userId={snapshot.user.id}
             disabledExtensionIds={snapshot.disabledExtensionIds}
+            globallyDisabledExtensionIds={snapshot.globallyDisabledExtensionIds}
           />
           <OutletsSection outlets={snapshot.outlets} />
           <FoldersSection folders={snapshot.folders} />
@@ -139,23 +145,33 @@ function Metric({ label, value, over = false }: { label: string; value: string; 
 function ExtensionsSection({
   userId,
   disabledExtensionIds,
+  globallyDisabledExtensionIds,
 }: {
   userId: string;
   disabledExtensionIds: string[];
+  globallyDisabledExtensionIds: string[];
 }) {
   const disabled = new Set(disabledExtensionIds);
+  const globallyDisabled = new Set(globallyDisabledExtensionIds);
   return (
     <section className="space-y-3">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Extensions</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-          Control which source helpers and editor inspectors run for this user.
+          Control which source helpers and editor inspectors run for this user. Globally-disabled
+          extensions are locked here; manage them in{" "}
+          <Link href="/settings/admin/extensions" className="underline">
+            Admin / Extensions
+          </Link>
+          .
         </p>
       </div>
       <div className="fp-card overflow-hidden">
         <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
           {EXTENSION_METADATA.map((extension) => {
-            const enabled = !disabled.has(extension.id);
+            const isGloballyDisabled = globallyDisabled.has(extension.id);
+            const userDisabled = disabled.has(extension.id);
+            const enabled = !userDisabled && !isGloballyDisabled;
             return (
               <li
                 key={extension.id}
@@ -164,25 +180,41 @@ function ExtensionsSection({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-semibold">{extension.label}</span>
-                    <span className={enabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}>
-                      {enabled ? "Enabled" : "Disabled"}
-                    </span>
+                    {isGloballyDisabled ? (
+                      <span className="fp-chip fp-chip-rose">Disabled globally</span>
+                    ) : (
+                      <span
+                        className={
+                          enabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"
+                        }
+                      >
+                        {enabled ? "Enabled" : "Disabled"}
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
                     {extension.description}
                   </p>
                 </div>
-                <form action={toggleUserExtensionForAdminAction} className="md:justify-self-end">
-                  <input type="hidden" name="userId" value={userId} />
-                  <input type="hidden" name="extensionId" value={extension.id} />
-                  <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
-                  <SubmitButton
-                    className={enabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
-                    pendingLabel={enabled ? "Disabling" : "Enabling"}
-                  >
-                    {enabled ? "Disable" : "Enable"}
-                  </SubmitButton>
-                </form>
+                {isGloballyDisabled ? (
+                  <div className="md:justify-self-end">
+                    <button type="button" className="fp-btn fp-btn-ghost" disabled>
+                      Locked
+                    </button>
+                  </div>
+                ) : (
+                  <form action={toggleUserExtensionForAdminAction} className="md:justify-self-end">
+                    <input type="hidden" name="userId" value={userId} />
+                    <input type="hidden" name="extensionId" value={extension.id} />
+                    <input type="hidden" name="enabled" value={enabled ? "0" : "1"} />
+                    <SubmitButton
+                      className={enabled ? "fp-btn fp-btn-ghost" : "fp-btn fp-btn-primary"}
+                      pendingLabel={enabled ? "Disabling" : "Enabling"}
+                    >
+                      {enabled ? "Disable" : "Enable"}
+                    </SubmitButton>
+                  </form>
+                )}
               </li>
             );
           })}

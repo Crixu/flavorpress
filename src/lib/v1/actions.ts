@@ -96,7 +96,7 @@ import { createWPAuthorizeState } from "./wp-authorize-state";
 import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { findClaimingSourceExtension } from "@/extensions/source-extensions";
-import { getAnthropicDraftModel, getDisabledExtensionIds } from "./settings";
+import { getAnthropicDraftModel, getEffectiveDisabledExtensionIds } from "./settings";
 import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 import { recordSourceAdded, recordWordPressPushed } from "./analytics";
@@ -434,7 +434,7 @@ export async function addSourceAction(formData: FormData) {
   // that *would* have claimed an input is treated as an error so we don't
   // silently fall through to detectKind (which would store, say, an x.com
   // profile URL as an RSS feed and 404 on poll).
-  const disabled = await getDisabledExtensionIds(session.userId);
+  const disabled = await getEffectiveDisabledExtensionIds(session.userId);
   for (const input of inputs) {
     const claimer = findClaimingSourceExtension(input);
     if (claimer && disabled.has(claimer.id)) {

@@ -7,7 +7,11 @@ import { db, ensureSchema } from "@/lib/db";
 import { requireSession, shouldShowAdminControls } from "@/lib/session";
 import { normalizePlanKey, setUserPlan } from "@/lib/plans";
 import { findExtensionMetadata } from "@/extensions/registry";
-import { setExtensionEnabled } from "@/lib/v1/settings";
+import {
+  getGloballyDisabledExtensionIds,
+  setExtensionEnabled,
+  setExtensionGloballyEnabled,
+} from "@/lib/v1/settings";
 
 async function requireAdmin() {
   const session = await requireSession();
@@ -97,6 +101,31 @@ export async function setUserPlanAction(formData: FormData): Promise<void> {
   adminRedirect({ saved: "plan" });
 }
 
+export async function toggleGlobalExtensionAction(formData: FormData): Promise<void> {
+  await ensureSchema();
+  await requireAdmin();
+  const extensionId = String(formData.get("extensionId") ?? "");
+  const enabled = String(formData.get("enabled") ?? "") === "1";
+  const path = "/settings/admin/extensions";
+  if (!findExtensionMetadata(extensionId)) {
+    adminRedirect({ error: "invalid_extension" }, path);
+  }
+  await setExtensionGloballyEnabled(extensionId, enabled);
+  revalidatePath(path);
+  revalidatePath("/settings");
+  revalidatePath("/settings/admin");
+  revalidatePath("/settings/admin/users/[userId]", "page");
+  revalidatePath("/editor", "layout");
+  adminRedirect(
+    {
+      saved: "global_extension",
+      extension: extensionId,
+      state: enabled ? "enabled" : "disabled",
+    },
+    path,
+  );
+}
+
 export async function toggleUserExtensionForAdminAction(formData: FormData): Promise<void> {
   await ensureSchema();
   await requireAdmin();
@@ -111,6 +140,11 @@ export async function toggleUserExtensionForAdminAction(formData: FormData): Pro
 
   const userR = await db.execute({ sql: `SELECT id FROM users WHERE id = ?`, args: [userId] });
   if (userR.rows.length === 0) redirect("/settings/admin");
+
+  const globallyDisabled = await getGloballyDisabledExtensionIds();
+  if (globallyDisabled.has(extensionId)) {
+    adminRedirect({ error: "extension_locked_globally" }, path);
+  }
 
   await setExtensionEnabled(extensionId, enabled, userId);
   revalidatePath("/settings/admin");
