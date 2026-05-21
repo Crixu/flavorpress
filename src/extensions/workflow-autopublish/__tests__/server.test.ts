@@ -1,12 +1,45 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
 import {
   createTwoUserFixture,
+  seedClusterForUser,
   seedFolderForUser,
   seedOutletForUser,
+  seedSourceForUser,
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
 import { setExtensionEnabled } from "@/lib/v1/settings";
 import { WORKFLOW_AUTOPUBLISH_ID, WORKFLOW_FOLDER_ALL } from "../types";
+
+const { generateDraftMock, getOutletCredentialsMock, publishToWordPressMock } = vi.hoisted(() => ({
+  generateDraftMock: vi.fn(),
+  getOutletCredentialsMock: vi.fn(),
+  publishToWordPressMock: vi.fn(),
+}));
+
+vi.mock("@/lib/v1/draft-generator", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    generateDraft: generateDraftMock,
+  };
+});
+
+vi.mock("@/lib/v1/outlets", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    getOutletCredentials: getOutletCredentialsMock,
+  };
+});
+
+vi.mock("@/lib/wordpress", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    publishToWordPress: publishToWordPressMock,
+  };
+});
+
 import {
   deleteWorkflowAutopublishConfig,
   loadWorkflowAutopublishState,
@@ -19,8 +52,22 @@ beforeEach(async () => {
   await db.execute("DELETE FROM workflow_autopublish_log");
   await db.execute("DELETE FROM workflow_autopublish_configs");
   await db.execute("DELETE FROM user_settings");
+  await db.execute("DELETE FROM drafts");
+  await db.execute("DELETE FROM items");
+  await db.execute("DELETE FROM clusters");
+  await db.execute("DELETE FROM source_folders");
+  await db.execute("DELETE FROM sources");
   await db.execute("DELETE FROM outlets");
   await db.execute("DELETE FROM users");
+  generateDraftMock.mockReset();
+  getOutletCredentialsMock.mockReset();
+  publishToWordPressMock.mockReset();
+  getOutletCredentialsMock.mockResolvedValue(null);
+  publishToWordPressMock.mockResolvedValue({
+    wpPostId: 123,
+    editLink: "https://example.com/wp-admin/post.php?post=123&action=edit",
+    modifiedAt: Date.now(),
+  });
 });
 
 describe("workflow autopublish config", () => {
@@ -259,5 +306,101 @@ describe("workflow autopublish config", () => {
     expect(logs.rows).toHaveLength(1);
     expect(String(logs.rows[0]!.status)).toBe("skipped");
     expect(String(logs.rows[0]!.message)).toMatch(/disabled/i);
+  });
+
+  it("publishes a freshly generated auto-update draft after generation marks the cluster drafted", async () => {
+    const { userA } = await createTwoUserFixture();
+    const outletId = await seedOutletForUser(userA.id);
+    const sourceId = await seedSourceForUser(userA.id);
+    const clusterId = await seedClusterForUser(userA.id, { state: "fired" });
+    await db.execute({
+      sql: `INSERT INTO items
+              (id, source_id, user_id, canonical_url, content_hash, title, lede, body,
+               published_at, fetched_at, cluster_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        "item-workflow-auto",
+        sourceId,
+        userA.id,
+        "https://source.example.com/story",
+        "hash-workflow-auto",
+        "Fresh story",
+        "A useful lead",
+        "A useful body",
+        Date.now(),
+        Date.now(),
+        clusterId,
+      ],
+    });
+    await saveWorkflowAutopublishConfig({
+      outletId,
+      userId: userA.id,
+      folderScope: WORKFLOW_FOLDER_ALL,
+      enabled: true,
+      intervalHours: 12,
+      autoUpdate: true,
+      freshSourceWindowHours: 24,
+    });
+    getOutletCredentialsMock.mockResolvedValue({
+      baseUrl: "https://wp.example.com",
+      username: "lucas",
+      appPassword: "secret",
+    });
+    generateDraftMock.mockImplementation(async () => {
+      const draftId = "draft-workflow-auto";
+      const quotes = [{ sourceId, text: "Quote from the source.", citation: "Fresh story" }];
+      await db.execute({
+        sql: `INSERT INTO drafts (
+                id, cluster_id, user_id, outlet_id, capability_version_pin, mode,
+                headline, body, quotes, voice_match_score, trace_id, created_at, state
+              ) VALUES (?, ?, ?, ?, 'v1', 'drafter', ?, ?, ?, 0.9, ?, ?, 'pre-rendered')`,
+        args: [
+          draftId,
+          clusterId,
+          userA.id,
+          outletId,
+          "Workflow headline",
+          "<p>Workflow body with source support.</p>",
+          JSON.stringify(quotes),
+          "trace-workflow-auto",
+          Date.now(),
+        ],
+      });
+      await db.execute({
+        sql: `UPDATE clusters SET state = 'drafted' WHERE id = ? AND user_id = ?`,
+        args: [clusterId, userA.id],
+      });
+      return {
+        draftId,
+        headline: "Workflow headline",
+        headlineAlternates: [],
+        body: "<p>Workflow body with source support.</p>",
+        quotes,
+        voiceMatchScore: 90,
+        angleArchive: null,
+        angleGap: null,
+        angleHint: "archive",
+        customAngle: null,
+        format: "standard",
+        traceId: "trace-workflow-auto",
+        regenerated: false,
+      };
+    });
+
+    const result = await runDueAutopublishWorkflows();
+
+    expect(result).toMatchObject({ due: 1, claimed: 1, published: 1, skipped: 0, failed: 0 });
+    expect(publishToWordPressMock).toHaveBeenCalledTimes(1);
+    const cluster = await db.execute({
+      sql: `SELECT state FROM clusters WHERE id = ? AND user_id = ?`,
+      args: [clusterId, userA.id],
+    });
+    expect(String(cluster.rows[0]!.state)).toBe("published");
+    const draft = await db.execute({
+      sql: `SELECT wp_post_id, state FROM drafts WHERE id = ? AND user_id = ?`,
+      args: ["draft-workflow-auto", userA.id],
+    });
+    expect(Number(draft.rows[0]!.wp_post_id)).toBe(123);
+    expect(String(draft.rows[0]!.state)).toBe("published");
   });
 });
