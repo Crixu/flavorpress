@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/session";
-import { WORKFLOW_FRESHNESS_OPTIONS, WORKFLOW_INTERVAL_OPTIONS } from "./types";
+import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
+import {
+  WORKFLOW_AUTOPUBLISH_ID,
+  WORKFLOW_FRESHNESS_OPTIONS,
+  WORKFLOW_INTERVAL_OPTIONS,
+} from "./types";
 import { saveWorkflowAutopublishConfig } from "./server";
 
 export async function saveWorkflowAutopublishAction(formData: FormData): Promise<void> {
@@ -14,6 +19,10 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
     String(formData.get("section") ?? "") === "workflow-autopublish"
       ? "workflow-autopublish"
       : "extensions";
+  const disabled = await getEffectiveDisabledExtensionIds(session.userId);
+  if (disabled.has(WORKFLOW_AUTOPUBLISH_ID)) {
+    redirect(`/settings?section=${section}&error=extension_locked_by_admin`);
+  }
 
   await saveWorkflowAutopublishConfig({
     outletId,

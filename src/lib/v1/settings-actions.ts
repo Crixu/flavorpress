@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/session";
 import {
+  getAdminDisabledExtensionIds,
   getGloballyDisabledExtensionIds,
   setExtensionEnabled,
   setSetting,
@@ -119,6 +120,10 @@ export async function toggleExtensionAction(formData: FormData): Promise<void> {
   const enabled = String(formData.get("enabled") ?? "") === "1";
   const globallyDisabled = await getGloballyDisabledExtensionIds();
   if (globallyDisabled.has(extensionId)) {
+    redirect(settingsRedirectUrl(formData, { error: "extension_locked_by_admin" }));
+  }
+  const adminDisabled = await getAdminDisabledExtensionIds(session.userId);
+  if (adminDisabled.has(extensionId)) {
     redirect(settingsRedirectUrl(formData, { error: "extension_locked_by_admin" }));
   }
   await setExtensionEnabled(extensionId, enabled, session.userId);

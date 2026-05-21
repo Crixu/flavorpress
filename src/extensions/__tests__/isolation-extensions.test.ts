@@ -84,6 +84,7 @@ vi.mock("@/lib/anthropic", () => ({
 vi.mock("@/lib/v1/settings", () => ({
   getAnthropicDraftModel: vi.fn().mockResolvedValue("claude-3-5-sonnet-20241022"),
   getAnthropicApiKey: vi.fn().mockResolvedValue("sk-test-fake-key"),
+  getEffectiveDisabledExtensionIds: vi.fn().mockResolvedValue(new Set<string>()),
   getSetting: vi.fn(
     async (key: string, userId: string) => settingStore.get(`${userId}:${key}`) ?? null,
   ),

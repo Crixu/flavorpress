@@ -106,6 +106,15 @@ describe("auth-foundation schema", () => {
     expect(deploymentSettings.has("updated_at")).toBe(true);
   });
 
+  it("creates user extension access table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("user_extension_access");
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("extension_id")).toBe(true);
+    expect(cols.has("enabled")).toBe(true);
+    expect(cols.has("updated_at")).toBe(true);
+  });
+
   it("creates notification_webhook_deliveries table", async () => {
     await ensureSchema();
     const cols = await tableInfo("notification_webhook_deliveries");

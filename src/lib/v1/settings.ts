@@ -106,6 +106,7 @@ export interface SettingsSnapshot {
   anthropicApiKey: { hasValue: boolean; source: "db" | "env" | "none"; preview: string | null };
   anthropicDraftModel: { value: string; source: "db" | "env" | "default" };
   disabledExtensionIds: string[];
+  adminDisabledExtensionIds: string[];
   globallyDisabledExtensionIds: string[];
   /**
    * Values for extension-registered settings, keyed by setting key.
@@ -145,6 +146,48 @@ export async function setExtensionEnabled(
     return;
   }
   await setSetting(SETTING_KEYS.disabledExtensions, userId, JSON.stringify([...current].sort()));
+}
+
+/**
+ * Admin-enforced per-user extension access. Rows are sparse: no row means
+ * the user is allowed to access the extension, and a row with enabled=0
+ * blocks access regardless of the user's own Settings preference.
+ */
+export async function getAdminDisabledExtensionIds(userId: string): Promise<Set<string>> {
+  await ensureSchema();
+  const scopedUserId = normalizeUserId(userId);
+  const r = await db.execute({
+    sql: `SELECT extension_id FROM user_extension_access
+          WHERE user_id = ? AND enabled = 0`,
+    args: [scopedUserId],
+  });
+  return new Set(r.rows.map((row) => String(row.extension_id)));
+}
+
+export async function setUserExtensionAccess(
+  extensionId: string,
+  userId: string,
+  enabled: boolean,
+): Promise<void> {
+  await ensureSchema();
+  const scopedUserId = normalizeUserId(userId);
+  if (enabled) {
+    await db.execute({
+      sql: `DELETE FROM user_extension_access
+            WHERE user_id = ? AND extension_id = ?`,
+      args: [scopedUserId, extensionId],
+    });
+    return;
+  }
+
+  await db.execute({
+    sql: `INSERT INTO user_extension_access (user_id, extension_id, enabled, updated_at)
+          VALUES (?, ?, 0, ?)
+          ON CONFLICT(user_id, extension_id) DO UPDATE SET
+            enabled = 0,
+            updated_at = excluded.updated_at`,
+    args: [scopedUserId, extensionId, Date.now()],
+  });
 }
 
 /**
@@ -204,14 +247,15 @@ export async function setExtensionGloballyEnabled(
 
 /**
  * The set the runtime should gate on. Union of the deployment-wide kill
- * switch and the user's own preferences, so a globally-disabled extension
- * stays off even for users who had never disabled it.
+ * switch, admin-enforced user blocks, and the user's own preferences.
  */
 export async function getEffectiveDisabledExtensionIds(userId: string): Promise<Set<string>> {
-  const [global, user] = await Promise.all([
+  const [global, admin, user] = await Promise.all([
     getGloballyDisabledExtensionIds(),
+    getAdminDisabledExtensionIds(userId),
     getDisabledExtensionIds(userId),
   ]);
+  for (const id of admin) global.add(id);
   for (const id of user) global.add(id);
   return global;
 }
@@ -226,13 +270,15 @@ export async function loadSettingsSnapshot(
   extensionSettingKeys: string[] = [],
 ): Promise<SettingsSnapshot> {
   await ensureSchema();
-  const [dbApiKey, dbModel, disabled, globallyDisabled, extensionValues] = await Promise.all([
-    getSetting(SETTING_KEYS.anthropicApiKey, userId),
-    getSetting(SETTING_KEYS.anthropicDraftModel, userId),
-    getDisabledExtensionIds(userId),
-    getGloballyDisabledExtensionIds(),
-    Promise.all(extensionSettingKeys.map(async (k) => [k, await getSetting(k, userId)] as const)),
-  ]);
+  const [dbApiKey, dbModel, disabled, adminDisabled, globallyDisabled, extensionValues] =
+    await Promise.all([
+      getSetting(SETTING_KEYS.anthropicApiKey, userId),
+      getSetting(SETTING_KEYS.anthropicDraftModel, userId),
+      getDisabledExtensionIds(userId),
+      getAdminDisabledExtensionIds(userId),
+      getGloballyDisabledExtensionIds(),
+      Promise.all(extensionSettingKeys.map(async (k) => [k, await getSetting(k, userId)] as const)),
+    ]);
 
   const envApiKey = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY);
   const apiKeyValue = normalizeAnthropicKey(dbApiKey) ?? envApiKey;
@@ -258,6 +304,7 @@ export async function loadSettingsSnapshot(
       source: dbModel ? "db" : process.env.ANTHROPIC_DRAFT_MODEL ? "env" : "default",
     },
     disabledExtensionIds: [...disabled].sort(),
+    adminDisabledExtensionIds: [...adminDisabled].sort(),
     globallyDisabledExtensionIds: [...globallyDisabled].sort(),
     extensionSettings,
   };

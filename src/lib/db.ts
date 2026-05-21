@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // missing row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-21.workflow-autopublish-extension";
+const SCHEMA_VERSION = "2026-05-21.extension-user-access";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -675,6 +675,16 @@ export async function ensureSchema(): Promise<void> {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (user_id, key)
       )`,
+
+      `CREATE TABLE IF NOT EXISTS user_extension_access (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        extension_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, extension_id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_extension_access_extension
+        ON user_extension_access(extension_id, enabled)`,
 
       `CREATE TABLE IF NOT EXISTS deployment_settings (
         key TEXT PRIMARY KEY,

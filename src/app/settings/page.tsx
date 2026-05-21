@@ -89,6 +89,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
   const workflowAutopublishAvailable =
     !snapshot.disabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID) &&
+    !snapshot.adminDisabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID) &&
     !snapshot.globallyDisabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID);
   if (section === "workflow-autopublish" && !workflowAutopublishAvailable) {
     redirect("/settings?section=extensions");
@@ -134,6 +135,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <ExtensionsSectionPane
             snapshot={snapshot}
             disabledExtensionIds={snapshot.disabledExtensionIds}
+            adminDisabledExtensionIds={snapshot.adminDisabledExtensionIds}
             globallyDisabledExtensionIds={snapshot.globallyDisabledExtensionIds}
           />
         )}
@@ -240,13 +242,16 @@ function ModelsSectionPane({
 function ExtensionsSectionPane({
   snapshot,
   disabledExtensionIds,
+  adminDisabledExtensionIds,
   globallyDisabledExtensionIds,
 }: {
   snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
   disabledExtensionIds: string[];
+  adminDisabledExtensionIds: string[];
   globallyDisabledExtensionIds: string[];
 }) {
   const disabled = new Set(disabledExtensionIds);
+  const adminDisabled = new Set(adminDisabledExtensionIds);
   const globallyDisabled = new Set(globallyDisabledExtensionIds);
 
   return (
@@ -263,8 +268,9 @@ function ExtensionsSectionPane({
       <ul className="fp-card divide-y" style={{ borderColor: "var(--border)" }}>
         {EXTENSION_METADATA.map((ext) => {
           const isGloballyDisabled = globallyDisabled.has(ext.id);
+          const isAdminDisabled = adminDisabled.has(ext.id);
           const userDisabled = disabled.has(ext.id);
-          const isEnabled = !userDisabled && !isGloballyDisabled;
+          const isEnabled = !userDisabled && !isGloballyDisabled && !isAdminDisabled;
           return (
             <li key={ext.id} className="flex items-start gap-4 p-4">
               <div className="min-w-0 flex-1 space-y-1">
@@ -272,6 +278,8 @@ function ExtensionsSectionPane({
                   <span className="text-[14px] font-semibold">{ext.label}</span>
                   {isGloballyDisabled ? (
                     <span className="fp-chip fp-chip-rose">Disabled by admin</span>
+                  ) : isAdminDisabled ? (
+                    <span className="fp-chip fp-chip-rose">Access blocked</span>
                   ) : (
                     <span
                       className={isEnabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}
@@ -284,7 +292,7 @@ function ExtensionsSectionPane({
                   {ext.description}
                 </p>
               </div>
-              {isGloballyDisabled ? (
+              {isGloballyDisabled || isAdminDisabled ? (
                 <button type="button" className="fp-btn fp-btn-ghost shrink-0" disabled>
                   Locked
                 </button>

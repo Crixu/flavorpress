@@ -7,7 +7,7 @@ import { sanitizeDraftHtml } from "@/lib/draft-html-sanitizer";
 import { recordWordPressPushed } from "@/lib/v1/analytics";
 import { generateDraft } from "@/lib/v1/draft-generator";
 import { getOutletCredentials, listOutlets } from "@/lib/v1/outlets";
-import { getDisabledExtensionIds } from "@/lib/v1/settings";
+import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "@/lib/v1/trust";
 import {
   WORKFLOW_AUTOPUBLISH_ID,
@@ -223,7 +223,7 @@ async function runOneWorkflow(
   now: number,
 ): Promise<"published" | "skipped" | "failed"> {
   try {
-    const disabled = await getDisabledExtensionIds(config.userId);
+    const disabled = await getEffectiveDisabledExtensionIds(config.userId);
     if (disabled.has(WORKFLOW_AUTOPUBLISH_ID)) {
       await logRun(config, "skipped", "Workflow autopublish extension is disabled.");
       return "skipped";

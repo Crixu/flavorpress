@@ -69,6 +69,7 @@ async function callRedirect(
 
 beforeEach(async () => {
   await ensureSchema();
+  await db.execute("DELETE FROM user_extension_access");
   await db.execute("DELETE FROM user_settings");
   await db.execute("DELETE FROM users");
   await db.execute("DELETE FROM app_settings");
@@ -197,13 +198,14 @@ describe("toggleExtensionAction - per-user", () => {
 });
 
 describe("toggleUserExtensionForAdminAction", () => {
-  it("admin toggles a selected user's extension without changing their own", async () => {
+  it("admin blocks a selected user's extension access without changing their own preference", async () => {
     const adminId = await makeUser({ email: "admin@example.com", isAdmin: true });
     const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
     await loginAs(adminId);
 
     const { toggleUserExtensionForAdminAction } = await import("@/app/settings/admin/actions");
-    const { getDisabledExtensionIds } = await import("@/lib/v1/settings");
+    const { getAdminDisabledExtensionIds, getDisabledExtensionIds } =
+      await import("@/lib/v1/settings");
     const to = await callRedirect(toggleUserExtensionForAdminAction, {
       userId,
       extensionId: "fact-check",
@@ -211,17 +213,18 @@ describe("toggleUserExtensionForAdminAction", () => {
     });
 
     expect(to).toBe(
-      `/settings/admin/users/${userId}?saved=extension&extension=fact-check&state=disabled`,
+      `/settings/admin/users/${userId}?saved=extension_access&extension=fact-check&state=disabled`,
     );
-    await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set(["fact-check"]));
-    await expect(getDisabledExtensionIds(adminId)).resolves.toEqual(new Set());
+    await expect(getAdminDisabledExtensionIds(userId)).resolves.toEqual(new Set(["fact-check"]));
+    await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set());
+    await expect(getAdminDisabledExtensionIds(adminId)).resolves.toEqual(new Set());
   });
 
   it("refuses to toggle when the extension is globally disabled", async () => {
     const adminId = await makeUser({ email: "admin@example.com", isAdmin: true });
     const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
     await loginAs(adminId);
-    const { setExtensionGloballyEnabled, getDisabledExtensionIds } =
+    const { setExtensionGloballyEnabled, getAdminDisabledExtensionIds } =
       await import("@/lib/v1/settings");
     await setExtensionGloballyEnabled("fact-check", false);
 
@@ -233,7 +236,25 @@ describe("toggleUserExtensionForAdminAction", () => {
     });
 
     expect(to).toBe(`/settings/admin/users/${userId}?error=extension_locked_globally`);
-    await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set());
+    await expect(getAdminDisabledExtensionIds(userId)).resolves.toEqual(new Set());
+  });
+
+  it("can redirect back to the admin extensions matrix", async () => {
+    const adminId = await makeUser({ email: "admin@example.com", isAdmin: true });
+    const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
+    await loginAs(adminId);
+
+    const { toggleUserExtensionForAdminAction } = await import("@/app/settings/admin/actions");
+    const to = await callRedirect(toggleUserExtensionForAdminAction, {
+      returnTo: "extensions",
+      userId,
+      extensionId: "fact-check",
+      enabled: "0",
+    });
+
+    expect(to).toBe(
+      "/settings/admin/extensions?saved=extension_access&extension=fact-check&state=disabled",
+    );
   });
 });
 
@@ -258,14 +279,19 @@ describe("global extension kill switch", () => {
     expect(r.rows.length).toBe(0);
   });
 
-  it("getEffectiveDisabledExtensionIds unions global and per-user disables", async () => {
+  it("getEffectiveDisabledExtensionIds unions global, admin, and per-user disables", async () => {
     const userId = await makeUser({ email: "writer@example.com" });
-    const { setExtensionGloballyEnabled, setExtensionEnabled, getEffectiveDisabledExtensionIds } =
-      await import("@/lib/v1/settings");
+    const {
+      setExtensionGloballyEnabled,
+      setExtensionEnabled,
+      setUserExtensionAccess,
+      getEffectiveDisabledExtensionIds,
+    } = await import("@/lib/v1/settings");
     await setExtensionGloballyEnabled("fact-check", false);
     await setExtensionEnabled("related-images", false, userId);
+    await setUserExtensionAccess("comment-courtroom", userId, false);
     await expect(getEffectiveDisabledExtensionIds(userId)).resolves.toEqual(
-      new Set(["fact-check", "related-images"]),
+      new Set(["comment-courtroom", "fact-check", "related-images"]),
     );
 
     const otherId = await makeUser({ email: "other@example.com" });
@@ -314,5 +340,68 @@ describe("global extension kill switch", () => {
     });
     expect(to).toBe("/settings?section=extensions&error=extension_locked_by_admin");
     await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set());
+  });
+
+  it("user toggleExtensionAction refuses when admin blocked extension access", async () => {
+    const userId = await makeUser({ email: "writer@example.com" });
+    await loginAs(userId);
+    const { setUserExtensionAccess, getDisabledExtensionIds } = await import("@/lib/v1/settings");
+    await setUserExtensionAccess("fact-check", userId, false);
+
+    const { toggleExtensionAction } = await import("@/lib/v1/settings-actions");
+    const to = await callRedirect(toggleExtensionAction, {
+      section: "extensions",
+      extensionId: "fact-check",
+      enabled: "1",
+    });
+    expect(to).toBe("/settings?section=extensions&error=extension_locked_by_admin");
+    await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set());
+  });
+
+  it("editor extension actions refuse when admin blocked extension access", async () => {
+    const userId = await makeUser({ email: "writer@example.com" });
+    await loginAs(userId);
+    const { setUserExtensionAccess } = await import("@/lib/v1/settings");
+    await setUserExtensionAccess("fact-check", userId, false);
+    await setUserExtensionAccess("related-images", userId, false);
+    await setUserExtensionAccess("comment-courtroom", userId, false);
+
+    const formData = new FormData();
+    formData.set("draftId", "draft-open-tab");
+
+    const { runFactCheckAction } = await import("@/extensions/fact-check/actions");
+    await expect(runFactCheckAction(formData)).resolves.toMatchObject({
+      ok: false,
+      error: "Fact-check is disabled in Settings.",
+    });
+
+    const { runRelatedImagesAction } = await import("@/extensions/related-images/actions");
+    await expect(runRelatedImagesAction(formData)).resolves.toMatchObject({
+      ok: false,
+      error: "Related images is disabled in Settings.",
+    });
+
+    const { runCommentCourtroomAction } = await import("@/extensions/comment-courtroom/actions");
+    await expect(runCommentCourtroomAction(formData)).resolves.toMatchObject({
+      ok: false,
+      error: "Simulate comments is disabled in Settings.",
+    });
+  });
+
+  it("workflow autopublish action refuses when admin blocked extension access", async () => {
+    const userId = await makeUser({ email: "writer@example.com" });
+    await loginAs(userId);
+    const { setUserExtensionAccess } = await import("@/lib/v1/settings");
+    await setUserExtensionAccess("workflow-autopublish", userId, false);
+
+    const { saveWorkflowAutopublishAction } =
+      await import("@/extensions/workflow-autopublish/actions");
+    const to = await callRedirect(saveWorkflowAutopublishAction, {
+      section: "workflow-autopublish",
+      outletId: "open-tab-outlet",
+      enabled: "1",
+    });
+
+    expect(to).toBe("/settings?section=workflow-autopublish&error=extension_locked_by_admin");
   });
 });
