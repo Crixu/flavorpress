@@ -24,13 +24,6 @@ import {
 import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
-import { saveWorkflowAutopublishAction } from "@/extensions/workflow-autopublish/actions";
-import { loadWorkflowAutopublishState } from "@/extensions/workflow-autopublish/server";
-import {
-  WORKFLOW_AUTOPUBLISH_ID,
-  WORKFLOW_FRESHNESS_OPTIONS,
-  WORKFLOW_INTERVAL_OPTIONS,
-} from "@/extensions/workflow-autopublish/types";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 import { LibraryMaintenance } from "./_components/LibraryMaintenance";
 import { SettingsSidebar } from "./_components/SettingsSidebar";
@@ -69,7 +62,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const section = sp.section ?? "authentication";
 
-  const [snapshot, auth, draftCountR, workflowState] = await Promise.all([
+  const [snapshot, auth, draftCountR] = await Promise.all([
     loadSettingsSnapshot(
       session.userId,
       extensionSettingFields.map((f) => f.key),
@@ -84,24 +77,13 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ?`,
       args: [session.userId],
     }),
-    loadWorkflowAutopublishState(session.userId),
   ]);
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
-  const workflowAutopublishAvailable =
-    !snapshot.disabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID) &&
-    !snapshot.adminDisabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID) &&
-    !snapshot.globallyDisabledExtensionIds.includes(WORKFLOW_AUTOPUBLISH_ID);
-  if (section === "workflow-autopublish" && !workflowAutopublishAvailable) {
-    redirect("/settings?section=extensions");
-  }
+  if (section === "workflow-autopublish") redirect("/workflows");
 
   return (
     <div className="fp-settings-shell">
-      <SettingsSidebar
-        active={section}
-        showAdmin={shouldShowAdminControls(session)}
-        showWorkflowAutopublish={workflowAutopublishAvailable}
-      />
+      <SettingsSidebar active={section} showAdmin={shouldShowAdminControls(session)} />
       <div className="fp-settings-detail">
         {sp.saved ? <Banner kind="success">Saved {labelFor(sp.saved)}.</Banner> : null}
         {sp.cleared ? (
@@ -138,9 +120,6 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             adminDisabledExtensionIds={snapshot.adminDisabledExtensionIds}
             globallyDisabledExtensionIds={snapshot.globallyDisabledExtensionIds}
           />
-        )}
-        {section === "workflow-autopublish" && (
-          <WorkflowAutopublishPane disabled={false} state={workflowState} />
         )}
         {section === "library" && <LibrarySectionPane draftCount={draftCount} />}
       </div>
@@ -342,276 +321,6 @@ function ExtensionsSectionPane({
       )}
     </div>
   );
-}
-
-function WorkflowAutopublishPane({
-  disabled,
-  state,
-}: {
-  disabled: boolean;
-  state: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>;
-}) {
-  const enabledCount = state.outlets.filter((outlet) => outlet.config.enabled).length;
-  const nextRunAt = state.outlets
-    .map((outlet) => outlet.config.nextRunAt)
-    .filter((value): value is number => value !== null)
-    .sort((a, b) => a - b)[0];
-
-  return (
-    <section className="fp-card p-5 space-y-5">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-base font-semibold">Workflow autopublish</h3>
-          <span className={disabled ? "fp-chip fp-chip-rose" : "fp-chip fp-chip-amber"}>
-            {disabled ? "Extension disabled" : "Scope override"}
-          </span>
-        </div>
-        <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          Off by default. When enabled for an outlet, cron drafts from one fresh fired cluster and
-          publishes it to WordPress.
-        </p>
-      </div>
-
-      {state.outlets.length === 0 ? (
-        <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>
-          Connect a WordPress outlet on Voice before enabling this Workflow.
-        </p>
-      ) : (
-        <div className="space-y-4">
-          <div
-            className="grid gap-3 rounded-lg border p-3 text-[12.5px] sm:grid-cols-3"
-            style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}
-          >
-            <WorkflowField
-              label="Outlets"
-              value={`${enabledCount}/${state.outlets.length} enabled`}
-            />
-            <WorkflowField
-              label="Next due run"
-              value={nextRunAt ? formatDateTime(nextRunAt) : "None scheduled"}
-            />
-            <WorkflowField label="Recent runs" value={`${state.logs.length} shown`} />
-          </div>
-
-          {state.outlets.map((outlet) => (
-            <form
-              key={outlet.id}
-              action={saveWorkflowAutopublishAction}
-              className="rounded-lg border p-4 space-y-4"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <input type="hidden" name="outletId" value={outlet.id} />
-              <input type="hidden" name="section" value="workflow-autopublish" />
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-sm font-semibold">{outlet.label}</div>
-                    <span className={workflowStateChip(outlet, disabled).className}>
-                      {workflowStateChip(outlet, disabled).label}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[12px]" style={{ color: "var(--fg-muted)" }}>
-                    {workflowStateLine(outlet, disabled)}
-                  </p>
-                </div>
-                <label className="inline-flex items-center gap-2 text-[13px]">
-                  <input
-                    type="checkbox"
-                    name="enabled"
-                    value="1"
-                    defaultChecked={outlet.config.enabled}
-                    disabled={disabled || !outlet.connected}
-                  />
-                  Enabled
-                </label>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <WorkflowField
-                  label="Next run"
-                  value={
-                    outlet.config.nextRunAt
-                      ? formatDateTime(outlet.config.nextRunAt)
-                      : "Not scheduled"
-                  }
-                />
-                <WorkflowField
-                  label="Last result"
-                  value={
-                    outlet.lastLog
-                      ? `${outlet.lastLog.status} at ${formatDateTime(outlet.lastLog.createdAt)}`
-                      : "No run yet"
-                  }
-                  tone={outlet.lastLog?.status}
-                />
-                <WorkflowField
-                  label="Last message"
-                  value={outlet.lastLog?.message ?? "No activity recorded"}
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="space-y-1 text-[12px] font-medium">
-                  <span>Cadence</span>
-                  <select
-                    name="intervalHours"
-                    defaultValue={outlet.config.intervalHours}
-                    className="fp-input w-full text-[13px]"
-                    disabled={disabled || !outlet.connected}
-                  >
-                    {WORKFLOW_INTERVAL_OPTIONS.map((hours) => (
-                      <option key={hours} value={hours}>
-                        Every {hours} hours
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1 text-[12px] font-medium">
-                  <span>Freshness</span>
-                  <select
-                    name="freshSourceWindowHours"
-                    defaultValue={outlet.config.freshSourceWindowHours}
-                    className="fp-input w-full text-[13px]"
-                    disabled={disabled || !outlet.connected}
-                  >
-                    {WORKFLOW_FRESHNESS_OPTIONS.map((hours) => (
-                      <option key={hours} value={hours}>
-                        Last {hours} hours
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-end gap-2 text-[13px]">
-                  <input
-                    type="checkbox"
-                    name="autoUpdate"
-                    value="1"
-                    defaultChecked={outlet.config.autoUpdate}
-                    disabled={disabled || !outlet.connected}
-                  />
-                  Auto update before publish
-                </label>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <SubmitButton
-                  className="fp-btn fp-btn-primary"
-                  pendingLabel="Saving"
-                  disabled={disabled || !outlet.connected}
-                >
-                  Save Workflow
-                </SubmitButton>
-                <span className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
-                  {outlet.config.lastRunAt
-                    ? `Last ran ${formatDateTime(outlet.config.lastRunAt)}`
-                    : "No run yet."}
-                </span>
-              </div>
-            </form>
-          ))}
-        </div>
-      )}
-
-      {state.logs.length > 0 ? (
-        <div>
-          <h4 className="text-sm font-semibold" style={{ color: "var(--fg-muted)" }}>
-            Activity
-          </h4>
-          <ul className="mt-2 divide-y" style={{ borderColor: "var(--border)" }}>
-            {state.logs.map((entry) => (
-              <li key={entry.id} className="py-2 text-[12.5px]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={
-                      entry.status === "published"
-                        ? "fp-chip fp-chip-emerald"
-                        : entry.status === "failed"
-                          ? "fp-chip fp-chip-rose"
-                          : "fp-chip"
-                    }
-                  >
-                    {entry.status}
-                  </span>
-                  <span style={{ color: "var(--fg-muted)" }}>
-                    {entry.outletLabel} · {formatDateTime(entry.createdAt)}
-                  </span>
-                </div>
-                <p className="mt-1" style={{ color: "var(--fg-muted)" }}>
-                  {entry.message}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function WorkflowField({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "published" | "skipped" | "failed";
-}) {
-  const color =
-    tone === "published"
-      ? "var(--emerald)"
-      : tone === "failed"
-        ? "var(--rose)"
-        : tone === "skipped"
-          ? "var(--amber)"
-          : "var(--fg)";
-  return (
-    <div className="min-w-0">
-      <div
-        className="text-[11px] font-medium uppercase tracking-wide"
-        style={{ color: "var(--fg-muted)" }}
-      >
-        {label}
-      </div>
-      <div className="mt-1 truncate text-[13px] font-medium" style={{ color }} title={value}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function workflowStateChip(
-  outlet: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["outlets"][number],
-  disabled: boolean,
-): { label: string; className: string } {
-  if (disabled) return { label: "Blocked", className: "fp-chip fp-chip-rose" };
-  if (!outlet.connected) return { label: "Disconnected", className: "fp-chip fp-chip-rose" };
-  if (!outlet.config.enabled) return { label: "Off", className: "fp-chip" };
-  if (!outlet.config.nextRunAt) return { label: "On", className: "fp-chip fp-chip-emerald" };
-  if (outlet.config.nextRunAt <= Date.now()) {
-    return { label: "Due", className: "fp-chip fp-chip-amber" };
-  }
-  return { label: "Scheduled", className: "fp-chip fp-chip-emerald" };
-}
-
-function workflowStateLine(
-  outlet: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>["outlets"][number],
-  disabled: boolean,
-): string {
-  if (disabled) return "Global extension toggle is disabled.";
-  if (!outlet.connected) return "Reconnect this outlet before autopublish can run.";
-  if (!outlet.config.enabled) return "This outlet has no scheduled autopublish run.";
-  if (!outlet.config.nextRunAt) return "Enabled, waiting for cron to schedule the next run.";
-  return `Publishes at most one fresh fired cluster every ${outlet.config.intervalHours} hours.`;
-}
-
-function formatDateTime(ms: number): string {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(ms));
 }
 
 /* ---------------------------------------------------------------------------

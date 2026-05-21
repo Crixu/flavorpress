@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/session";
 import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
 import {
+  WORKFLOW_FOLDER_ALL,
   WORKFLOW_AUTOPUBLISH_ID,
   WORKFLOW_FRESHNESS_OPTIONS,
   WORKFLOW_INTERVAL_OPTIONS,
@@ -15,18 +16,18 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
-  const section =
-    String(formData.get("section") ?? "") === "workflow-autopublish"
-      ? "workflow-autopublish"
-      : "extensions";
   const disabled = await getEffectiveDisabledExtensionIds(session.userId);
   if (disabled.has(WORKFLOW_AUTOPUBLISH_ID)) {
-    redirect(`/settings?section=${section}&error=extension_locked_by_admin`);
+    redirect("/settings?section=extensions&error=extension_locked_by_admin");
   }
 
   await saveWorkflowAutopublishConfig({
     outletId,
     userId: session.userId,
+    folderScope: String(formData.get("folderScope") ?? WORKFLOW_FOLDER_ALL),
+    previousFolderScope: formData.get("previousFolderScope")
+      ? String(formData.get("previousFolderScope"))
+      : null,
     enabled: String(formData.get("enabled") ?? "") === "1",
     intervalHours: parseOption(formData.get("intervalHours"), WORKFLOW_INTERVAL_OPTIONS, 12),
     autoUpdate: String(formData.get("autoUpdate") ?? "") === "1",
@@ -37,8 +38,8 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
     ),
   });
 
-  revalidatePath("/settings");
-  redirect(`/settings?section=${section}&saved=workflow_autopublish`);
+  revalidatePath("/workflows");
+  redirect("/workflows?saved=workflow_autopublish");
 }
 
 function parseOption<T extends readonly number[]>(

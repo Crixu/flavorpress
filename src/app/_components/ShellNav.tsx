@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 const ITEMS = [
   { href: "/", label: "Today" },
@@ -17,26 +17,19 @@ export function ShellNav({
   showWorkflowAutopublish?: boolean;
 }) {
   const pathname = usePathname() ?? "/";
-  const searchParams = useSearchParams();
   const items = showWorkflowAutopublish
     ? [
         ...ITEMS,
         {
-          href: "/settings?section=workflow-autopublish",
-          label: "Autopublish",
-          section: "workflow-autopublish",
+          href: "/workflows",
+          label: "Workflows",
         },
       ]
     : ITEMS;
   return (
     <nav className="fp-tabs">
       {items.map((it) => {
-        const active =
-          "section" in it
-            ? pathname === "/settings" && searchParams.get("section") === it.section
-            : it.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(it.href);
+        const active = it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
         return (
           <Link key={it.href} href={it.href} className={`fp-tab ${active ? "on" : ""}`}>
             {it.label}

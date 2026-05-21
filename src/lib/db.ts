@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // missing row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-21.extension-user-access";
+const SCHEMA_VERSION = "2026-05-21.workflow-folder-scope";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -591,11 +591,13 @@ export async function ensureSchema(): Promise<void> {
       )`,
 
       // Workflow autopublish extension. This is opt-in per outlet and
-      // deliberately lives outside the core source and draft loop.
+      // folder scope, and deliberately lives outside the core source and
+      // draft loop.
       `CREATE TABLE IF NOT EXISTS workflow_autopublish_configs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         outlet_id TEXT NOT NULL,
+        folder_scope TEXT NOT NULL DEFAULT 'all',
         enabled INTEGER NOT NULL DEFAULT 0,
         interval_hours INTEGER NOT NULL DEFAULT 12,
         auto_update INTEGER NOT NULL DEFAULT 1,
@@ -605,17 +607,18 @@ export async function ensureSchema(): Promise<void> {
         last_draft_id TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
-        UNIQUE(user_id, outlet_id)
+        UNIQUE(user_id, outlet_id, folder_scope)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_workflow_autopublish_due
         ON workflow_autopublish_configs(enabled, next_run_at)`,
       `CREATE INDEX IF NOT EXISTS idx_workflow_autopublish_user
-        ON workflow_autopublish_configs(user_id, outlet_id)`,
+        ON workflow_autopublish_configs(user_id, outlet_id, folder_scope)`,
 
       `CREATE TABLE IF NOT EXISTS workflow_autopublish_log (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         outlet_id TEXT NOT NULL,
+        folder_scope TEXT NOT NULL DEFAULT 'all',
         draft_id TEXT,
         cluster_id TEXT,
         status TEXT NOT NULL,
@@ -1063,6 +1066,71 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("paused_until")) {
         console.info("[migrate] sources: adding paused_until column");
         await db.execute("ALTER TABLE sources ADD COLUMN paused_until INTEGER");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // workflow_autopublish_configs: move from one config per outlet to one
+  // config per outlet and folder scope. SQLite cannot drop the old
+  // UNIQUE(user_id, outlet_id), so rebuild when the scope column is absent.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(workflow_autopublish_configs)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("folder_scope")) {
+        console.info("[migrate] workflow_autopublish_configs: adding folder_scope key");
+        await db.execute("DROP TABLE IF EXISTS workflow_autopublish_configs_next");
+        await db.execute(`
+          CREATE TABLE workflow_autopublish_configs_next (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            outlet_id TEXT NOT NULL,
+            folder_scope TEXT NOT NULL DEFAULT 'all',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            interval_hours INTEGER NOT NULL DEFAULT 12,
+            auto_update INTEGER NOT NULL DEFAULT 1,
+            fresh_source_window_hours INTEGER NOT NULL DEFAULT 24,
+            next_run_at INTEGER,
+            last_run_at INTEGER,
+            last_draft_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(user_id, outlet_id, folder_scope)
+          )
+        `);
+        await db.execute(`
+          INSERT INTO workflow_autopublish_configs_next
+            (id, user_id, outlet_id, folder_scope, enabled, interval_hours,
+             auto_update, fresh_source_window_hours, next_run_at, last_run_at,
+             last_draft_id, created_at, updated_at)
+          SELECT id, user_id, outlet_id, 'all', enabled, interval_hours,
+                 auto_update, fresh_source_window_hours, next_run_at, last_run_at,
+                 last_draft_id, created_at, updated_at
+          FROM workflow_autopublish_configs
+        `);
+        await db.execute("DROP TABLE workflow_autopublish_configs");
+        await db.execute(
+          "ALTER TABLE workflow_autopublish_configs_next RENAME TO workflow_autopublish_configs",
+        );
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // workflow_autopublish_log: keep enough context to tell which folder lane
+  // a run used. Legacy entries are all-folder runs.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(workflow_autopublish_log)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("folder_scope")) {
+        console.info("[migrate] workflow_autopublish_log: adding folder_scope column");
+        await db.execute(
+          "ALTER TABLE workflow_autopublish_log ADD COLUMN folder_scope TEXT NOT NULL DEFAULT 'all'",
+        );
       }
     }
   } catch {
