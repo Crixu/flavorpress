@@ -653,6 +653,27 @@ select.fp-input:disabled {
   animation: fp-card-shake 360ms var(--ease);
 }
 
+.fp-disclosure > summary {
+  list-style: none;
+}
+.fp-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.fp-disclosure-summary:hover {
+  background: var(--bg-subtle);
+  border-radius: 0.5rem;
+}
+.fp-disclosure-arrow {
+  display: inline-block;
+  transition: transform 160ms var(--ease);
+  transform: rotate(0deg);
+  font-size: 16px;
+  line-height: 1;
+}
+.fp-disclosure[open] > summary .fp-disclosure-arrow {
+  transform: rotate(90deg);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,

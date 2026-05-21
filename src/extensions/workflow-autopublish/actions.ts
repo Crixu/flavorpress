@@ -10,7 +10,7 @@ import {
   WORKFLOW_FRESHNESS_OPTIONS,
   normalizeWorkflowIntervalHours,
 } from "./types";
-import { saveWorkflowAutopublishConfig } from "./server";
+import { deleteWorkflowAutopublishConfig, saveWorkflowAutopublishConfig } from "./server";
 
 export async function saveWorkflowAutopublishAction(formData: FormData): Promise<void> {
   const session = await requireSession();
@@ -40,6 +40,24 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
 
   revalidatePath("/workflows");
   redirect("/workflows?saved=workflow_autopublish");
+}
+
+export async function deleteWorkflowAutopublishAction(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const outletId = String(formData.get("outletId") ?? "");
+  const folderScope = String(
+    formData.get("previousFolderScope") ?? formData.get("folderScope") ?? "",
+  );
+  if (!outletId || !folderScope) throw new Error("outletId and folderScope required.");
+  const disabled = await getEffectiveDisabledExtensionIds(session.userId);
+  if (disabled.has(WORKFLOW_AUTOPUBLISH_ID)) {
+    redirect("/settings?section=extensions&error=extension_locked_by_admin");
+  }
+
+  await deleteWorkflowAutopublishConfig({ userId: session.userId, outletId, folderScope });
+
+  revalidatePath("/workflows");
+  redirect("/workflows?saved=workflow_deleted");
 }
 
 function parseOption<T extends readonly number[]>(

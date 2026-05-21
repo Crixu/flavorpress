@@ -177,7 +177,16 @@ export async function saveWorkflowAutopublishConfig(
     DEFAULT_FRESH_SOURCE_WINDOW_HOURS,
   );
   const now = Date.now();
-  const nextRunAt = input.enabled ? now : null;
+  // When enabled, recompute next_run_at from last_run_at + new cadence so
+  // changing the interval reschedules immediately. If never run, schedule for
+  // now so cron picks it up on the next tick.
+  const intervalMs = intervalHours * 60 * 60 * 1000;
+  const nextRunAtSql = input.enabled
+    ? `CASE
+        WHEN workflow_autopublish_configs.last_run_at IS NULL THEN ${now}
+        ELSE workflow_autopublish_configs.last_run_at + ${intervalMs}
+      END`
+    : "NULL";
   await db.execute({
     sql: `INSERT INTO workflow_autopublish_configs
             (id, user_id, outlet_id, folder_scope, enabled, interval_hours, auto_update,
@@ -188,15 +197,7 @@ export async function saveWorkflowAutopublishConfig(
             interval_hours = excluded.interval_hours,
             auto_update = excluded.auto_update,
             fresh_source_window_hours = excluded.fresh_source_window_hours,
-            next_run_at = CASE
-              WHEN excluded.enabled = 1 AND workflow_autopublish_configs.enabled = 0
-                THEN excluded.next_run_at
-              WHEN excluded.enabled = 1 AND workflow_autopublish_configs.next_run_at IS NULL
-                THEN excluded.next_run_at
-              WHEN excluded.enabled = 0
-                THEN NULL
-              ELSE workflow_autopublish_configs.next_run_at
-            END,
+            next_run_at = ${nextRunAtSql},
             updated_at = excluded.updated_at`,
     args: [
       crypto.randomUUID(),
@@ -207,7 +208,7 @@ export async function saveWorkflowAutopublishConfig(
       intervalHours,
       input.autoUpdate ? 1 : 0,
       freshSourceWindowHours,
-      nextRunAt,
+      input.enabled ? now : null,
       now,
       now,
     ],
@@ -220,6 +221,19 @@ export async function saveWorkflowAutopublishConfig(
       args: [input.userId, input.outletId, previousFolderScope],
     });
   }
+}
+
+export async function deleteWorkflowAutopublishConfig(input: {
+  userId: string;
+  outletId: string;
+  folderScope: string;
+}): Promise<void> {
+  await ensureSchema();
+  await db.execute({
+    sql: `DELETE FROM workflow_autopublish_configs
+          WHERE user_id = ? AND outlet_id = ? AND folder_scope = ?`,
+    args: [input.userId, input.outletId, input.folderScope],
+  });
 }
 
 export async function runDueAutopublishWorkflows(
