@@ -221,9 +221,8 @@ describe("toggleUserExtensionForAdminAction", () => {
     const adminId = await makeUser({ email: "admin@example.com", isAdmin: true });
     const userId = await makeUser({ email: "writer@example.com", isAdmin: false });
     await loginAs(adminId);
-    const { setExtensionGloballyEnabled, getDisabledExtensionIds } = await import(
-      "@/lib/v1/settings"
-    );
+    const { setExtensionGloballyEnabled, getDisabledExtensionIds } =
+      await import("@/lib/v1/settings");
     await setExtensionGloballyEnabled("fact-check", false);
 
     const { toggleUserExtensionForAdminAction } = await import("@/app/settings/admin/actions");
@@ -233,18 +232,15 @@ describe("toggleUserExtensionForAdminAction", () => {
       enabled: "1",
     });
 
-    expect(to).toBe(
-      `/settings/admin/users/${userId}?error=extension_locked_globally`,
-    );
+    expect(to).toBe(`/settings/admin/users/${userId}?error=extension_locked_globally`);
     await expect(getDisabledExtensionIds(userId)).resolves.toEqual(new Set());
   });
 });
 
 describe("global extension kill switch", () => {
   it("setExtensionGloballyEnabled stores and clears the deployment row", async () => {
-    const { setExtensionGloballyEnabled, getGloballyDisabledExtensionIds } = await import(
-      "@/lib/v1/settings"
-    );
+    const { setExtensionGloballyEnabled, getGloballyDisabledExtensionIds } =
+      await import("@/lib/v1/settings");
     await setExtensionGloballyEnabled("fact-check", false);
     await setExtensionGloballyEnabled("related-images", false);
     await expect(getGloballyDisabledExtensionIds()).resolves.toEqual(
@@ -306,9 +302,8 @@ describe("global extension kill switch", () => {
   it("user toggleExtensionAction refuses when the extension is globally disabled", async () => {
     const userId = await makeUser({ email: "writer@example.com" });
     await loginAs(userId);
-    const { setExtensionGloballyEnabled, getDisabledExtensionIds } = await import(
-      "@/lib/v1/settings"
-    );
+    const { setExtensionGloballyEnabled, getDisabledExtensionIds } =
+      await import("@/lib/v1/settings");
     await setExtensionGloballyEnabled("fact-check", false);
 
     const { toggleExtensionAction } = await import("@/lib/v1/settings-actions");

@@ -4,6 +4,8 @@ import { Suspense } from "react";
 import { Inter, Newsreader } from "next/font/google";
 import { HelpFlyout, HelpIndexButton } from "@/components/Help";
 import { canAccessSettings, getSession } from "@/lib/session";
+import { getEffectiveDisabledExtensionIds } from "@/lib/v1/settings";
+import { WORKFLOW_AUTOPUBLISH_ID } from "@/extensions/workflow-autopublish/types";
 import { AccountMenuClient } from "./_components/AccountMenuClient";
 import { AgentationDev } from "./_components/Agentation";
 import { ShellNav } from "./_components/ShellNav";
@@ -37,6 +39,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const session = await getSession();
   const isAuthed = session !== null;
   const showSettings = session ? canAccessSettings(session) : false;
+  const disabledExtensions = session
+    ? await getEffectiveDisabledExtensionIds(session.userId)
+    : new Set();
+  const showWorkflowAutopublish = showSettings && !disabledExtensions.has(WORKFLOW_AUTOPUBLISH_ID);
 
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
@@ -61,7 +67,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <AccountMenuClient />
                 </div>
               </header>
-              <ShellNav />
+              <Suspense fallback={null}>
+                <ShellNav showWorkflowAutopublish={showWorkflowAutopublish} />
+              </Suspense>
             </>
           ) : null}
           <main className="fp-main">{children}</main>

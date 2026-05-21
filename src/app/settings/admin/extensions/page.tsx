@@ -83,9 +83,8 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
               </h1>
               <p className="mt-2 max-w-2xl text-sm" style={{ color: "var(--fg-muted)" }}>
                 Disable an extension across the whole deployment. A globally-disabled extension
-                stops loading for every user and locks their per-user toggle. Use the per-user
-                admin view to manage individual overrides for everything that is still globally
-                enabled.
+                stops loading for every user and locks their per-user toggle. Use the per-user admin
+                view to manage individual overrides for everything that is still globally enabled.
               </p>
             </div>
           </header>
@@ -107,8 +106,7 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
               <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
                 {EXTENSION_METADATA.map((extension) => {
                   const isGloballyDisabled = globallyDisabled.has(extension.id);
-                  const overrideCount =
-                    overrides.perExtensionDisabledUsers[extension.id] ?? 0;
+                  const overrideCount = overrides.perExtensionDisabledUsers[extension.id] ?? 0;
                   return (
                     <li
                       key={extension.id}
@@ -140,10 +138,7 @@ export default async function AdminExtensionsPage({ searchParams }: PageProps) {
                           {extension.description}
                         </p>
                       </div>
-                      <form
-                        action={toggleGlobalExtensionAction}
-                        className="md:justify-self-end"
-                      >
+                      <form action={toggleGlobalExtensionAction} className="md:justify-self-end">
                         <input type="hidden" name="extensionId" value={extension.id} />
                         <input
                           type="hidden"

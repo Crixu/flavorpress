@@ -4,6 +4,7 @@ import { ShellNav } from "../ShellNav";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/reader",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 describe("ShellNav", () => {
@@ -14,6 +15,14 @@ describe("ShellNav", () => {
     expect(screen.getByText("Drafts")).toBeInTheDocument();
     expect(screen.getByText("Sources")).toBeInTheDocument();
     expect(screen.getByText(/Voice/)).toBeInTheDocument();
+  });
+
+  it("shows autopublish only when available", () => {
+    const { rerender } = render(<ShellNav />);
+    expect(screen.queryByText("Autopublish")).not.toBeInTheDocument();
+
+    rerender(<ShellNav showWorkflowAutopublish />);
+    expect(screen.getByText("Autopublish")).toBeInTheDocument();
   });
 
   it("marks the active tab based on pathname", () => {

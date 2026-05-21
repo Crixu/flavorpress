@@ -184,9 +184,7 @@ function ExtensionsSection({
                       <span className="fp-chip fp-chip-rose">Disabled globally</span>
                     ) : (
                       <span
-                        className={
-                          enabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"
-                        }
+                        className={enabled ? "fp-chip fp-chip-emerald" : "fp-chip fp-chip-rose"}
                       >
                         {enabled ? "Enabled" : "Disabled"}
                       </span>

@@ -10,6 +10,10 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
   const session = await requireSession();
   const outletId = String(formData.get("outletId") ?? "");
   if (!outletId) throw new Error("outletId required.");
+  const section =
+    String(formData.get("section") ?? "") === "workflow-autopublish"
+      ? "workflow-autopublish"
+      : "extensions";
 
   await saveWorkflowAutopublishConfig({
     outletId,
@@ -25,7 +29,7 @@ export async function saveWorkflowAutopublishAction(formData: FormData): Promise
   });
 
   revalidatePath("/settings");
-  redirect("/settings?section=extensions&saved=workflow_autopublish");
+  redirect(`/settings?section=${section}&saved=workflow_autopublish`);
 }
 
 function parseOption<T extends readonly number[]>(

@@ -57,6 +57,7 @@ export interface WorkflowAutopublishState {
     label: string;
     connected: boolean;
     config: WorkflowAutopublishConfig;
+    lastLog: WorkflowAutopublishLogEntry | null;
   }[];
   logs: WorkflowAutopublishLogEntry[];
 }
@@ -93,7 +94,7 @@ export async function loadWorkflowAutopublishState(
             FROM workflow_autopublish_log
             WHERE user_id = ?
             ORDER BY created_at DESC
-            LIMIT 8`,
+            LIMIT 12`,
       args: [userId],
     }),
   ]);
@@ -104,6 +105,14 @@ export async function loadWorkflowAutopublishState(
       return [config.outletId, config] as const;
     }),
   );
+  const outletLabelById = new Map(
+    outlets.map((outlet) => [outlet.id, outlet.displayName ?? outlet.baseUrl] as const),
+  );
+  const logs = logsR.rows.map((row) => logEntryFromRow(row, outletLabelById));
+  const lastLogByOutlet = new Map<string, WorkflowAutopublishLogEntry>();
+  for (const log of logs) {
+    if (!lastLogByOutlet.has(log.outletId)) lastLogByOutlet.set(log.outletId, log);
+  }
 
   return {
     outlets: outlets.map((outlet) => ({
@@ -111,16 +120,9 @@ export async function loadWorkflowAutopublishState(
       label: outlet.displayName ?? outlet.baseUrl,
       connected: outlet.connected,
       config: configByOutlet.get(outlet.id) ?? defaultConfig(userId, outlet.id),
+      lastLog: lastLogByOutlet.get(outlet.id) ?? null,
     })),
-    logs: logsR.rows.map((row) => ({
-      id: String(row.id),
-      outletId: String(row.outlet_id),
-      draftId: row.draft_id === null ? null : String(row.draft_id),
-      clusterId: row.cluster_id === null ? null : String(row.cluster_id),
-      status: String(row.status) as WorkflowAutopublishStatus,
-      message: String(row.message),
-      createdAt: Number(row.created_at),
-    })),
+    logs,
   };
 }
 
@@ -497,6 +499,23 @@ function configFromRow(row: ConfigRow): WorkflowAutopublishConfig {
     lastDraftId: row.last_draft_id === null ? null : String(row.last_draft_id),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
+  };
+}
+
+function logEntryFromRow(
+  row: Record<string, unknown>,
+  outletLabelById: Map<string, string>,
+): WorkflowAutopublishLogEntry {
+  const outletId = String(row.outlet_id);
+  return {
+    id: String(row.id),
+    outletId,
+    outletLabel: outletLabelById.get(outletId) ?? "Unknown outlet",
+    draftId: row.draft_id === null ? null : String(row.draft_id),
+    clusterId: row.cluster_id === null ? null : String(row.cluster_id),
+    status: String(row.status) as WorkflowAutopublishStatus,
+    message: String(row.message),
+    createdAt: Number(row.created_at),
   };
 }
 
