@@ -24,6 +24,13 @@ import {
 import { EXTENSION_METADATA, findExtensionMetadata } from "@/extensions/registry";
 import { SOURCE_EXTENSIONS } from "@/extensions/source-extensions";
 import type { ExtensionSettingField } from "@/extensions/types";
+import { saveWorkflowAutopublishAction } from "@/extensions/workflow-autopublish/actions";
+import { loadWorkflowAutopublishState } from "@/extensions/workflow-autopublish/server";
+import {
+  WORKFLOW_AUTOPUBLISH_ID,
+  WORKFLOW_FRESHNESS_OPTIONS,
+  WORKFLOW_INTERVAL_OPTIONS,
+} from "@/extensions/workflow-autopublish/types";
 import { PendingMessage, SubmitButton } from "../_components/SubmitButton";
 import { LibraryMaintenance } from "./_components/LibraryMaintenance";
 import { SettingsSidebar } from "./_components/SettingsSidebar";
@@ -62,7 +69,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const section = sp.section ?? "authentication";
 
-  const [snapshot, auth, draftCountR] = await Promise.all([
+  const [snapshot, auth, draftCountR, workflowState] = await Promise.all([
     loadSettingsSnapshot(
       session.userId,
       extensionSettingFields.map((f) => f.key),
@@ -77,6 +84,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       sql: `SELECT COUNT(*) AS n FROM drafts WHERE user_id = ?`,
       args: [session.userId],
     }),
+    loadWorkflowAutopublishState(session.userId),
   ]);
   const draftCount = Number(draftCountR.rows[0]!.n ?? 0);
 
@@ -113,6 +121,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <ExtensionsSectionPane
             snapshot={snapshot}
             disabledExtensionIds={snapshot.disabledExtensionIds}
+            workflowState={workflowState}
           />
         )}
         {section === "library" && <LibrarySectionPane draftCount={draftCount} />}
@@ -215,9 +224,11 @@ function ModelsSectionPane({
 function ExtensionsSectionPane({
   snapshot,
   disabledExtensionIds,
+  workflowState,
 }: {
   snapshot: Awaited<ReturnType<typeof loadSettingsSnapshot>>;
   disabledExtensionIds: string[];
+  workflowState: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>;
 }) {
   const disabled = new Set(disabledExtensionIds);
 
@@ -290,7 +301,167 @@ function ExtensionsSectionPane({
           })}
         </div>
       )}
+
+      <WorkflowAutopublishPane
+        disabled={disabled.has(WORKFLOW_AUTOPUBLISH_ID)}
+        state={workflowState}
+      />
     </div>
+  );
+}
+
+function WorkflowAutopublishPane({
+  disabled,
+  state,
+}: {
+  disabled: boolean;
+  state: Awaited<ReturnType<typeof loadWorkflowAutopublishState>>;
+}) {
+  return (
+    <section className="fp-card p-5 space-y-5">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-base font-semibold">Workflow autopublish</h3>
+          <span className={disabled ? "fp-chip fp-chip-rose" : "fp-chip fp-chip-amber"}>
+            {disabled ? "Extension disabled" : "Scope override"}
+          </span>
+        </div>
+        <p className="mt-1 text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+          Off by default. When enabled for an outlet, cron drafts from one fresh fired cluster and
+          publishes it to WordPress.
+        </p>
+      </div>
+
+      {state.outlets.length === 0 ? (
+        <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>
+          Connect a WordPress outlet on Voice before enabling this Workflow.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {state.outlets.map((outlet) => (
+            <form
+              key={outlet.id}
+              action={saveWorkflowAutopublishAction}
+              className="rounded-lg border p-4"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <input type="hidden" name="outletId" value={outlet.id} />
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{outlet.label}</div>
+                  <p className="mt-1 text-[12px]" style={{ color: "var(--fg-muted)" }}>
+                    {outlet.connected
+                      ? "Publishes with this outlet's stored WordPress credentials."
+                      : "Reconnect this outlet before autopublish can run."}
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    name="enabled"
+                    value="1"
+                    defaultChecked={outlet.config.enabled}
+                    disabled={disabled || !outlet.connected}
+                  />
+                  Enabled
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <label className="space-y-1 text-[12px] font-medium">
+                  <span>Cadence</span>
+                  <select
+                    name="intervalHours"
+                    defaultValue={outlet.config.intervalHours}
+                    className="fp-input w-full text-[13px]"
+                    disabled={disabled || !outlet.connected}
+                  >
+                    {WORKFLOW_INTERVAL_OPTIONS.map((hours) => (
+                      <option key={hours} value={hours}>
+                        Every {hours} hours
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1 text-[12px] font-medium">
+                  <span>Freshness</span>
+                  <select
+                    name="freshSourceWindowHours"
+                    defaultValue={outlet.config.freshSourceWindowHours}
+                    className="fp-input w-full text-[13px]"
+                    disabled={disabled || !outlet.connected}
+                  >
+                    {WORKFLOW_FRESHNESS_OPTIONS.map((hours) => (
+                      <option key={hours} value={hours}>
+                        Last {hours} hours
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-end gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    name="autoUpdate"
+                    value="1"
+                    defaultChecked={outlet.config.autoUpdate}
+                    disabled={disabled || !outlet.connected}
+                  />
+                  Auto update before publish
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <SubmitButton
+                  className="fp-btn fp-btn-primary"
+                  pendingLabel="Saving"
+                  disabled={disabled || !outlet.connected}
+                >
+                  Save Workflow
+                </SubmitButton>
+                <span className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
+                  {outlet.config.lastRunAt
+                    ? `Last ran ${new Date(outlet.config.lastRunAt).toLocaleString()}`
+                    : "No run yet."}
+                </span>
+              </div>
+            </form>
+          ))}
+        </div>
+      )}
+
+      {state.logs.length > 0 ? (
+        <div>
+          <h4 className="text-sm font-semibold" style={{ color: "var(--fg-muted)" }}>
+            Activity
+          </h4>
+          <ul className="mt-2 divide-y" style={{ borderColor: "var(--border)" }}>
+            {state.logs.map((entry) => (
+              <li key={entry.id} className="py-2 text-[12.5px]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={
+                      entry.status === "published"
+                        ? "fp-chip fp-chip-emerald"
+                        : entry.status === "failed"
+                          ? "fp-chip fp-chip-rose"
+                          : "fp-chip"
+                    }
+                  >
+                    {entry.status}
+                  </span>
+                  <span style={{ color: "var(--fg-muted)" }}>
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <p className="mt-1" style={{ color: "var(--fg-muted)" }}>
+                  {entry.message}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -481,6 +652,8 @@ function labelFor(key: string): string {
       return "Anthropic API key";
     case SETTING_KEYS.anthropicDraftModel:
       return "Anthropic model";
+    case "workflow_autopublish":
+      return "Workflow autopublish";
     default: {
       const field = extensionSettingFields.find((f) => f.key === key);
       return field ? field.title : "setting";

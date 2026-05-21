@@ -1,0 +1,38 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/session";
+import { WORKFLOW_FRESHNESS_OPTIONS, WORKFLOW_INTERVAL_OPTIONS } from "./types";
+import { saveWorkflowAutopublishConfig } from "./server";
+
+export async function saveWorkflowAutopublishAction(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  const outletId = String(formData.get("outletId") ?? "");
+  if (!outletId) throw new Error("outletId required.");
+
+  await saveWorkflowAutopublishConfig({
+    outletId,
+    userId: session.userId,
+    enabled: String(formData.get("enabled") ?? "") === "1",
+    intervalHours: parseOption(formData.get("intervalHours"), WORKFLOW_INTERVAL_OPTIONS, 12),
+    autoUpdate: String(formData.get("autoUpdate") ?? "") === "1",
+    freshSourceWindowHours: parseOption(
+      formData.get("freshSourceWindowHours"),
+      WORKFLOW_FRESHNESS_OPTIONS,
+      24,
+    ),
+  });
+
+  revalidatePath("/settings");
+  redirect("/settings?section=extensions&saved=workflow_autopublish");
+}
+
+function parseOption<T extends readonly number[]>(
+  raw: FormDataEntryValue | null,
+  options: T,
+  fallback: T[number],
+): T[number] {
+  const n = Number(raw);
+  return options.includes(n) ? (n as T[number]) : fallback;
+}

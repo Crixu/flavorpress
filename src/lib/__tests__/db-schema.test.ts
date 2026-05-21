@@ -148,6 +148,24 @@ describe("auth-foundation schema", () => {
     expect(cols.has("preset_id")).toBe(true);
   });
 
+  it("creates workflow autopublish tables", async () => {
+    await ensureSchema();
+    const configs = await tableInfo("workflow_autopublish_configs");
+    expect(configs.has("user_id")).toBe(true);
+    expect(configs.has("outlet_id")).toBe(true);
+    expect(configs.has("enabled")).toBe(true);
+    expect(configs.has("interval_hours")).toBe(true);
+    expect(configs.has("auto_update")).toBe(true);
+    expect(configs.has("fresh_source_window_hours")).toBe(true);
+    expect(configs.has("next_run_at")).toBe(true);
+
+    const logs = await tableInfo("workflow_autopublish_log");
+    expect(logs.has("status")).toBe(true);
+    expect(logs.has("message")).toBe(true);
+    expect(logs.has("draft_id")).toBe(true);
+    expect(logs.has("cluster_id")).toBe(true);
+  });
+
   it("creates WordPress.com outlet token rotation columns", async () => {
     await ensureSchema();
     const cols = await tableInfo("outlets");
