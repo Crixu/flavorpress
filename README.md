@@ -281,7 +281,7 @@ A 30-second tour. The data flow is `subscribe → group → rank → draft → p
                 MCP server at /api/mcp surfaces all capabilities
 ```
 
-The full architecture spec lives in [`docs/architecture.md`](docs/architecture.md). Read alongside this README. Key calls:
+Key architecture calls:
 
 - **Multi-tenancy:** single shared libSQL with logical tenancy via `user_id` row filtering. Per-user encryption is application-layer envelope encryption on sensitive columns (Application Password, archive blobs).
 - **Event bus:** Upstash Redis pub/sub primary in production; in-memory `EventEmitter` for local dev and within-request fanout. Every event persists to `event_log` before fanout for audit and replay.
@@ -335,14 +335,6 @@ src/
 
 ## Deploying
 
-### Self-host with Docker
-
-```sh
-docker compose up
-```
-
-The compose file boots the Next.js app + a libSQL container with a mounted volume. Default port 3000. Production sites should set `ANTHROPIC_API_KEY` in `.env` and either use the bundled libSQL or point `LIBSQL_URL` at a hosted Turso instance.
-
 ### Vercel
 
 ```sh
@@ -379,12 +371,12 @@ We are two people building this in 21 days. Issues and PRs are welcome but expec
 2. If it's a new capability, ship the manifest + invoke + a test rather than touching core code.
 3. Match the writing style of the existing code (no em-dashes anywhere, including comments).
 
-The architecture spec ([`docs/architecture.md`](docs/architecture.md)) is the canonical contract. If you're proposing a change to the loop or the data model, propose the spec change first.
+If you're proposing a change to the loop or the data model, open an issue first and describe the product reason.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT.
 
 ## Built by
 
-Lucas Radke and Matthias Reinholz, during Automattic's Radical Speed Month, April-May 2026. Two product people, agent-driven build, three weeks. The pitch deck and process notes are at [flavorpress.io/notes](https://flavorpress.io/notes).
+Lucas Radke and Matthias Reinholz, during Automattic's Radical Speed Month, April-May 2026. Two product people, agent-driven build, three weeks.
