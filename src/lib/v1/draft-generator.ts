@@ -40,6 +40,7 @@ export {
 import { resolveOutletDraftFormat } from "./outlet-formats";
 import type { DraftFormatOption } from "./draft-format";
 import { renderResearchBoardPrompt, type ResearchBoardState } from "./research-board";
+import { MAX_DRAFT_WORD_COUNT, MIN_DRAFT_WORD_COUNT } from "./wizard-prefs-shared";
 
 export interface DraftInput {
   clusterId: string;
@@ -54,7 +55,7 @@ export interface DraftInput {
    *  archive/gap default guidance: the model is told to use this exact
    *  framing. Trimmed, capped at 200 chars by the action layer. */
   customAngle?: string;
-  /** Target body length in words. Defaults to 1000. Clamped to [100, 2000]. */
+  /** Target body length in words. Defaults to 1000. Clamped to [50, 2500]. */
   wordCount?: number;
   /** Outlet format key for the draft body. Defaults to the outlet's first format. */
   format?: string;
@@ -78,13 +79,11 @@ export interface NotesSeed {
 }
 
 const DEFAULT_WORD_COUNT = 1000;
-const MIN_WORD_COUNT = 100;
-const MAX_WORD_COUNT = 2000;
 const MAX_TOKEN_RETRY_MULTIPLIER = 2;
 
 function normalizeWordCount(value: number | undefined): number {
   if (!value || !Number.isFinite(value)) return DEFAULT_WORD_COUNT;
-  return Math.min(MAX_WORD_COUNT, Math.max(MIN_WORD_COUNT, Math.round(value)));
+  return Math.min(MAX_DRAFT_WORD_COUNT, Math.max(MIN_DRAFT_WORD_COUNT, Math.round(value)));
 }
 
 export interface DraftOutput {

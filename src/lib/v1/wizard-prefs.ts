@@ -10,7 +10,8 @@ import "server-only";
 import { getSetting, setSetting } from "./settings";
 import {
   DEFAULT_WIZARD_PREFS,
-  WIZARD_LENGTHS,
+  MAX_DRAFT_WORD_COUNT,
+  MIN_DRAFT_WORD_COUNT,
   type DraftWizardPrefs,
   type WizardLength,
 } from "./wizard-prefs-shared";
@@ -18,6 +19,8 @@ import {
 export {
   DEFAULT_WIZARD_LENGTH,
   DEFAULT_WIZARD_PREFS,
+  MAX_DRAFT_WORD_COUNT,
+  MIN_DRAFT_WORD_COUNT,
   WIZARD_LENGTHS,
   type DraftWizardPrefs,
   type WizardLength,
@@ -35,9 +38,12 @@ export async function getDraftWizardPrefs(userId: string): Promise<DraftWizardPr
         .trim()
         .slice(0, 120) || DEFAULT_WIZARD_PREFS.format;
     const lengthNum = Number(parsed.length);
-    const length = (WIZARD_LENGTHS as readonly number[]).includes(lengthNum)
-      ? (lengthNum as WizardLength)
-      : DEFAULT_WIZARD_PREFS.length;
+    const length =
+      Number.isFinite(lengthNum) &&
+      lengthNum >= MIN_DRAFT_WORD_COUNT &&
+      lengthNum <= MAX_DRAFT_WORD_COUNT
+        ? (Math.round(lengthNum) as WizardLength)
+        : DEFAULT_WIZARD_PREFS.length;
     return { format, length };
   } catch {
     return DEFAULT_WIZARD_PREFS;

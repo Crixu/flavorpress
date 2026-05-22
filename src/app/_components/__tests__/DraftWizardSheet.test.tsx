@@ -16,7 +16,7 @@ vi.mock("@/lib/v1/actions", () => ({
 import { DraftWizardSheet } from "../DraftWizardSheet";
 import { AI_THINKING_LINES, thinkingLineDurationMs } from "../AiThinkingLines";
 import { defaultDraftFormatOptions } from "@/lib/v1/draft-format";
-import { generateDraftAnglesAction } from "@/lib/v1/actions";
+import { generateDraftAction, generateDraftAnglesAction } from "@/lib/v1/actions";
 
 const baseProps = {
   clusterId: "c1",
@@ -114,6 +114,31 @@ describe("DraftWizardSheet", () => {
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(screen.getByRole("button", { name: "500" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1000" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Custom" })).toBeInTheDocument();
+  });
+
+  it("sends a custom length when drafting", async () => {
+    const user = userEvent.setup();
+    render(<DraftWizardSheet {...baseProps} />);
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+    await user.click(screen.getByRole("button", { name: "Custom" }));
+    await user.clear(screen.getByLabelText("Custom word count"));
+    await user.type(screen.getByLabelText("Custom word count"), "2250");
+    await user.click(screen.getByRole("button", { name: /Just go/ }));
+
+    const fd = vi.mocked(generateDraftAction).mock.calls.at(-1)?.[0] as FormData;
+    expect(fd.get("wordCount")).toBe("2250");
+  });
+
+  it("blocks custom lengths outside 50 to 2500 words", async () => {
+    const user = userEvent.setup();
+    render(<DraftWizardSheet {...baseProps} />);
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+    await user.click(screen.getByRole("button", { name: "Custom" }));
+    await user.clear(screen.getByLabelText("Custom word count"));
+    await user.type(screen.getByLabelText("Custom word count"), "49");
+
+    expect(screen.getByRole("button", { name: /Next/ })).toBeDisabled();
   });
 
   it("does not render No Back button on step 1", () => {

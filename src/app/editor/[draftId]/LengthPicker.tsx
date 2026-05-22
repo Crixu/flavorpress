@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { regenerateDraftAction } from "@/lib/v1/actions";
+import { MAX_DRAFT_WORD_COUNT, MIN_DRAFT_WORD_COUNT } from "@/lib/v1/wizard-prefs-shared";
 
 interface Props {
   draftId: string;
@@ -27,7 +28,9 @@ export function LengthPicker({ draftId, currentWordCount }: Props) {
   const [customValue, setCustomValue] = useState<string>(String(currentWordCount));
 
   function submit(words: number) {
-    if (!Number.isFinite(words) || words < 100 || words > 2000) return;
+    if (!Number.isFinite(words) || words < MIN_DRAFT_WORD_COUNT || words > MAX_DRAFT_WORD_COUNT) {
+      return;
+    }
     const fd = new FormData();
     fd.set("draftId", draftId);
     fd.set("wordCount", String(Math.round(words)));
@@ -88,8 +91,8 @@ export function LengthPicker({ draftId, currentWordCount }: Props) {
           <div className="mt-2 flex items-center gap-2">
             <input
               type="number"
-              min={100}
-              max={2000}
+              min={MIN_DRAFT_WORD_COUNT}
+              max={MAX_DRAFT_WORD_COUNT}
               step={50}
               value={customValue}
               onChange={(e) => setCustomValue(e.target.value)}
@@ -101,7 +104,7 @@ export function LengthPicker({ draftId, currentWordCount }: Props) {
               }}
             />
             <span className="text-[11px]" style={{ color: "var(--fg-subtle)" }}>
-              words (100–2000)
+              words ({MIN_DRAFT_WORD_COUNT}-{MAX_DRAFT_WORD_COUNT})
             </span>
           </div>
         ) : null}

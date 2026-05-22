@@ -76,6 +76,24 @@
   color: #fff;
   border-color: var(--ink-primary);
 }
+.wpds-wiz-custom-length {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.wpds-wiz-custom-length input {
+  width: 96px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-canvas);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+}
 
 .wpds-wiz-angle {
   padding: 12px 14px;
