@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Card, Field, SubmitButton, Notice } from "@/components/wpds";
-import { isLocalAuthMode } from "@/lib/session";
+import { safeRedirectPath } from "@/lib/auth";
+import { getSession, isLocalAuthMode } from "@/lib/session";
 import { isWpcomOAuthConfigured } from "@/lib/wpcom-oauth";
 import { AuthLogo } from "../_components/AuthLogo";
 import { loginAction } from "./actions";
@@ -26,7 +27,9 @@ const errorMessages: Record<string, string> = {
 export default async function LoginPage({ searchParams }: PageProps) {
   if (isLocalAuthMode()) redirect("/");
   const sp = await searchParams;
-  const next = typeof sp.next === "string" ? sp.next : "/";
+  const next = safeRedirectPath(typeof sp.next === "string" ? sp.next : "/");
+  const session = await getSession();
+  if (session) redirect(authenticatedRedirectPath(next));
   const error = sp.error ? errorMessages[sp.error] : null;
   const reset = sp.reset === "1";
   const oauthEnabled = isWpcomOAuthConfigured();
@@ -117,4 +120,9 @@ export default async function LoginPage({ searchParams }: PageProps) {
       </div>
     </div>
   );
+}
+
+function authenticatedRedirectPath(next: string): string {
+  if (next === "/login" || next.startsWith("/login?") || next.startsWith("/login#")) return "/";
+  return next;
 }

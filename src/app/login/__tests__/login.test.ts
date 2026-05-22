@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db, ensureSchema } from "@/lib/db";
-import { SESSION_COOKIE_NAME } from "@/lib/auth";
+import { createSessionCookie, SESSION_COOKIE_NAME } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { rateLimitKey } from "@/lib/rate-limit";
 import { createUser, setStatus } from "@/lib/users";
@@ -219,6 +219,40 @@ describe("loginAction", () => {
       password: "wrong-but-long-enough",
     });
     expect(limited).toMatch(/error=rate/);
+  });
+});
+
+describe("LoginPage", () => {
+  it("redirects an already signed-in user away from the sign-in form", async () => {
+    const user = await createUser({ email: "signed-in@example.com", passwordHash: null });
+    const session = await createSessionCookie({
+      userId: user.id,
+      sessionVersion: user.sessionVersion,
+      secret: process.env.FLAVORPRESS_SESSION_SECRET,
+    });
+    cookieJar.set(SESSION_COOKIE_NAME, session.value);
+
+    const { default: LoginPage } = await import("@/app/login/page");
+
+    await expect(LoginPage({ searchParams: Promise.resolve({ next: "/drafts" }) })).rejects.toThrow(
+      "__REDIRECT__:/drafts",
+    );
+  });
+
+  it("does not redirect a signed-in user back to /login", async () => {
+    const user = await createUser({ email: "loop@example.com", passwordHash: null });
+    const session = await createSessionCookie({
+      userId: user.id,
+      sessionVersion: user.sessionVersion,
+      secret: process.env.FLAVORPRESS_SESSION_SECRET,
+    });
+    cookieJar.set(SESSION_COOKIE_NAME, session.value);
+
+    const { default: LoginPage } = await import("@/app/login/page");
+
+    await expect(
+      LoginPage({ searchParams: Promise.resolve({ next: "/login?error=credentials" }) }),
+    ).rejects.toThrow("__REDIRECT__:/");
   });
 });
 
