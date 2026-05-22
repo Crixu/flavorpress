@@ -2,5 +2,6 @@
 .data
 .env
 .env.*
+.next
 .git
 node_modules
