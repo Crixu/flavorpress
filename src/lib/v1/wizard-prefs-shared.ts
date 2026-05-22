@@ -8,7 +8,9 @@
 import { DEFAULT_DRAFT_FORMAT } from "./draft-format";
 
 export const WIZARD_LENGTHS = [500, 1000, 1500, 2000] as const;
-export type WizardLength = (typeof WIZARD_LENGTHS)[number];
+export const MIN_DRAFT_WORD_COUNT = 50;
+export const MAX_DRAFT_WORD_COUNT = 2500;
+export type WizardLength = number;
 
 export const DEFAULT_WIZARD_LENGTH: WizardLength = 1000;
 

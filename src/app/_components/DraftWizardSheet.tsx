@@ -15,9 +15,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { generateDraftAction, generateDraftAnglesAction } from "@/lib/v1/actions";
 import { defaultDraftFormatOptions, type DraftFormatOption } from "@/lib/v1/draft-format";
 import {
+  MAX_DRAFT_WORD_COUNT,
+  MIN_DRAFT_WORD_COUNT,
   WIZARD_LENGTHS,
   type DraftWizardPrefs,
-  type WizardLength,
 } from "@/lib/v1/wizard-prefs-shared";
 import { SideSheet } from "@/components/wpds/SideSheet";
 import { Button } from "@/components/wpds/Button";
@@ -68,7 +69,11 @@ export function DraftWizardSheet({
     : availableFormats[0]!.key;
   const [step, setStep] = useState<Step>(1);
   const [format, setFormat] = useState<string>(initialFormat);
-  const [length, setLength] = useState<WizardLength>(prefs.length);
+  const initialLength = clampDraftWordCount(prefs.length);
+  const initialCustomMode = !(WIZARD_LENGTHS as readonly number[]).includes(initialLength);
+  const [length, setLength] = useState<number>(initialLength);
+  const [customLengthMode, setCustomLengthMode] = useState(initialCustomMode);
+  const [customLength, setCustomLength] = useState<string>(String(initialLength));
   const [angles, setAngles] = useState<AngleSuggestion[] | null>(null);
   const [angleError, setAngleError] = useState<string | null>(null);
   const [pickedKind, setPickedKind] = useState<AngleSuggestion["kind"] | "custom" | null>(null);
@@ -77,10 +82,21 @@ export function DraftWizardSheet({
   const [error, setError] = useState<string | null>(null);
   const cacheRef = useRef<Map<string, AngleSuggestion[]>>(new Map());
 
+  const customLengthNumber = Number(customLength);
+  const hasValidCustomLength =
+    customLength.trim().length > 0 &&
+    Number.isFinite(customLengthNumber) &&
+    customLengthNumber >= MIN_DRAFT_WORD_COUNT &&
+    customLengthNumber <= MAX_DRAFT_WORD_COUNT;
+  const selectedLength = customLengthMode ? Math.round(customLengthNumber) : length;
+  const hasValidLength = !customLengthMode || hasValidCustomLength;
+  const lengthLabel = hasValidLength ? selectedLength : customLength || "custom";
+
   // Pre-flight angles when entering step 3.
   useEffect(() => {
     if (step !== 3) return;
-    const key = `${format}-${length}`;
+    if (!hasValidLength) return;
+    const key = `${format}-${selectedLength}`;
     const cached = cacheRef.current.get(key);
     if (cached) {
       setAngles(cached);
@@ -93,7 +109,7 @@ export function DraftWizardSheet({
     fd.set("clusterId", clusterId);
     fd.set("outletId", outletId);
     fd.set("format", format);
-    fd.set("wordCount", String(length));
+    fd.set("wordCount", String(selectedLength));
     generateDraftAnglesAction(fd)
       .then((res) => {
         if (cancelled) return;
@@ -107,19 +123,22 @@ export function DraftWizardSheet({
     return () => {
       cancelled = true;
     };
-  }, [step, format, length, clusterId, outletId]);
+  }, [step, format, selectedLength, hasValidLength, clusterId, outletId]);
 
   const customTrimmed = customAngle.trim();
   const canDraft =
-    !drafting && (pickedKind === "custom" ? customTrimmed.length > 0 : pickedKind !== null);
+    !drafting &&
+    hasValidLength &&
+    (pickedKind === "custom" ? customTrimmed.length > 0 : pickedKind !== null);
 
   function submit({ justGo }: { justGo: boolean }) {
+    if (!hasValidLength) return;
     setError(null);
     const fd = new FormData();
     fd.set("clusterId", clusterId);
     fd.set("outletId", outletId);
     fd.set("format", format);
-    fd.set("wordCount", String(length));
+    fd.set("wordCount", String(selectedLength));
     if (!justGo) {
       if (pickedKind === "custom") {
         fd.set("customAngle", customTrimmed.slice(0, 200));
@@ -151,16 +170,23 @@ export function DraftWizardSheet({
         </Button>
       )}
       <span style={{ flex: 1 }} />
-      <Button variant="secondary" onClick={() => submit({ justGo: true })} disabled={drafting}>
+      <Button
+        variant="secondary"
+        onClick={() => submit({ justGo: true })}
+        disabled={drafting || !hasValidLength}
+      >
         Just go
       </Button>
       {step < 3 ? (
-        <Button onClick={() => setStep((step + 1) as Step)} disabled={drafting}>
+        <Button
+          onClick={() => setStep((step + 1) as Step)}
+          disabled={drafting || (step === 2 && !hasValidLength)}
+        >
           Next →
         </Button>
       ) : (
         <Button onClick={() => submit({ justGo: false })} disabled={!canDraft || drafting}>
-          {drafting ? "Drafting…" : `Draft ${length} words →`}
+          {drafting ? "Drafting…" : `Draft ${lengthLabel} words →`}
         </Button>
       )}
     </>
@@ -180,7 +206,7 @@ export function DraftWizardSheet({
         <div className="wpds-wiz-cluster-meta">
           {step === 1 && `Drafting for ${outletDisplayName}`}
           {step === 2 && `Format: ${format} · ${outletDisplayName}`}
-          {step === 3 && `Format: ${format} · ${length} words · ${outletDisplayName}`}
+          {step === 3 && `Format: ${format} · ${lengthLabel} words · ${outletDisplayName}`}
         </div>
       </div>
 
@@ -213,13 +239,40 @@ export function DraftWizardSheet({
               <button
                 key={l}
                 type="button"
-                className={`wpds-wiz-pill ${length === l ? "on" : ""}`}
-                onClick={() => setLength(l)}
+                className={`wpds-wiz-pill ${!customLengthMode && length === l ? "on" : ""}`}
+                onClick={() => {
+                  setCustomLengthMode(false);
+                  setLength(l);
+                  setCustomLength(String(l));
+                }}
               >
                 {l}
               </button>
             ))}
+            <button
+              type="button"
+              className={`wpds-wiz-pill ${customLengthMode ? "on" : ""}`}
+              onClick={() => setCustomLengthMode(true)}
+            >
+              Custom
+            </button>
           </div>
+          {customLengthMode ? (
+            <div className="wpds-wiz-custom-length">
+              <input
+                type="number"
+                min={MIN_DRAFT_WORD_COUNT}
+                max={MAX_DRAFT_WORD_COUNT}
+                step={50}
+                value={customLength}
+                onChange={(e) => setCustomLength(e.target.value)}
+                aria-label="Custom word count"
+              />
+              <span>
+                words ({MIN_DRAFT_WORD_COUNT}-{MAX_DRAFT_WORD_COUNT})
+              </span>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -278,4 +331,9 @@ export function DraftWizardSheet({
       )}
     </SideSheet>
   );
+}
+
+function clampDraftWordCount(value: number): number {
+  if (!Number.isFinite(value)) return 1000;
+  return Math.min(MAX_DRAFT_WORD_COUNT, Math.max(MIN_DRAFT_WORD_COUNT, Math.round(value)));
 }

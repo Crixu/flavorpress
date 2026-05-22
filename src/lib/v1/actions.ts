@@ -34,7 +34,11 @@ import {
 } from "./outlet-formats";
 import { generateAngleSuggestions, type AngleSuggestion } from "./angle-generator";
 import { getDraftWizardPrefs, setDraftWizardPrefs } from "./wizard-prefs";
-import { WIZARD_LENGTHS, type WizardLength, type DraftWizardPrefs } from "./wizard-prefs-shared";
+import {
+  MAX_DRAFT_WORD_COUNT,
+  MIN_DRAFT_WORD_COUNT,
+  type DraftWizardPrefs,
+} from "./wizard-prefs-shared";
 import { rerollHeadlines } from "./headline-reroll";
 import { rewriteParagraph } from "./paragraph-rewrite";
 import {
@@ -2402,8 +2406,8 @@ export async function generateDraftAction(formData: FormData) {
   // Drafter mode: persist the wizard's chosen format + length so the next
   // open of the wizard preselects them and "Just go" can fire without
   // landing on the original 1000-word default.
-  if (format && wordCount && (WIZARD_LENGTHS as readonly number[]).includes(wordCount)) {
-    await setDraftWizardPrefs(session.userId, { format, length: wordCount as WizardLength });
+  if (format && wordCount) {
+    await setDraftWizardPrefs(session.userId, { format, length: wordCount });
   }
 
   // If commissioned from a notebook view, the writer's already vetted some
@@ -2530,7 +2534,7 @@ export async function getDraftWizardPrefsAction(): Promise<DraftWizardPrefs> {
  *   draftId - required
  *   angleHint - "archive" | "gap" | "custom" (defaults to current generator default)
  *   customAngle - required when angleHint=custom; one-line user phrasing
- *   wordCount - optional integer in [100, 1500]
+ *   wordCount - optional integer in [50, 2500]
  */
 export async function regenerateDraftAction(formData: FormData) {
   await ensureSchema();
@@ -2604,8 +2608,10 @@ function parseWordCount(raw: FormDataEntryValue | null): number | undefined {
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error("Word count must be a positive number.");
   }
-  if (n < 100 || n > 2000) {
-    throw new Error("Word count must be between 100 and 2000.");
+  if (n < MIN_DRAFT_WORD_COUNT || n > MAX_DRAFT_WORD_COUNT) {
+    throw new Error(
+      `Word count must be between ${MIN_DRAFT_WORD_COUNT} and ${MAX_DRAFT_WORD_COUNT}.`,
+    );
   }
   return Math.round(n);
 }
