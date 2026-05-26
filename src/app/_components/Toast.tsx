@@ -150,7 +150,7 @@ function ToastSlot({ toast, onDismiss }: { toast: ToastPayload | null; onDismiss
     <div
       role="status"
       aria-live="polite"
-      className="fixed right-4 bottom-4 z-50 max-w-[360px] rounded-2xl px-4 py-3 overflow-hidden"
+      className="fixed right-4 bottom-4 left-4 z-50 max-w-[360px] rounded-2xl px-4 py-3 overflow-hidden sm:left-auto"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",

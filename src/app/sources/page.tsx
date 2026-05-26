@@ -182,7 +182,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-4">
       {/* Page header */}
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-wider text-stone-500">What you read</div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -199,7 +199,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             ) : null}
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <AddFeedButton
             folders={folders.map((f) => ({ id: f.id, name: f.name }))}
             currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
