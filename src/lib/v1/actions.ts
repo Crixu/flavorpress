@@ -105,6 +105,7 @@ import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 import { recordSourceAdded, recordWordPressPushed } from "./analytics";
 import { safeLogValue } from "../safe-log";
+import { consumeRateLimit, OPML_UPLOAD_RATE_LIMIT, rateLimitKey } from "../rate-limit";
 import { parseHttpUrl } from "./safe-fetch";
 import {
   assertOwnsCluster,
@@ -113,6 +114,21 @@ import {
   assertOwnsSource,
   assertOwnsFolder,
 } from "./ownership";
+
+const OPML_UPLOAD_ALLOWED_TYPES = new Set([
+  "text/xml",
+  "application/xml",
+  "text/x-opml",
+  "application/octet-stream",
+]);
+
+function hasOpmlUploadShape(file: File): boolean {
+  const type = file.type.trim().toLowerCase();
+  const name = file.name.trim().toLowerCase();
+  const hasAllowedType = OPML_UPLOAD_ALLOWED_TYPES.has(type);
+  const hasAllowedExtension = name.endsWith(".opml") || name.endsWith(".xml");
+  return hasAllowedType && hasAllowedExtension;
+}
 
 function redirectPlanLimit(error: unknown): void {
   if (!(error instanceof PlanLimitError)) return;
@@ -617,8 +633,19 @@ export async function parseOpmlAction(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "Pick an OPML file to import." };
   }
+  if (!hasOpmlUploadShape(file)) {
+    return { ok: false, error: "Upload an .opml or .xml file." };
+  }
   if (file.size > 2 * 1024 * 1024) {
     return { ok: false, error: "OPML file too large (max 2 MB)." };
+  }
+  const limit = await consumeRateLimit({
+    scope: "opml_upload",
+    key: rateLimitKey("user", session.userId),
+    ...OPML_UPLOAD_RATE_LIMIT,
+  });
+  if (!limit.ok) {
+    return { ok: false, error: "Too many OPML uploads. Try again in an hour." };
   }
 
   let xml: string;
