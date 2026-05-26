@@ -16,6 +16,11 @@ export const AUTH_ACCOUNT_RATE_LIMIT = {
 
 export const AUTH_FAILURE_SESSION_BUMP_THRESHOLD = 5;
 
+export const OPML_UPLOAD_RATE_LIMIT = {
+  limit: 10,
+  windowMs: HOUR_MS,
+} as const;
+
 export interface RateLimitOptions {
   scope: string;
   key: string;
