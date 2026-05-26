@@ -125,7 +125,7 @@ const OPML_UPLOAD_ALLOWED_TYPES = new Set([
 function hasOpmlUploadShape(file: File): boolean {
   const type = file.type.trim().toLowerCase();
   const name = file.name.trim().toLowerCase();
-  const hasAllowedType = OPML_UPLOAD_ALLOWED_TYPES.has(type);
+  const hasAllowedType = type === "" || OPML_UPLOAD_ALLOWED_TYPES.has(type);
   const hasAllowedExtension = name.endsWith(".opml") || name.endsWith(".xml");
   return hasAllowedType && hasAllowedExtension;
 }

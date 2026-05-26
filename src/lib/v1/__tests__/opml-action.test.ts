@@ -115,6 +115,17 @@ describe("parseOpmlAction", () => {
     ]);
   });
 
+  it("accepts OPML files when the browser sends an empty MIME type", async () => {
+    const { userA } = await createTwoUserFixture();
+    await loginAs(userA.id);
+
+    const result = await parseUpload(opmlFile("feeds.opml", ""));
+
+    if (!result.ok) throw new Error(result.error);
+    expect(result.ok).toBe(true);
+    expect(result.feeds[0]?.url).toBe("https://sprudge.com/feed");
+  });
+
   it("limits each user to ten OPML parse attempts per hour", async () => {
     const { userA } = await createTwoUserFixture();
     await loginAs(userA.id);
