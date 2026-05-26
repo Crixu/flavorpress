@@ -71,7 +71,7 @@ import {
   probeWordPress,
   publishToWordPress,
 } from "../wordpress";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createAnthropicClient, extractText } from "../anthropic";
 import {
   stageOutlet,
@@ -96,7 +96,12 @@ import {
 } from "../wpcom-oauth";
 import { generateSourceTitle, hostFromUrl } from "./source-title";
 import { getOrigin } from "./origin";
-import { createWPAuthorizeState } from "./wp-authorize-state";
+import {
+  createWPAuthorizeState,
+  WP_AUTHORIZE_STATE_COOKIE,
+  WP_AUTHORIZE_STATE_COOKIE_TTL_SECONDS,
+  wpAuthorizeStateCookieOptions,
+} from "./wp-authorize-state";
 import { OPML_IMPORT_CAP, parseOpml } from "./opml";
 import { adjustClusterSourceTrust, TRUST_DELTA } from "./trust";
 import { findClaimingSourceExtension } from "@/extensions/source-extensions";
@@ -263,11 +268,18 @@ export async function startWPAuthorizeAction(formData: FormData) {
     await recordOutletError(outletId, "");
   }
 
+  const boundValue = randomBytes(32).toString("base64url");
   const authorizeState = await createWPAuthorizeState({
     userId: session.userId,
     outletId,
     expectedSiteUrl: baseUrl,
+    boundValue,
   });
+  (await cookies()).set(
+    WP_AUTHORIZE_STATE_COOKIE,
+    boundValue,
+    wpAuthorizeStateCookieOptions(WP_AUTHORIZE_STATE_COOKIE_TTL_SECONDS),
+  );
   const successUrl = `${origin}/api/wp/callback?outlet_id=${outletId}&state=${authorizeState.state}`;
   const rejectUrl = `${origin}/voice?wp_rejected=${outletId}`;
   const params = new URLSearchParams({
