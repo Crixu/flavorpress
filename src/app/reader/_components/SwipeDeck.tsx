@@ -282,7 +282,10 @@ export function SwipeDeck({ initialItems, initialMarkedCount, totalQueueCount }:
         </div>
       ) : null}
 
-      <div className="relative mx-auto" style={{ height: 460, maxWidth: 540, touchAction: "none" }}>
+      <div
+        className="fp-reader-deck-frame relative mx-auto"
+        style={{ height: 460, maxWidth: 540, touchAction: "none" }}
+      >
         {[top, next, nextNext].map((item, depth) =>
           item ? (
             <DeckCard
@@ -419,7 +422,7 @@ function Card({
 }) {
   return (
     <article
-      className="fp-card-feature flex h-full flex-col p-7"
+      className="fp-reader-deck-card fp-card-feature flex h-full flex-col p-7"
       style={{
         background: "var(--surface)",
         userSelect: "none",

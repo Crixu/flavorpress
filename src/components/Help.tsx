@@ -293,6 +293,20 @@ export function HelpFlyout() {
             animation-duration: 0ms;
           }
         }
+        @media (max-width: 560px) {
+          .fp-help-panel {
+            width: 100vw;
+          }
+          .fp-help-header {
+            padding: 18px 14px 14px;
+          }
+          .fp-help-body {
+            padding: 16px 14px;
+          }
+          .fp-help-footer {
+            padding: 12px 14px;
+          }
+        }
       `}</style>
     </div>
   );

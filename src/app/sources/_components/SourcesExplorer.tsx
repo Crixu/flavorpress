@@ -85,9 +85,9 @@ export function SourcesExplorer({
     <>
       <section className="overflow-hidden rounded-xl border border-stone-200 bg-white">
         <div className="overflow-x-auto">
-          <div className="min-w-[960px]">
+          <div className="fp-source-grid-table min-w-[960px]">
             <div
-              className="border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500"
+              className="fp-source-grid-head border-b border-stone-200 bg-stone-50 px-4 py-2 text-[10px] uppercase tracking-wider text-stone-500"
               style={{
                 display: "grid",
                 gridTemplateColumns: GRID_COLS,
@@ -166,7 +166,7 @@ function ExplorerRow({
 
   return (
     <div
-      className={`px-4 py-2 text-xs ${
+      className={`fp-source-grid-row px-4 py-2 text-xs ${
         selected
           ? "bg-indigo-50/60"
           : paused || waiting
@@ -176,7 +176,7 @@ function ExplorerRow({
       style={{ display: "grid", gridTemplateColumns: GRID_COLS, gap: 8, alignItems: "center" }}
     >
       {/* Checkbox */}
-      <div>
+      <div className="fp-source-cell fp-source-select-cell">
         <input
           type="checkbox"
           checked={selected}
@@ -187,7 +187,7 @@ function ExplorerRow({
       </div>
 
       {/* Name + URL + kind chip + status */}
-      <div className="min-w-0">
+      <div className="fp-source-cell min-w-0">
         <div className="flex flex-wrap items-center gap-1.5">
           <Link
             href={`/sources/${row.id}`}
@@ -218,12 +218,12 @@ function ExplorerRow({
       </div>
 
       {/* Trust */}
-      <div>
+      <div className="fp-source-cell">
         <TrustBoostControl sourceId={row.id} trust={row.trust_score} />
       </div>
 
       {/* Activity */}
-      <div className="text-right text-stone-500">
+      <div className="fp-source-cell fp-source-activity text-right text-stone-500">
         <div className="text-[11px]">
           {row.items_24h > 0 ? `+${row.items_24h} today` : `${row.item_count} total`}
         </div>
@@ -231,17 +231,17 @@ function ExplorerRow({
       </div>
 
       {/* Last poll */}
-      <div className="text-right text-[11px] text-stone-400">
+      <div className="fp-source-cell fp-source-last-poll text-right text-[11px] text-stone-400">
         {row.last_polled_at ? relativeTime(Number(row.last_polled_at)) : "never"}
       </div>
 
       {/* Routing: folder picker */}
-      <div>
+      <div className="fp-source-cell">
         <InlineFolderPicker sourceId={row.id} currentFolderId={row.folder_id} folders={folders} />
       </div>
 
       {/* Actions */}
-      <div className="flex flex-nowrap items-center justify-end gap-1">
+      <div className="fp-source-cell fp-source-actions flex flex-nowrap items-center justify-end gap-1">
         {paused ? (
           <form action={resumeSourceAction}>
             <input type="hidden" name="sourceId" value={row.id} />
@@ -386,13 +386,13 @@ function BulkActionBar({
   const pending = movePending || syncPending;
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2">
-      <div className="flex items-center gap-3 rounded-xl border border-stone-300 bg-white px-4 py-3 shadow-lg">
+    <div className="fp-source-bulk-bar fixed bottom-4 left-1/2 z-30 -translate-x-1/2">
+      <div className="fp-source-bulk-panel flex items-center gap-3 rounded-xl border border-stone-300 bg-white px-4 py-3 shadow-lg">
         <span className="text-sm font-medium text-stone-900">{selected.size} selected</span>
         <span className="h-4 w-px bg-stone-200" />
 
         {/* Move to folder */}
-        <form onSubmit={handleMove} className="flex items-center gap-2">
+        <form onSubmit={handleMove} className="fp-source-bulk-form flex items-center gap-2">
           <select
             value={folderId}
             onChange={(e) => setFolderId(e.target.value)}

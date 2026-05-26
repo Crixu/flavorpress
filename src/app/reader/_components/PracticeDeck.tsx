@@ -230,7 +230,10 @@ export function PracticeDeck({
         <span aria-hidden="true" className="fp-divider flex-1" />
       </div>
 
-      <div className="relative mx-auto" style={{ height: 460, maxWidth: 540, touchAction: "none" }}>
+      <div
+        className="fp-reader-deck-frame relative mx-auto"
+        style={{ height: 460, maxWidth: 540, touchAction: "none" }}
+      >
         {prompt ? (
           <div
             className={`absolute inset-0 cursor-grab active:cursor-grabbing ${
@@ -303,7 +306,7 @@ function StepDots({ total, index }: { total: number; index: number }) {
 function PracticeCard({ prompt, overlay }: { prompt: Prompt; overlay?: Direction | null }) {
   return (
     <article
-      className="relative flex h-full flex-col overflow-hidden p-8"
+      className="fp-reader-deck-card relative flex h-full flex-col overflow-hidden p-8"
       style={{
         background:
           "radial-gradient(120% 80% at 0% 0%, rgba(255, 227, 201, 0.55), transparent 55%), var(--surface)",
