@@ -20,7 +20,17 @@ vi.mock("@/lib/v1/origin", () => ({
 }));
 
 vi.mock("@/lib/v1/wp-authorize-state", () => ({
+  WP_AUTHORIZE_STATE_COOKIE: "fp_wp_authorize_state",
   consumeWPAuthorizeState: mocks.consumeWPAuthorizeState,
+  wpAuthorizeStateCookieOptions(maxAge: number) {
+    return {
+      httpOnly: true,
+      sameSite: "lax" as const,
+      secure: false,
+      path: "/api/wp/callback",
+      maxAge,
+    };
+  },
   normalizeSiteUrl(raw: string) {
     try {
       const url = new URL(raw.trim());
@@ -66,6 +76,7 @@ const authorizeState = {
   outletId: "outlet-1",
   expectedSiteUrl: "https://wp.example",
   expectedSiteOrigin: "https://wp.example",
+  boundValue: "cookie-secret",
   createdAt: 1,
   expiresAt: 2,
 };
@@ -113,6 +124,48 @@ describe("WordPress authorize callback", () => {
 
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("rejects a valid state without the matching browser cookie", async () => {
+    mocks.consumeWPAuthorizeState.mockResolvedValue({ ok: true, value: authorizeState });
+
+    const response = await GET(
+      request(
+        {
+          outlet_id: "outlet-1",
+          state: "state-1",
+          site_url: "https://wp.example",
+          user_login: "author",
+          password: "secret",
+        },
+        { cookie: null },
+      ),
+    );
+
+    expect(mocks.consumeWPAuthorizeState).toHaveBeenCalledWith("state-1");
+    expect(locationOf(response)).toBe("https://app.example/voice?wp_error=state_mismatch");
+    expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
+  });
+
+  it("rejects a valid state with a different browser cookie", async () => {
+    mocks.consumeWPAuthorizeState.mockResolvedValue({ ok: true, value: authorizeState });
+
+    const response = await GET(
+      request(
+        {
+          outlet_id: "outlet-1",
+          state: "state-1",
+          site_url: "https://wp.example",
+          user_login: "author",
+          password: "secret",
+        },
+        { cookie: "attacker-cookie" },
+      ),
+    );
+
+    expect(mocks.consumeWPAuthorizeState).toHaveBeenCalledWith("state-1");
+    expect(locationOf(response)).toBe("https://app.example/voice?wp_error=state_mismatch");
+    expect(mocks.commitOutletCredentials).not.toHaveBeenCalled();
   });
 
   it("rejects a callback with wrong state", async () => {
@@ -254,6 +307,37 @@ describe("WordPress authorize callback", () => {
       "wp-org",
     );
     expect(locationOf(response)).toBe("https://app.example/voice?wp_connected=outlet-1");
+    expect(response.headers.get("set-cookie")).toContain("fp_wp_authorize_state=");
+  });
+
+  it("allows legacy in-flight states that do not have a bound cookie value", async () => {
+    mocks.consumeWPAuthorizeState.mockResolvedValue({
+      ok: true,
+      value: { ...authorizeState, boundValue: null },
+    });
+    mocks.getOutlet.mockResolvedValue({ id: "outlet-1", baseUrl: "https://wp.example" });
+    mocks.probeWordPress.mockResolvedValue({ ok: true, kind: "wp-org" });
+
+    const response = await GET(
+      request(
+        {
+          outlet_id: "outlet-1",
+          state: "state-1",
+          site_url: "https://wp.example",
+          user_login: "author",
+          password: "secret",
+        },
+        { cookie: null },
+      ),
+    );
+
+    expect(mocks.commitOutletCredentials).toHaveBeenCalledWith(
+      "outlet-1",
+      "author",
+      "secret",
+      "wp-org",
+    );
+    expect(locationOf(response)).toBe("https://app.example/voice?wp_connected=outlet-1");
   });
 
   it("stores a rotated application password when rotation is enabled", async () => {
@@ -347,12 +431,17 @@ describe("WordPress authorize callback", () => {
   });
 });
 
-function request(params: Record<string, string>): Request {
+function request(params: Record<string, string>, opts: { cookie?: string | null } = {}): Request {
   const url = new URL("https://attacker.example/api/wp/callback");
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  return new Request(url);
+  const headers = new Headers();
+  const cookie = opts.cookie === undefined ? authorizeState.boundValue : opts.cookie;
+  if (cookie !== null) {
+    headers.set("cookie", `fp_wp_authorize_state=${cookie}`);
+  }
+  return new Request(url, { headers });
 }
 
 function locationOf(response: Response): string | null {

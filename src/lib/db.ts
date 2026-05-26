@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // missing row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-21.paid-editor-extensions";
+const SCHEMA_VERSION = "2026-05-26.wp-authorize-bound-state";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -143,6 +143,7 @@ export async function ensureSchema(): Promise<void> {
         outlet_id TEXT NOT NULL,
         expected_site_url TEXT NOT NULL,
         expected_site_origin TEXT NOT NULL,
+        bound_value TEXT,
         created_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL
       )`,
@@ -1050,6 +1051,22 @@ async function migrateLegacyTables(): Promise<void> {
       if (!cols.includes("format")) {
         console.info("[migrate] drafts: adding format column");
         await db.execute("ALTER TABLE drafts ADD COLUMN format TEXT");
+      }
+    }
+  } catch {
+    // Table will be created clean by CREATE IF NOT EXISTS.
+  }
+
+  // wp_authorize_states: bind new WordPress Application Password authorize
+  // flows to the browser that started them while letting old in-flight rows
+  // expire naturally.
+  try {
+    const pragma = await db.execute("PRAGMA table_info(wp_authorize_states)");
+    if (pragma.rows.length > 0) {
+      const cols = pragma.rows.map((r) => String(r.name));
+      if (!cols.includes("bound_value")) {
+        console.info("[migrate] wp_authorize_states: adding bound_value column");
+        await db.execute("ALTER TABLE wp_authorize_states ADD COLUMN bound_value TEXT");
       }
     }
   } catch {

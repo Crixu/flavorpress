@@ -673,6 +673,33 @@ describe("pollAllSourcesAction - plan gate", () => {
 });
 
 describe("startWPAuthorizeAction - plan gate", () => {
+  it("sets a browser-bound cookie for a new WordPress authorize flow", async () => {
+    const { userA } = await createTwoUserFixture();
+    await loginAs(userA.id);
+    const fd = new FormData();
+    fd.set("baseUrl", "https://wp.example");
+    fd.set("skipPreflight", "1");
+    const mod = (await import("@/lib/v1/actions")) as unknown as Record<
+      string,
+      (f: FormData) => Promise<unknown>
+    >;
+
+    await expect(mod.startWPAuthorizeAction!(fd)).rejects.toThrow(
+      "__REDIRECT__:https://wp.example/wp-admin/authorize-application.php",
+    );
+
+    const { WP_AUTHORIZE_STATE_COOKIE } = await import("@/lib/v1/wp-authorize-state");
+    const boundValue = cookieJar.get(WP_AUTHORIZE_STATE_COOKIE);
+    expect(boundValue).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    const row = await db.execute({
+      sql: "SELECT bound_value FROM wp_authorize_states WHERE user_id = ?",
+      args: [userA.id],
+    });
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0]?.bound_value).toBe(boundValue);
+  });
+
   it("redirects outlet cap failures to a user-visible notice", async () => {
     const { userA } = await createTwoUserFixture();
     await seedOutletForUser(userA.id);
