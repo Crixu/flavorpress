@@ -105,6 +105,7 @@ import { sanitizeAnswers, synthesizeVoiceEssay } from "./voice-interview";
 import { handleItemIngested, CLUSTER_WINDOW_MS } from "./cluster-engine";
 import { recordSourceAdded, recordWordPressPushed } from "./analytics";
 import { safeLogValue } from "../safe-log";
+import { parseHttpUrl } from "./safe-fetch";
 import {
   assertOwnsCluster,
   assertOwnsDraft,
@@ -120,6 +121,16 @@ function redirectPlanLimit(error: unknown): void {
     limit: String(error.limit),
   });
   redirect(`/voice?${params.toString()}`);
+}
+
+function parseSourceHttpUrl(raw: string): URL | null {
+  try {
+    return parseHttpUrl(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`sourceUrl: ${safeLogValue(raw)}: ${safeLogValue(message)}`);
+    return null;
+  }
 }
 
 function logDraftLookupMiss(
@@ -420,6 +431,21 @@ export async function addSourceAction(formData: FormData) {
         .filter(Boolean),
     ),
   );
+  const sourceInputs: Array<{ raw: string; parsedUrl: URL | null }> = [];
+  for (const input of inputs) {
+    const parsedUrl = parseSourceHttpUrl(input);
+    if (parsedUrl) {
+      sourceInputs.push({ raw: input, parsedUrl });
+      continue;
+    }
+
+    // Keep extension-owned shorthand such as @handle, but do not let a
+    // URL-shaped value with an unsafe scheme reach the extension fallback.
+    if (!/^[A-Za-z][A-Za-z\d+.-]*:/.test(input) && findClaimingSourceExtension(input)) {
+      sourceInputs.push({ raw: input, parsedUrl: null });
+    }
+  }
+
   // Drop URLs the user already has so the plan-cap check counts only the
   // rows we'd actually insert. The insert loop also swallows UNIQUE failures,
   // but pre-filtering avoids rejecting a paste that's mostly duplicates.
@@ -431,7 +457,10 @@ export async function addSourceAction(formData: FormData) {
     (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
   );
   const hadSourcesBefore = existing.rows.length > 0;
-  const freshInputs = inputs.filter((input) => !existingUrls.has(input));
+  const freshInputs = sourceInputs.filter((input) => {
+    const url = input.parsedUrl ? input.parsedUrl.toString() : input.raw;
+    return !existingUrls.has(url);
+  });
   await assertCanCreateSources(session.userId, freshInputs.length);
 
   // Source extensions get first crack at each input. A disabled extension
@@ -439,8 +468,8 @@ export async function addSourceAction(formData: FormData) {
   // silently fall through to detectKind (which would store, say, an x.com
   // profile URL as an RSS feed and 404 on poll).
   const disabled = await getEffectiveDisabledExtensionIds(session.userId);
-  for (const input of inputs) {
-    const claimer = findClaimingSourceExtension(input);
+  for (const input of sourceInputs) {
+    const claimer = findClaimingSourceExtension(input.raw);
     if (claimer && disabled.has(claimer.id)) {
       throw new Error(`${claimer.label} is disabled in Settings.`);
     }
@@ -458,30 +487,33 @@ export async function addSourceAction(formData: FormData) {
     folderId: string | null;
   }> = [];
 
-  for (const input of inputs) {
+  for (const input of sourceInputs) {
     let kind: "rss" | "reddit" | "podcast" | "youtube" | "x";
     let url: string;
     let display: string;
     let claimedByExtension = false;
-    const claimer = findClaimingSourceExtension(input);
+    const claimer = findClaimingSourceExtension(input.raw);
     try {
       if (claimer) {
-        const resolved = await claimer.resolve(input, session.userId);
+        const resolved = await claimer.resolve(input.raw, session.userId);
+        const parsedResolvedUrl = parseHttpUrl(resolved.url);
         kind = claimer.kind as typeof kind;
-        url = resolved.url;
+        url = parsedResolvedUrl.toString();
         display = resolved.displayName;
         claimedByExtension = true;
       } else {
-        kind = detectKind(input);
-        url = input;
-        display = hostFromUrl(input);
+        const parsedUrl = input.parsedUrl;
+        if (!parsedUrl) throw new Error("That doesn't look like a URL.");
+        url = parsedUrl.toString();
+        kind = detectKind(url);
+        display = hostFromUrl(url);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (claimer) {
         throw new Error(message);
       }
-      console.warn(`addSource: ${safeLogValue(input)}: ${safeLogValue(message)}`);
+      console.warn(`addSource: ${safeLogValue(input.raw)}: ${safeLogValue(message)}`);
       continue;
     }
     const id = crypto.randomUUID();
@@ -648,15 +680,21 @@ export async function parseOpmlAction(
 export async function importOpmlSelectionAction(formData: FormData) {
   await ensureSchema();
   const session = await requireSession();
-  const urls = formData
+  const rawUrls = formData
     .getAll("url")
     .map((v) => String(v).trim())
     .filter(Boolean);
   const titles = formData.getAll("title").map((v) => String(v).trim());
-  if (urls.length === 0) {
+  const selections = rawUrls
+    .map((url, index) => ({ url, title: titles[index] ?? "" }))
+    .flatMap((selection) => {
+      const parsedUrl = parseSourceHttpUrl(selection.url);
+      return parsedUrl ? [{ ...selection, url: parsedUrl.toString() }] : [];
+    });
+  if (selections.length === 0) {
     throw new Error("Pick at least one feed to import.");
   }
-  if (urls.length > OPML_IMPORT_CAP) {
+  if (selections.length > OPML_IMPORT_CAP) {
     throw new Error(
       `Pick at most ${OPML_IMPORT_CAP} feeds per import. Run another pass after these settle in.`,
     );
@@ -669,7 +707,7 @@ export async function importOpmlSelectionAction(formData: FormData) {
     (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
   );
   const hadSourcesBefore = existing.rows.length > 0;
-  const freshUrlCount = urls.filter((url) => !existingUrls.has(url)).length;
+  const freshUrlCount = selections.filter((selection) => !existingUrls.has(selection.url)).length;
   await assertCanCreateSources(session.userId, freshUrlCount);
 
   const folderId = await resolveFolderIdField(formData, session.userId);
@@ -682,11 +720,11 @@ export async function importOpmlSelectionAction(formData: FormData) {
     folderId: string | null;
   }> = [];
 
-  for (let i = 0; i < urls.length; i += 1) {
-    const url = urls[i]!;
+  for (const selection of selections) {
+    const url = selection.url;
     const kind = detectKind(url);
     const id = crypto.randomUUID();
-    const seedTitle = (titles[i] ?? "").trim() || hostFromUrl(url);
+    const seedTitle = selection.title.trim() || hostFromUrl(url);
     const isPending = kind === "podcast" || kind === "youtube";
     try {
       await db.execute({
@@ -1118,12 +1156,9 @@ export async function addSourceToClusterAction(formData: FormData) {
 
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(rawUrl);
+    parsedUrl = parseHttpUrl(rawUrl);
   } catch {
     throw new Error("That doesn't look like a URL.");
-  }
-  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-    throw new Error("URL must be http or https.");
   }
 
   const canonicalUrl = canonicalize(parsedUrl.toString());
