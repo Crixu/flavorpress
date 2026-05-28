@@ -73,15 +73,22 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                 GROUP BY source_id
               )
               SELECT s.*,
+                     COALESCE(folder_memberships.folder_ids, '') AS folder_ids,
                      COALESCE(item_stats.item_count, 0) AS item_count,
                      COALESCE(item_stats.items_24h, 0) AS items_24h,
                      item_stats.last_item_at AS last_item_at
               FROM sources s
               LEFT JOIN item_stats ON item_stats.source_id = s.id
+              LEFT JOIN (
+                SELECT source_id, GROUP_CONCAT(folder_id) AS folder_ids
+                FROM source_folder_assignments
+                WHERE user_id = ?
+                GROUP BY source_id
+              ) folder_memberships ON folder_memberships.source_id = s.id
               WHERE s.user_id = ?
               ORDER BY s.created_at DESC
               LIMIT ?`,
-        args: [last24h, session.userId, session.userId, SOURCES_PAGE_LIMIT],
+        args: [last24h, session.userId, session.userId, session.userId, SOURCES_PAGE_LIMIT],
       },
       {
         sql: `SELECT id, name, sort_order, created_at FROM source_folders
@@ -117,25 +124,29 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   // libSQL row objects are not "plain" enough to cross the server/client
   // boundary; project to a flat shape with just the fields the explorer
   // needs.
-  const plainVisibleRows = visibleRows.map((r) => ({
-    id: String(r.id),
-    kind: String(r.kind),
-    url: String(r.url),
-    display_name: r.display_name === null ? null : String(r.display_name),
-    folder_id: r.folder_id === null ? null : String(r.folder_id),
-    trust_score: Number(r.trust_score ?? 0.5),
-    last_polled_at: r.last_polled_at === null ? null : Number(r.last_polled_at),
-    last_error: r.last_error === null ? null : String(r.last_error),
-    paused_until:
-      r.paused_until === null || r.paused_until === undefined ? null : Number(r.paused_until),
-    backoff_until:
-      r.backoff_until === null || r.backoff_until === undefined ? null : Number(r.backoff_until),
-    item_count: Number(r.item_count ?? 0),
-    items_24h: Number(r.items_24h ?? 0),
-    last_item_at:
-      r.last_item_at === null || r.last_item_at === undefined ? null : Number(r.last_item_at),
-  }));
-  const grouped = groupByFolder(plainVisibleRows, folders);
+  const plainVisibleRows = visibleRows.map((r) => {
+    const folderIds = parseFolderIds(r.folder_ids, r.folder_id);
+    return {
+      id: String(r.id),
+      kind: String(r.kind),
+      url: String(r.url),
+      display_name: r.display_name === null ? null : String(r.display_name),
+      folder_id: folderIds[0] ?? null,
+      folder_ids: folderIds,
+      trust_score: Number(r.trust_score ?? 0.5),
+      last_polled_at: r.last_polled_at === null ? null : Number(r.last_polled_at),
+      last_error: r.last_error === null ? null : String(r.last_error),
+      paused_until:
+        r.paused_until === null || r.paused_until === undefined ? null : Number(r.paused_until),
+      backoff_until:
+        r.backoff_until === null || r.backoff_until === undefined ? null : Number(r.backoff_until),
+      item_count: Number(r.item_count ?? 0),
+      items_24h: Number(r.items_24h ?? 0),
+      last_item_at:
+        r.last_item_at === null || r.last_item_at === undefined ? null : Number(r.last_item_at),
+    };
+  });
+  const grouped = groupByFolder(plainVisibleRows, folders, folderParam);
 
   // Sources currently waiting on a 429/503 retry-after. Drawn from the same
   // outlet-scoped set as the explorer so the chip count and the waiting list
@@ -163,10 +174,13 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   for (const f of folders) folderCounts[f.id] = 0;
   let ungroupedCount = 0;
   for (const row of outletRows) {
-    if (row.folder_id && folderCounts[row.folder_id] !== undefined) {
-      folderCounts[row.folder_id] += 1;
-    } else if (!row.folder_id) {
+    const folderIds = parseFolderIds(row.folder_ids, row.folder_id);
+    if (folderIds.length === 0) {
       ungroupedCount += 1;
+    } else {
+      for (const folderId of folderIds) {
+        if (folderCounts[folderId] !== undefined) folderCounts[folderId] += 1;
+      }
     }
   }
 
@@ -415,6 +429,7 @@ interface SourceRow {
   url: string;
   display_name: string | null;
   folder_id: string | null;
+  folder_ids: string | null;
   trust_score: number;
   poll_interval_seconds: number;
   last_polled_at: number | null;
@@ -441,6 +456,7 @@ interface PlainSourceRow {
   url: string;
   display_name: string | null;
   folder_id: string | null;
+  folder_ids: string[];
   trust_score: number;
   last_polled_at: number | null;
   last_error: string | null;
@@ -457,22 +473,54 @@ interface FolderGroup {
   rows: PlainSourceRow[];
 }
 
-function applyFolderFilter(rows: SourceRow[], folder: string | null): SourceRow[] {
-  if (!folder) return rows;
-  if (folder === "ungrouped") return rows.filter((r) => !r.folder_id);
-  return rows.filter((r) => r.folder_id === folder);
+function parseFolderIds(
+  folderIds: string | null | undefined,
+  legacyFolderId: string | null,
+): string[] {
+  const parsed = (folderIds ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (parsed.length > 0) return Array.from(new Set(parsed));
+  return legacyFolderId ? [String(legacyFolderId)] : [];
 }
 
-function groupByFolder(rows: PlainSourceRow[], folders: FolderRow[]): FolderGroup[] {
+function applyFolderFilter(rows: SourceRow[], folder: string | null): SourceRow[] {
+  if (!folder) return rows;
+  if (folder === "ungrouped") {
+    return rows.filter((r) => parseFolderIds(r.folder_ids, r.folder_id).length === 0);
+  }
+  return rows.filter((r) => parseFolderIds(r.folder_ids, r.folder_id).includes(folder));
+}
+
+function groupByFolder(
+  rows: PlainSourceRow[],
+  folders: FolderRow[],
+  activeFolder: string | null,
+): FolderGroup[] {
   const byId = new Map<string, FolderGroup>();
   for (const f of folders) {
     byId.set(f.id, { id: f.id, name: f.name, rows: [] });
   }
   const ungrouped: FolderGroup = { id: null, name: "Ungrouped", rows: [] };
   for (const row of rows) {
-    const fid = row.folder_id;
-    const g = fid ? byId.get(fid) : null;
-    (g ?? ungrouped).rows.push(row);
+    if (activeFolder === "ungrouped") {
+      ungrouped.rows.push({ ...row, folder_id: null });
+      continue;
+    }
+    if (activeFolder) {
+      const g = byId.get(activeFolder);
+      if (g) g.rows.push({ ...row, folder_id: activeFolder });
+      continue;
+    }
+    if (row.folder_ids.length === 0) {
+      ungrouped.rows.push({ ...row, folder_id: null });
+      continue;
+    }
+    for (const fid of row.folder_ids) {
+      const g = byId.get(fid);
+      if (g) g.rows.push({ ...row, folder_id: fid });
+    }
   }
   const ordered: FolderGroup[] = folders
     .map((f) => byId.get(f.id))

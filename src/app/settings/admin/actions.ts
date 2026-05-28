@@ -248,6 +248,10 @@ export async function deleteSourceForAdminAction(formData: FormData): Promise<vo
   await db.batch(
     [
       { sql: `DELETE FROM outlet_sources WHERE source_id = ?`, args: [sourceId] },
+      {
+        sql: `DELETE FROM source_folder_assignments WHERE source_id = ? AND user_id = ?`,
+        args: [sourceId, userId],
+      },
       { sql: `DELETE FROM items WHERE source_id = ? AND user_id = ?`, args: [sourceId, userId] },
       { sql: `DELETE FROM sources WHERE id = ? AND user_id = ?`, args: [sourceId, userId] },
     ],

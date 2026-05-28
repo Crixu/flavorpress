@@ -654,11 +654,21 @@ async function listTodayClustersByFolder(
             GROUP BY i.cluster_id
           ),
           cluster_folders AS (
+            SELECT DISTINCT i.cluster_id AS cid, sfa.folder_id AS fid
+            FROM items i
+            JOIN sources s ON s.id = i.source_id
+            JOIN source_folder_assignments sfa ON sfa.source_id = s.id AND sfa.user_id = s.user_id
+            JOIN user_clusters uc ON uc.id = i.cluster_id
+            UNION
             SELECT DISTINCT i.cluster_id AS cid, s.folder_id AS fid
             FROM items i
             JOIN sources s ON s.id = i.source_id
             JOIN user_clusters uc ON uc.id = i.cluster_id
             WHERE s.folder_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM source_folder_assignments sfa
+                WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+              )
           ),
           ranked AS (
             SELECT uc.id, uc.formed_at, uc.fired_at, uc.source_count, uc.primary_entities,
