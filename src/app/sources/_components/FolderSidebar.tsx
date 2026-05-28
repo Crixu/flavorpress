@@ -9,9 +9,9 @@
  */
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import {
-  createFolderAction,
+  createFolderResultAction,
   deleteFolderAction,
   pollFolderAction,
   renameFolderAction,
@@ -31,6 +31,7 @@ interface Props {
   folderCounts: Record<string, number>;
   currentFolder: string | "ungrouped" | null;
   outletParam: string | null;
+  folderLimit: number;
 }
 
 function buildHref(folder: string | "ungrouped" | null, outletParam: string | null): string {
@@ -48,6 +49,7 @@ export function FolderSidebar({
   folderCounts,
   currentFolder,
   outletParam,
+  folderLimit,
 }: Props) {
   const activeFolder =
     currentFolder && currentFolder !== "ungrouped"
@@ -94,7 +96,7 @@ export function FolderSidebar({
       ) : null}
 
       <div className="fp-folder-grp" style={{ marginTop: 16 }}>
-        <NewFolderInline />
+        <NewFolderInline folderCount={folders.length} folderLimit={folderLimit} />
       </div>
 
       {currentFolder === "ungrouped" ? (
@@ -106,14 +108,55 @@ export function FolderSidebar({
   );
 }
 
-function NewFolderInline() {
+function NewFolderInline({
+  folderCount,
+  folderLimit,
+}: {
+  folderCount: number;
+  folderLimit: number;
+}) {
   const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const canCreateFolder = folderCount < folderLimit;
+
+  function showForm() {
+    setError(null);
+    setOpen(true);
+  }
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const result = await createFolderResultAction(fd);
+      if (!result.ok) {
+        setError(result.error ?? "Could not create folder.");
+        return;
+      }
+      setOpen(false);
+    });
+  }
+
+  if (!canCreateFolder) {
+    const label = folderLimit === 1 ? "folder" : "folders";
+    return (
+      <div
+        className="px-2 py-1 text-[11px] leading-snug"
+        style={{ color: "var(--ink-muted)" }}
+        role="status"
+      >
+        This plan allows {folderLimit} {label}. Remove a folder or ask an admin to raise the cap.
+      </div>
+    );
+  }
 
   if (!open) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={showForm}
         className="fp-folder-item"
         style={{ color: "var(--ink-tertiary)", fontSize: 12 }}
       >
@@ -123,28 +166,35 @@ function NewFolderInline() {
   }
 
   return (
-    <form action={createFolderAction} onSubmit={() => setOpen(false)} className="px-2">
+    <form onSubmit={submit} className="px-2">
       <input
         name="name"
+        aria-label="New folder name"
         autoFocus
         required
         maxLength={60}
         placeholder="Folder name"
         onBlur={(e) => {
-          if (!e.currentTarget.value.trim()) setOpen(false);
+          if (!e.currentTarget.value.trim() && !error) setOpen(false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") setOpen(false);
         }}
         className="mb-1 w-full rounded border border-stone-300 px-2 py-1 text-xs"
       />
+      {error ? (
+        <div className="mb-1 text-[11px] leading-snug text-rose-700" role="alert">
+          {error}
+        </div>
+      ) : null}
       <div className="flex gap-1">
-        <SubmitButton
+        <button
+          type="submit"
+          disabled={pending}
           className="rounded bg-stone-800 px-2 py-0.5 text-[11px] text-white hover:bg-stone-900"
-          pendingLabel="Creating"
         >
-          Create
-        </SubmitButton>
+          {pending ? "Creating" : "Create"}
+        </button>
         <button
           type="button"
           onClick={() => setOpen(false)}

@@ -1,12 +1,17 @@
 "use client";
 
 import { useId, useRef, useState, useTransition, type ChangeEvent } from "react";
-import { importOpmlSelectionAction, parseOpmlAction, type OpmlPickerFeed } from "@/lib/v1/actions";
+import {
+  importOpmlSelectionResultAction,
+  parseOpmlAction,
+  type OpmlPickerFeed,
+} from "@/lib/v1/actions";
 import { OPML_IMPORT_CAP } from "@/lib/v1/opml";
 
 interface OpmlImportButtonProps {
   folders: { id: string; name: string }[];
   currentFolderId?: string | null;
+  sourceRemaining: number;
 }
 
 /**
@@ -18,7 +23,11 @@ interface OpmlImportButtonProps {
  * connectors. The picker preserves the OPML title as the seed display name
  * so background auto-titling does not clobber the user's chosen label.
  */
-export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonProps) {
+export function OpmlImportButton({
+  folders,
+  currentFolderId,
+  sourceRemaining,
+}: OpmlImportButtonProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const fileInputId = useId();
 
@@ -79,7 +88,7 @@ export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonP
       const next = new Set(prev);
       if (next.has(url)) {
         next.delete(url);
-      } else if (next.size < OPML_IMPORT_CAP) {
+      } else if (next.size < selectionCap) {
         next.add(url);
       }
       return next;
@@ -95,8 +104,13 @@ export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonP
       fd.append("title", feed.title);
     }
     if (folderId) fd.append("folderId", folderId);
+    setError(null);
     startImport(async () => {
-      await importOpmlSelectionAction(fd);
+      const result = await importOpmlSelectionResultAction(fd);
+      if (!result.ok) {
+        setError(result.error ?? "Could not import OPML.");
+        return;
+      }
       close();
     });
   }
@@ -112,7 +126,9 @@ export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonP
   });
 
   const importableSelected = selected.size;
-  const atCap = importableSelected >= OPML_IMPORT_CAP;
+  const selectionCap = Math.max(0, Math.min(OPML_IMPORT_CAP, sourceRemaining));
+  const atCap = importableSelected >= selectionCap;
+  const noSourceSlots = selectionCap === 0;
 
   return (
     <>
@@ -152,6 +168,9 @@ export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonP
                   Choose up to {OPML_IMPORT_CAP} feeds you actually still read. Bulk-importing every
                   feed in the file is the fastest path to slop; a tighter pick keeps the cluster
                   engine honest.
+                  {selectionCap < OPML_IMPORT_CAP
+                    ? ` This plan has ${selectionCap} source ${selectionCap === 1 ? "slot" : "slots"} left.`
+                    : ""}
                 </p>
               </div>
               <button
@@ -209,9 +228,26 @@ export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonP
                       ) : null}
                     </span>
                     <span className={atCap ? "font-medium text-amber-700" : "text-stone-500"}>
-                      {importableSelected} / {OPML_IMPORT_CAP} selected
+                      {importableSelected} / {selectionCap} selected
                     </span>
                   </div>
+                  {noSourceSlots ? (
+                    <p
+                      className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"
+                      role="alert"
+                    >
+                      This plan has no source slots left. Remove a source or ask an admin to raise
+                      the cap.
+                    </p>
+                  ) : null}
+                  {error ? (
+                    <p
+                      className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700"
+                      role="alert"
+                    >
+                      {error}
+                    </p>
+                  ) : null}
                   {feeds.length > 8 ? (
                     <input
                       type="search"
@@ -237,7 +273,7 @@ export function OpmlImportButton({ folders, currentFolderId }: OpmlImportButtonP
                             id={`opml-${feed.url}`}
                             className="mt-1"
                             checked={isSelected}
-                            disabled={feed.alreadyAdded}
+                            disabled={disabled}
                             onChange={() => toggle(feed.url, feed.alreadyAdded)}
                           />
                           <label

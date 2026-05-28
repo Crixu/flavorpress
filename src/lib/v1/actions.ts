@@ -144,6 +144,30 @@ function redirectPlanLimit(error: unknown): void {
   redirect(`/voice?${params.toString()}`);
 }
 
+export interface CreateFolderResult {
+  ok: boolean;
+  error?: string;
+  code?: "plan_limit";
+  limit?: number;
+}
+
+export interface SourceActionResult {
+  ok: boolean;
+  error?: string;
+  code?: "plan_limit";
+  limit?: number;
+}
+
+function folderLimitMessage(limit: number): string {
+  const label = limit === 1 ? "folder" : "folders";
+  return `This plan allows ${limit} ${label}. Remove a folder or ask an admin to raise the cap.`;
+}
+
+function sourceLimitMessage(limit: number): string {
+  const label = limit === 1 ? "source" : "sources";
+  return `This plan allows ${limit} ${label}. Remove a source or ask an admin to raise the cap.`;
+}
+
 function parseSourceHttpUrl(raw: string): URL | null {
   try {
     return parseHttpUrl(raw);
@@ -609,6 +633,26 @@ export async function addSourceAction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function addSourceResultAction(formData: FormData): Promise<SourceActionResult> {
+  try {
+    await addSourceAction(formData);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof PlanLimitError && err.resource === "sources") {
+      return {
+        ok: false,
+        error: sourceLimitMessage(err.limit),
+        code: "plan_limit",
+        limit: err.limit,
+      };
+    }
+    if (err instanceof Error) {
+      return { ok: false, error: err.message };
+    }
+    throw err;
+  }
+}
+
 export interface OpmlPickerFeed {
   url: string;
   title: string;
@@ -828,6 +872,28 @@ export async function importOpmlSelectionAction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function importOpmlSelectionResultAction(
+  formData: FormData,
+): Promise<SourceActionResult> {
+  try {
+    await importOpmlSelectionAction(formData);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof PlanLimitError && err.resource === "sources") {
+      return {
+        ok: false,
+        error: sourceLimitMessage(err.limit),
+        code: "plan_limit",
+        limit: err.limit,
+      };
+    }
+    if (err instanceof Error) {
+      return { ok: false, error: err.message };
+    }
+    throw err;
+  }
+}
+
 /**
  * Resolve a friendly label for each freshly-added source via the LLM. Skips
  * any row where the user has already renamed it (display_name no longer
@@ -931,11 +997,37 @@ async function ensureFolderByName(name: string, userId: string): Promise<string>
 export async function createFolderAction(formData: FormData) {
   await ensureSchema();
   const session = await requireSession();
+  await createFolderForUser(formData, session.userId);
+}
+
+async function createFolderForUser(formData: FormData, userId: string): Promise<void> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("Folder name required.");
-  await ensureFolderByName(name, session.userId);
-  await invalidateTodayForUser(session.userId);
+  await ensureFolderByName(name, userId);
+  await invalidateTodayForUser(userId);
   revalidatePath("/sources");
+}
+
+export async function createFolderResultAction(formData: FormData): Promise<CreateFolderResult> {
+  await ensureSchema();
+  const session = await requireSession();
+  try {
+    await createFolderForUser(formData, session.userId);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof PlanLimitError && err.resource === "folders") {
+      return {
+        ok: false,
+        error: folderLimitMessage(err.limit),
+        code: "plan_limit",
+        limit: err.limit,
+      };
+    }
+    if (err instanceof Error && err.message === "Folder name required.") {
+      return { ok: false, error: err.message };
+    }
+    throw err;
+  }
 }
 
 export async function renameFolderAction(formData: FormData) {

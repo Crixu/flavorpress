@@ -5,6 +5,7 @@ import {
   seedClusterForUser,
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
 import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
+import { setUserPlan } from "@/lib/plans";
 
 let cookieJar: Map<string, string>;
 
@@ -100,6 +101,35 @@ describe("source URL validation", () => {
     await mod.addSourceAction!(fd);
 
     expect(await userSourceUrls(userA.id)).toEqual(["https://good.example/feed"]);
+  });
+
+  it("returns a visible plan limit error from source result actions", async () => {
+    const { userA } = await createTwoUserFixture();
+    await loginAs(userA.id);
+    await setUserPlan(userA.id, "custom", { sources: 1 });
+    await db.execute({
+      sql: `INSERT INTO sources (id, user_id, kind, url, created_at)
+            VALUES ('s_existing', ?, 'rss', 'https://existing.example/feed', ?)`,
+      args: [userA.id, Date.now()],
+    });
+    const fd = new FormData();
+    fd.set("urls", "https://new.example/feed");
+
+    const mod = await actions();
+    const result = (await mod.addSourceResultAction!(fd)) as {
+      ok: boolean;
+      error?: string;
+      code?: string;
+      limit?: number;
+    };
+
+    expect(result).toEqual({
+      ok: false,
+      error: "This plan allows 1 source. Remove a source or ask an admin to raise the cap.",
+      code: "plan_limit",
+      limit: 1,
+    });
+    expect(await userSourceUrls(userA.id)).toEqual(["https://existing.example/feed"]);
   });
 
   it("filters unsafe URLs from OPML selection import before inserting", async () => {

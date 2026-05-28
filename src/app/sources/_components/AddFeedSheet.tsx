@@ -13,7 +13,7 @@
  */
 
 import { useState, useTransition } from "react";
-import { addSourceAction } from "@/lib/v1/actions";
+import { addSourceResultAction } from "@/lib/v1/actions";
 import { SideSheet } from "@/components/wpds/SideSheet";
 import { Button } from "@/components/wpds/Button";
 import { Field } from "@/components/wpds/Field";
@@ -68,12 +68,22 @@ interface Props {
   onClose: () => void;
   folders: { id: string; name: string }[];
   currentFolderId?: string | null;
+  sourceCount: number;
+  sourceLimit: number;
 }
 
-export function AddFeedSheet({ open, onClose, folders, currentFolderId }: Props) {
+export function AddFeedSheet({
+  open,
+  onClose,
+  folders,
+  currentFolderId,
+  sourceCount,
+  sourceLimit,
+}: Props) {
   const [urls, setUrls] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const remainingSources = Math.max(0, sourceLimit - sourceCount);
 
   function loadPack(packUrls: string[]) {
     setUrls((prev) => {
@@ -100,13 +110,13 @@ export function AddFeedSheet({ open, onClose, folders, currentFolderId }: Props)
       const fd = new FormData();
       fd.set("urls", lines.join("\n"));
       if (currentFolderId) fd.set("folderId", currentFolderId);
-      try {
-        await addSourceAction(fd);
-        setUrls("");
-        onClose();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not add feed.");
+      const result = await addSourceResultAction(fd);
+      if (!result.ok) {
+        setError(result.error ?? "Could not add feed.");
+        return;
       }
+      setUrls("");
+      onClose();
     });
   }
 
@@ -144,6 +154,9 @@ export function AddFeedSheet({ open, onClose, folders, currentFolderId }: Props)
           }}
         />
       </Field>
+      <div style={{ color: "var(--ink-muted)", fontSize: 11, marginTop: -6, marginBottom: 12 }}>
+        {remainingSources} source{remainingSources === 1 ? "" : "s"} left on this plan.
+      </div>
 
       {error ? (
         <div style={{ color: "var(--error-fg)", fontSize: 12, marginBottom: 12 }}>{error}</div>
@@ -162,7 +175,11 @@ export function AddFeedSheet({ open, onClose, folders, currentFolderId }: Props)
         >
           Or import OPML
         </div>
-        <OpmlImportButton folders={folders} currentFolderId={currentFolderId} />
+        <OpmlImportButton
+          folders={folders}
+          currentFolderId={currentFolderId}
+          sourceRemaining={remainingSources}
+        />
         <p style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 6, lineHeight: 1.5 }}>
           Export your subscriptions from Feedly, Inoreader, or NetNewsWire and import here.
         </p>
