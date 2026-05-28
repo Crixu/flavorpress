@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import {
   createTwoUserFixture,
   seedClusterForUser,
+  seedFolderForUser,
 } from "@/lib/__tests__/__helpers__/two-user-fixture";
 import { SESSION_COOKIE_NAME, createSessionCookie } from "@/lib/auth";
 
@@ -63,6 +64,16 @@ async function userSourceUrls(userId: string): Promise<string[]> {
   return r.rows.map((row) => String(row.url));
 }
 
+async function sourceFolderIds(sourceId: string): Promise<string[]> {
+  const r = await db.execute({
+    sql: `SELECT folder_id FROM source_folder_assignments
+          WHERE source_id = ?
+          ORDER BY folder_id ASC`,
+    args: [sourceId],
+  });
+  return r.rows.map((row) => String(row.folder_id));
+}
+
 beforeEach(() => {
   cookieJar = new Map();
   process.env.FLAVORPRESS_SESSION_SECRET = SECRET;
@@ -100,6 +111,31 @@ describe("source URL validation", () => {
     await mod.addSourceAction!(fd);
 
     expect(await userSourceUrls(userA.id)).toEqual(["https://good.example/feed"]);
+  });
+
+  it("reuses an existing feed row when adding it to another folder", async () => {
+    const { userA } = await createTwoUserFixture();
+    const folderA = await seedFolderForUser(userA.id, { name: "Coffee" });
+    const folderB = await seedFolderForUser(userA.id, { name: "Tech" });
+    await loginAs(userA.id);
+    const mod = await actions();
+
+    const first = new FormData();
+    first.set("urls", "https://good.example/feed");
+    first.set("folderId", folderA);
+    await mod.addSourceAction!(first);
+
+    const second = new FormData();
+    second.set("urls", "https://good.example/feed");
+    second.set("folderId", folderB);
+    await mod.addSourceAction!(second);
+
+    const sources = await db.execute({
+      sql: `SELECT id, folder_id FROM sources WHERE user_id = ? AND url = ?`,
+      args: [userA.id, "https://good.example/feed"],
+    });
+    expect(sources.rows).toHaveLength(1);
+    expect(await sourceFolderIds(String(sources.rows[0]!.id))).toEqual([folderA, folderB].sort());
   });
 
   it("filters unsafe URLs from OPML selection import before inserting", async () => {

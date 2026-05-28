@@ -146,6 +146,15 @@ describe("auth-foundation schema", () => {
     expect(cols.has("updated_at")).toBe(true);
   });
 
+  it("creates source folder assignment table", async () => {
+    await ensureSchema();
+    const cols = await tableInfo("source_folder_assignments");
+    expect(cols.has("source_id")).toBe(true);
+    expect(cols.has("user_id")).toBe(true);
+    expect(cols.has("folder_id")).toBe(true);
+    expect(cols.has("created_at")).toBe(true);
+  });
+
   it("creates outlet_formats table", async () => {
     await ensureSchema();
     const cols = await tableInfo("outlet_formats");

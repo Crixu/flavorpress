@@ -227,6 +227,7 @@ export const USER_TENANCY_TABLES = [
   "outlets",
   "wp_authorize_states",
   "source_folders",
+  "source_folder_assignments",
   "sources",
   "items",
   "clusters",

@@ -75,7 +75,7 @@ export const db: Client = buildClient();
 // missing row) drives the slow path that runs migrateLegacyTables and the full
 // CREATE-IF-NOT-EXISTS batch. A match skips ~14 PRAGMA round trips on every
 // Vercel cold start.
-const SCHEMA_VERSION = "2026-05-26.wp-authorize-bound-state";
+const SCHEMA_VERSION = "2026-05-28.source-folder-memberships";
 
 let initialized = false;
 export async function ensureSchema(): Promise<void> {
@@ -191,6 +191,18 @@ export async function ensureSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS idx_sources_user ON sources(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_sources_poll ON sources(active, last_polled_at)`,
       `CREATE INDEX IF NOT EXISTS idx_sources_folder ON sources(folder_id)`,
+
+      `CREATE TABLE IF NOT EXISTS source_folder_assignments (
+        source_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        folder_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (source_id, folder_id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_source_folder_assignments_user_folder
+        ON source_folder_assignments(user_id, folder_id)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_sources_user_kind_url_unique
+        ON sources(user_id, kind, url)`,
 
       // Outlet ↔ source assignment. Empty assignment for an outlet means
       // "all user sources" (zero-config default). Only present rows
@@ -956,6 +968,105 @@ async function resolveLegacySettingTarget(
   return { userId: ownerId, key };
 }
 
+async function migrateSourceFolderMemberships(): Promise<void> {
+  await db.execute(`CREATE TABLE IF NOT EXISTS source_folder_assignments (
+    source_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    folder_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (source_id, folder_id)
+  )`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_source_folder_assignments_user_folder
+    ON source_folder_assignments(user_id, folder_id)`);
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO source_folder_assignments
+            (source_id, user_id, folder_id, created_at)
+          SELECT id, user_id, folder_id, created_at
+          FROM sources
+          WHERE folder_id IS NOT NULL`,
+  });
+  const existingTables = await db.execute({
+    sql: `SELECT name FROM sqlite_master WHERE type = 'table'`,
+  });
+  const tableNames = new Set(existingTables.rows.map((row) => String(row.name)));
+  const hasOutletSources = tableNames.has("outlet_sources");
+  const hasItems = tableNames.has("items");
+
+  const duplicateGroups = await db.execute({
+    sql: `SELECT user_id, kind, url
+          FROM sources
+          GROUP BY user_id, kind, url
+          HAVING COUNT(*) > 1`,
+  });
+  for (const group of duplicateGroups.rows) {
+    const rows = await db.execute({
+      sql: `SELECT id FROM sources
+            WHERE user_id = ? AND kind = ? AND url = ?
+            ORDER BY created_at ASC, id ASC`,
+      args: [group.user_id, group.kind, group.url],
+    });
+    const sourceIds = rows.rows.map((row) => String(row.id));
+    const keeperId = sourceIds[0];
+    if (!keeperId) continue;
+    for (const duplicateId of sourceIds.slice(1)) {
+      const statements = [
+        {
+          sql: `INSERT OR IGNORE INTO source_folder_assignments
+                  (source_id, user_id, folder_id, created_at)
+                SELECT ?, user_id, folder_id, created_at
+                FROM source_folder_assignments
+                WHERE source_id = ?`,
+          args: [keeperId, duplicateId],
+        },
+      ];
+      if (hasOutletSources) {
+        statements.push(
+          {
+            sql: `INSERT OR IGNORE INTO outlet_sources (outlet_id, source_id, created_at)
+                  SELECT outlet_id, ?, created_at
+                  FROM outlet_sources
+                  WHERE source_id = ?`,
+            args: [keeperId, duplicateId],
+          },
+          {
+            sql: `DELETE FROM outlet_sources WHERE source_id = ?`,
+            args: [duplicateId],
+          },
+        );
+      }
+      if (hasItems) {
+        statements.push({
+          sql: `UPDATE items SET source_id = ? WHERE source_id = ?`,
+          args: [keeperId, duplicateId],
+        });
+      }
+      statements.push(
+        {
+          sql: `DELETE FROM source_folder_assignments WHERE source_id = ?`,
+          args: [duplicateId],
+        },
+        {
+          sql: `DELETE FROM sources WHERE id = ?`,
+          args: [duplicateId],
+        },
+      );
+      await db.batch(statements, "write");
+    }
+    await db.execute({
+      sql: `UPDATE sources
+            SET folder_id = (
+              SELECT folder_id
+              FROM source_folder_assignments
+              WHERE source_id = ?
+              ORDER BY created_at ASC
+              LIMIT 1
+            )
+            WHERE id = ?`,
+      args: [keeperId, keeperId],
+    });
+  }
+}
+
 /**
  * Schema migration. v1 alpha → v1.1 introduces 1:N outlets:
  *   - outlets table is new (created via IF NOT EXISTS below)
@@ -1140,6 +1251,7 @@ async function migrateLegacyTables(): Promise<void> {
         console.info("[migrate] sources: adding paused_until column");
         await db.execute("ALTER TABLE sources ADD COLUMN paused_until INTEGER");
       }
+      await migrateSourceFolderMemberships();
     }
   } catch {
     // Table will be created clean by CREATE IF NOT EXISTS.

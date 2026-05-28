@@ -127,6 +127,15 @@ const OPML_UPLOAD_ALLOWED_TYPES = new Set([
   "application/octet-stream",
 ]);
 
+type SourceKind = "rss" | "reddit" | "podcast" | "youtube" | "x";
+
+interface ResolvedSourceInput {
+  kind: SourceKind;
+  url: string;
+  display: string;
+  claimedByExtension: boolean;
+}
+
 function hasOpmlUploadShape(file: File): boolean {
   const type = file.type.trim().toLowerCase();
   const name = file.name.trim().toLowerCase();
@@ -474,23 +483,6 @@ export async function addSourceAction(formData: FormData) {
     }
   }
 
-  // Drop URLs the user already has so the plan-cap check counts only the
-  // rows we'd actually insert. The insert loop also swallows UNIQUE failures,
-  // but pre-filtering avoids rejecting a paste that's mostly duplicates.
-  const existing = await db.execute({
-    sql: `SELECT url FROM sources WHERE user_id = ?`,
-    args: [session.userId],
-  });
-  const existingUrls = new Set(
-    (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
-  );
-  const hadSourcesBefore = existing.rows.length > 0;
-  const freshInputs = sourceInputs.filter((input) => {
-    const url = input.parsedUrl ? input.parsedUrl.toString() : input.raw;
-    return !existingUrls.has(url);
-  });
-  await assertCanCreateSources(session.userId, freshInputs.length);
-
   // Source extensions get first crack at each input. A disabled extension
   // that *would* have claimed an input is treated as an error so we don't
   // silently fall through to detectKind (which would store, say, an x.com
@@ -502,6 +494,54 @@ export async function addSourceAction(formData: FormData) {
       throw new Error(`${claimer.label} is disabled in Settings.`);
     }
   }
+
+  const resolvedInputs: ResolvedSourceInput[] = [];
+  for (const input of sourceInputs) {
+    const claimer = findClaimingSourceExtension(input.raw);
+    try {
+      if (claimer) {
+        const resolved = await claimer.resolve(input.raw, session.userId);
+        const parsedResolvedUrl = parseHttpUrl(resolved.url);
+        resolvedInputs.push({
+          kind: claimer.kind as SourceKind,
+          url: parsedResolvedUrl.toString(),
+          display: resolved.displayName,
+          claimedByExtension: true,
+        });
+      } else {
+        const parsedUrl = input.parsedUrl;
+        if (!parsedUrl) throw new Error("That doesn't look like a URL.");
+        const url = parsedUrl.toString();
+        resolvedInputs.push({
+          kind: detectKind(url),
+          url,
+          display: hostFromUrl(url),
+          claimedByExtension: false,
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (claimer) throw new Error(message);
+      console.warn(`addSource: ${safeLogValue(input.raw)}: ${safeLogValue(message)}`);
+    }
+  }
+
+  const uniqueResolvedInputs = uniqueSourceInputs(resolvedInputs);
+  const existing = await db.execute({
+    sql: `SELECT id, kind, url FROM sources WHERE user_id = ?`,
+    args: [session.userId],
+  });
+  const existingSources = new Map(
+    (existing.rows as unknown as { id: unknown; kind: unknown; url: unknown }[]).map((row) => [
+      sourceIdentityKey(String(row.kind), String(row.url)),
+      String(row.id),
+    ]),
+  );
+  const hadSourcesBefore = existing.rows.length > 0;
+  const freshCount = uniqueResolvedInputs.filter(
+    (input) => !existingSources.has(sourceIdentityKey(input.kind, input.url)),
+  ).length;
+  await assertCanCreateSources(session.userId, freshCount);
 
   // Inserted rows that should get an LLM-generated display name in the
   // background once the request returns. We hand back the host as the
@@ -515,38 +555,16 @@ export async function addSourceAction(formData: FormData) {
     folderId: string | null;
   }> = [];
 
-  for (const input of sourceInputs) {
-    let kind: "rss" | "reddit" | "podcast" | "youtube" | "x";
-    let url: string;
-    let display: string;
-    let claimedByExtension = false;
-    const claimer = findClaimingSourceExtension(input.raw);
-    try {
-      if (claimer) {
-        const resolved = await claimer.resolve(input.raw, session.userId);
-        const parsedResolvedUrl = parseHttpUrl(resolved.url);
-        kind = claimer.kind as typeof kind;
-        url = parsedResolvedUrl.toString();
-        display = resolved.displayName;
-        claimedByExtension = true;
-      } else {
-        const parsedUrl = input.parsedUrl;
-        if (!parsedUrl) throw new Error("That doesn't look like a URL.");
-        url = parsedUrl.toString();
-        kind = detectKind(url);
-        display = hostFromUrl(url);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (claimer) {
-        throw new Error(message);
-      }
-      console.warn(`addSource: ${safeLogValue(input.raw)}: ${safeLogValue(message)}`);
+  for (const input of uniqueResolvedInputs) {
+    const { kind, url, display, claimedByExtension } = input;
+    const existingSourceId = existingSources.get(sourceIdentityKey(kind, url));
+    if (existingSourceId) {
+      await attachSourceToFolder(existingSourceId, session.userId, folderId);
       continue;
     }
     const id = crypto.randomUUID();
     // Podcasts and YouTube need transcription; tracked but inactive in v1
-    // so we don't lose them — when v1.1 ships Whisper, we just flip active.
+    // so we don't lose them. When v1.1 ships Whisper, we just flip active.
     const isPending = kind === "podcast" || kind === "youtube";
     try {
       await db.execute({
@@ -569,14 +587,23 @@ export async function addSourceAction(formData: FormData) {
           Date.now(),
         ],
       });
+      await attachSourceToFolder(id, session.userId, folderId);
+      existingSources.set(sourceIdentityKey(kind, url), id);
       addedSources.push({ id, kind, url, displayName: display, folderId });
       // Extensions seed their own display names; the LLM auto-titler would
       // just re-derive a label from the bridge host and clobber it.
       if (!claimedByExtension) titleJobs.push({ id, url });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("UNIQUE"))
+      if (msg.includes("UNIQUE")) {
+        const existingAfterRace = await findSourceByIdentity(session.userId, kind, url);
+        if (existingAfterRace) {
+          existingSources.set(sourceIdentityKey(kind, url), existingAfterRace);
+          await attachSourceToFolder(existingAfterRace, session.userId, folderId);
+        }
+      } else {
         console.warn(`addSource: ${safeLogValue(url)}: ${safeLogValue(msg)}`);
+      }
     }
   }
 
@@ -739,14 +766,28 @@ export async function importOpmlSelectionAction(formData: FormData) {
     );
   }
   const existing = await db.execute({
-    sql: `SELECT url FROM sources WHERE user_id = ?`,
+    sql: `SELECT id, kind, url FROM sources WHERE user_id = ?`,
     args: [session.userId],
   });
-  const existingUrls = new Set(
-    (existing.rows as unknown as { url: unknown }[]).map((row) => String(row.url)),
+  const existingSources = new Map(
+    (existing.rows as unknown as { id: unknown; kind: unknown; url: unknown }[]).map((row) => [
+      sourceIdentityKey(String(row.kind), String(row.url)),
+      String(row.id),
+    ]),
   );
   const hadSourcesBefore = existing.rows.length > 0;
-  const freshUrlCount = selections.filter((selection) => !existingUrls.has(selection.url)).length;
+  const uniqueSelections = Array.from(
+    new Map(
+      selections.map((selection) => [
+        sourceIdentityKey(detectKind(selection.url), selection.url),
+        selection,
+      ]),
+    ).values(),
+  );
+  const freshUrlCount = uniqueSelections.filter((selection) => {
+    const kind = detectKind(selection.url);
+    return !existingSources.has(sourceIdentityKey(kind, selection.url));
+  }).length;
   await assertCanCreateSources(session.userId, freshUrlCount);
 
   const folderId = await resolveFolderIdField(formData, session.userId);
@@ -759,9 +800,14 @@ export async function importOpmlSelectionAction(formData: FormData) {
     folderId: string | null;
   }> = [];
 
-  for (const selection of selections) {
+  for (const selection of uniqueSelections) {
     const url = selection.url;
     const kind = detectKind(url);
+    const existingSourceId = existingSources.get(sourceIdentityKey(kind, url));
+    if (existingSourceId) {
+      await attachSourceToFolder(existingSourceId, session.userId, folderId);
+      continue;
+    }
     const id = crypto.randomUUID();
     const seedTitle = selection.title.trim() || hostFromUrl(url);
     const isPending = kind === "podcast" || kind === "youtube";
@@ -786,6 +832,8 @@ export async function importOpmlSelectionAction(formData: FormData) {
           Date.now(),
         ],
       });
+      await attachSourceToFolder(id, session.userId, folderId);
+      existingSources.set(sourceIdentityKey(kind, url), id);
       addedSources.push({ id, kind, url, displayName: seedTitle, folderId });
       // Auto-title only when the seed equals the bare host (i.e. OPML didn't
       // carry a title). Otherwise the picker's chosen label sticks.
@@ -794,8 +842,15 @@ export async function importOpmlSelectionAction(formData: FormData) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("UNIQUE"))
+      if (msg.includes("UNIQUE")) {
+        const existingAfterRace = await findSourceByIdentity(session.userId, kind, url);
+        if (existingAfterRace) {
+          existingSources.set(sourceIdentityKey(kind, url), existingAfterRace);
+          await attachSourceToFolder(existingAfterRace, session.userId, folderId);
+        }
+      } else {
         console.warn(`importOpml: ${safeLogValue(url)}: ${safeLogValue(msg)}`);
+      }
     }
   }
 
@@ -912,6 +967,77 @@ async function resolveFolderIdField(formData: FormData, userId: string): Promise
   return r.rows.length > 0 ? raw : null;
 }
 
+function sourceIdentityKey(kind: string, url: string): string {
+  return `${kind}\u0000${url}`;
+}
+
+function uniqueSourceInputs(inputs: ResolvedSourceInput[]): ResolvedSourceInput[] {
+  const seen = new Set<string>();
+  const unique: ResolvedSourceInput[] = [];
+  for (const input of inputs) {
+    const key = sourceIdentityKey(input.kind, input.url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(input);
+  }
+  return unique;
+}
+
+async function findSourceByIdentity(
+  userId: string,
+  kind: string,
+  url: string,
+): Promise<string | null> {
+  const r = await db.execute({
+    sql: `SELECT id FROM sources WHERE user_id = ? AND kind = ? AND url = ? LIMIT 1`,
+    args: [userId, kind, url],
+  });
+  return r.rows.length > 0 ? String(r.rows[0]!.id) : null;
+}
+
+async function attachSourceToFolder(
+  sourceId: string,
+  userId: string,
+  folderId: string | null,
+): Promise<void> {
+  if (!folderId) return;
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO source_folder_assignments
+            (source_id, user_id, folder_id, created_at)
+          VALUES (?, ?, ?, ?)`,
+    args: [sourceId, userId, folderId, Date.now()],
+  });
+  await db.execute({
+    sql: `UPDATE sources
+          SET folder_id = COALESCE(folder_id, ?)
+          WHERE id = ? AND user_id = ?`,
+    args: [folderId, sourceId, userId],
+  });
+}
+
+async function setSourceFolderMembership(
+  sourceId: string,
+  userId: string,
+  folderId: string | null,
+): Promise<void> {
+  await db.execute({
+    sql: `DELETE FROM source_folder_assignments WHERE source_id = ? AND user_id = ?`,
+    args: [sourceId, userId],
+  });
+  if (folderId) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO source_folder_assignments
+              (source_id, user_id, folder_id, created_at)
+            VALUES (?, ?, ?, ?)`,
+      args: [sourceId, userId, folderId, Date.now()],
+    });
+  }
+  await db.execute({
+    sql: `UPDATE sources SET folder_id = ? WHERE id = ? AND user_id = ?`,
+    args: [folderId, sourceId, userId],
+  });
+}
+
 async function ensureFolderByName(name: string, userId: string): Promise<string> {
   const existing = await db.execute({
     sql: `SELECT id FROM source_folders WHERE user_id = ? AND name = ?`,
@@ -964,7 +1090,19 @@ export async function deleteFolderAction(formData: FormData) {
   if (!folderId) throw new Error("Folder id required.");
   await assertOwnsFolder(folderId, session.userId);
   await db.execute({
-    sql: `UPDATE sources SET folder_id = NULL WHERE folder_id = ? AND user_id = ?`,
+    sql: `DELETE FROM source_folder_assignments WHERE folder_id = ? AND user_id = ?`,
+    args: [folderId, session.userId],
+  });
+  await db.execute({
+    sql: `UPDATE sources
+          SET folder_id = (
+            SELECT folder_id
+            FROM source_folder_assignments
+            WHERE source_id = sources.id
+            ORDER BY created_at ASC
+            LIMIT 1
+          )
+          WHERE folder_id = ? AND user_id = ?`,
     args: [folderId, session.userId],
   });
   await db.execute({
@@ -982,10 +1120,7 @@ export async function assignSourceToFolderAction(formData: FormData) {
   if (!sourceId) throw new Error("Source id required.");
   await assertOwnsSource(sourceId, session.userId);
   const folderId = await resolveFolderIdField(formData, session.userId);
-  await db.execute({
-    sql: `UPDATE sources SET folder_id = ? WHERE id = ? AND user_id = ?`,
-    args: [folderId, sourceId, session.userId],
-  });
+  await setSourceFolderMembership(sourceId, session.userId, folderId);
   await invalidateTodayForUser(session.userId);
   revalidatePath("/sources");
 }
@@ -1004,12 +1139,10 @@ export async function bulkAssignSourcesToFolderAction(formData: FormData) {
   if (sourceIds.length === 0) throw new Error("Select at least one source.");
 
   const folderId = await resolveFolderIdField(formData, session.userId);
-  const placeholders = sourceIds.map(() => "?").join(",");
-  await db.execute({
-    sql: `UPDATE sources SET folder_id = ?
-          WHERE user_id = ? AND id IN (${placeholders})`,
-    args: [folderId, session.userId, ...sourceIds],
-  });
+  for (const sourceId of sourceIds) {
+    await assertOwnsSource(sourceId, session.userId);
+    await setSourceFolderMembership(sourceId, session.userId, folderId);
+  }
   await invalidateTodayForUser(session.userId);
   revalidatePath("/sources");
 }
@@ -1384,14 +1517,22 @@ export async function pollFolderAction(
   const sources = await db.execute(
     folderId
       ? {
-          sql: `SELECT id FROM sources
-                WHERE user_id = ? AND active = 1 AND folder_id = ?
+          sql: `SELECT s.id FROM sources s
+                WHERE s.user_id = ? AND s.active = 1
+                  AND EXISTS (
+                    SELECT 1 FROM source_folder_assignments sfa
+                    WHERE sfa.source_id = s.id AND sfa.folder_id = ? AND sfa.user_id = s.user_id
+                  )
                   AND (paused_until IS NULL OR paused_until <= ?)`,
           args: [session.userId, folderId, now],
         }
       : {
-          sql: `SELECT id FROM sources
-                WHERE user_id = ? AND active = 1 AND folder_id IS NULL
+          sql: `SELECT s.id FROM sources s
+                WHERE s.user_id = ? AND s.active = 1
+                  AND NOT EXISTS (
+                    SELECT 1 FROM source_folder_assignments sfa
+                    WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+                  )
                   AND (paused_until IS NULL OR paused_until <= ?)`,
           args: [session.userId, now],
         },
@@ -1586,23 +1727,39 @@ export async function getFolderPollProgressAction(input: {
   const now = Date.now();
   const folderSql = folderId
     ? {
-        countSql: `SELECT COUNT(*) AS n FROM sources
-                   WHERE user_id = ? AND active = 1 AND folder_id = ?
+        countSql: `SELECT COUNT(*) AS n FROM sources s
+                   WHERE s.user_id = ? AND s.active = 1
+                     AND EXISTS (
+                       SELECT 1 FROM source_folder_assignments sfa
+                       WHERE sfa.source_id = s.id AND sfa.folder_id = ? AND sfa.user_id = s.user_id
+                     )
                      AND (paused_until IS NULL OR paused_until <= ?)`,
         countArgs: [session.userId, folderId, now],
-        doneSql: `SELECT COUNT(*) AS n FROM sources
-                  WHERE user_id = ? AND active = 1 AND folder_id = ?
+        doneSql: `SELECT COUNT(*) AS n FROM sources s
+                  WHERE s.user_id = ? AND s.active = 1
+                    AND EXISTS (
+                      SELECT 1 FROM source_folder_assignments sfa
+                      WHERE sfa.source_id = s.id AND sfa.folder_id = ? AND sfa.user_id = s.user_id
+                    )
                     AND (paused_until IS NULL OR paused_until <= ?)
                     AND last_polled_at IS NOT NULL AND last_polled_at >= ?`,
         doneArgs: [session.userId, folderId, now, startedAt],
       }
     : {
-        countSql: `SELECT COUNT(*) AS n FROM sources
-                   WHERE user_id = ? AND active = 1 AND folder_id IS NULL
+        countSql: `SELECT COUNT(*) AS n FROM sources s
+                   WHERE s.user_id = ? AND s.active = 1
+                     AND NOT EXISTS (
+                       SELECT 1 FROM source_folder_assignments sfa
+                       WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+                     )
                      AND (paused_until IS NULL OR paused_until <= ?)`,
         countArgs: [session.userId, now],
-        doneSql: `SELECT COUNT(*) AS n FROM sources
-                  WHERE user_id = ? AND active = 1 AND folder_id IS NULL
+        doneSql: `SELECT COUNT(*) AS n FROM sources s
+                  WHERE s.user_id = ? AND s.active = 1
+                    AND NOT EXISTS (
+                      SELECT 1 FROM source_folder_assignments sfa
+                      WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+                    )
                     AND (paused_until IS NULL OR paused_until <= ?)
                     AND last_polled_at IS NOT NULL AND last_polled_at >= ?`,
         doneArgs: [session.userId, now, startedAt],
@@ -1797,6 +1954,14 @@ export async function deleteSourceAction(formData: FormData) {
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) throw new Error("sourceId required.");
   await assertOwnsSource(sourceId, session.userId);
+  await db.execute({
+    sql: `DELETE FROM source_folder_assignments WHERE source_id = ? AND user_id = ?`,
+    args: [sourceId, session.userId],
+  });
+  await db.execute({
+    sql: `DELETE FROM outlet_sources WHERE source_id = ?`,
+    args: [sourceId],
+  });
   await db.execute({
     sql: `DELETE FROM sources WHERE id = ? AND user_id = ?`,
     args: [sourceId, session.userId],

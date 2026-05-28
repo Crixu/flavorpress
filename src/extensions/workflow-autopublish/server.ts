@@ -492,8 +492,14 @@ async function selectFreshCluster(
     config.folderScope === WORKFLOW_FOLDER_ALL
       ? ""
       : config.folderScope === WORKFLOW_FOLDER_UNGROUPED
-        ? "AND s.folder_id IS NULL"
-        : "AND s.folder_id = ?";
+        ? `AND NOT EXISTS (
+             SELECT 1 FROM source_folder_assignments sfa
+             WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+           )`
+        : `AND EXISTS (
+             SELECT 1 FROM source_folder_assignments sfa
+             WHERE sfa.source_id = s.id AND sfa.folder_id = ? AND sfa.user_id = s.user_id
+           )`;
   const args: (string | number)[] = [config.userId, oldestAllowed];
   if (
     config.folderScope !== WORKFLOW_FOLDER_ALL &&
@@ -629,8 +635,12 @@ async function listWorkflowFolderOptions(
       args: [userId],
     }),
     db.execute({
-      sql: `SELECT COUNT(*) AS n FROM sources
-            WHERE user_id = ? AND folder_id IS NULL`,
+      sql: `SELECT COUNT(*) AS n FROM sources s
+            WHERE s.user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM source_folder_assignments sfa
+                WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+              )`,
       args: [userId],
     }),
   ]);
