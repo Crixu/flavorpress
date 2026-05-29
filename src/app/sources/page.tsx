@@ -14,7 +14,7 @@ import Link from "next/link";
 import { ensureSchema, db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { AuthRequiredError, requireSession } from "@/lib/session";
-import { canPollAllSources } from "@/lib/plans";
+import { canPollAllSources, getUserPlan } from "@/lib/plans";
 import { listOutlets, resolveOutletSourceIds } from "@/lib/v1/outlets";
 import { FolderSidebar } from "./_components/FolderSidebar";
 import { SourcesExplorer } from "./_components/SourcesExplorer";
@@ -49,6 +49,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
 
   const outlets = await listOutlets(session.userId);
   const showPollAll = await canPollAllSources(session.userId, session.isAdmin);
+  const plan = await getUserPlan(session.userId);
 
   // If filtering by an outlet, resolve which source IDs are in scope.
   // Outlets with no explicit assignment fall back to all sources. Outlets
@@ -217,6 +218,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           <AddFeedButton
             folders={folders.map((f) => ({ id: f.id, name: f.name }))}
             currentFolderId={folderParam && folderParam !== "ungrouped" ? folderParam : null}
+            sourceCount={allRows.length}
+            sourceLimit={plan.limits.sources}
           />
           {!isEmpty && showPollAll ? <PollAllButton /> : null}
         </div>
@@ -264,6 +267,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             folderCounts={folderCounts}
             currentFolder={folderParam}
             outletParam={outletFilter}
+            folderLimit={plan.limits.folders}
           />
         ) : null}
 
