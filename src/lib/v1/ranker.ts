@@ -144,18 +144,36 @@ export async function topFiredClusters(
       : folderId === "ungrouped"
         ? `AND EXISTS (
              SELECT 1 FROM items i JOIN sources s ON s.id = i.source_id
-             WHERE i.cluster_id = c.id AND s.folder_id IS NULL
+             WHERE i.cluster_id = c.id
+               AND NOT EXISTS (
+                 SELECT 1 FROM source_folder_assignments sfa
+                 WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+               )
+               AND s.folder_id IS NULL
            )`
         : `AND EXISTS (
              SELECT 1 FROM items i JOIN sources s ON s.id = i.source_id
-             WHERE i.cluster_id = c.id AND s.folder_id = ?
+             WHERE i.cluster_id = c.id
+               AND (
+                 EXISTS (
+                   SELECT 1 FROM source_folder_assignments sfa
+                   WHERE sfa.source_id = s.id AND sfa.folder_id = ? AND sfa.user_id = s.user_id
+                 )
+                 OR (
+                   s.folder_id = ?
+                   AND NOT EXISTS (
+                     SELECT 1 FROM source_folder_assignments sfa
+                     WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+                   )
+                 )
+               )
            )`;
   // Drop clusters whose freshest item is older than the cluster window.
   // A cluster firing today on months-old items isn't "today's news"; it
   // shouldn't surface on Today.
   const freshnessCutoff = Date.now() - CLUSTER_WINDOW_MS;
   const args: (string | number)[] = [userId, freshnessCutoff];
-  if (folderId !== null && folderId !== "ungrouped") args.push(folderId);
+  if (folderId !== null && folderId !== "ungrouped") args.push(folderId, folderId);
   args.push(limit);
   const r = await db.execute({
     sql: `SELECT c.*, rs.archive_overlap, rs.beat_match, rs.source_trust, rs.composite, rs.computed_at,

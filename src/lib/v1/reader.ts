@@ -23,6 +23,12 @@ import { recordClusterFormed } from "./analytics";
 export const READER_CLUSTER_THRESHOLD = 5;
 
 const READER_QUEUE_LIMIT = 50;
+const PRIMARY_SOURCE_FOLDER_CLAUSE = `AND sfa.folder_id = (
+  SELECT folder_id FROM source_folder_assignments
+  WHERE source_id = s.id AND user_id = s.user_id
+  ORDER BY created_at ASC
+  LIMIT 1
+)`;
 
 export interface ReaderItem {
   id: string;
@@ -82,7 +88,9 @@ export async function loadReaderPage(
 ): Promise<ReaderPage> {
   await ensureSchema();
 
-  const queueFolderClause = requestedFolderId ? "AND s.folder_id = ?" : "";
+  const queueFolderClause = requestedFolderId
+    ? "AND sfa.folder_id = ?"
+    : PRIMARY_SOURCE_FOLDER_CLAUSE;
   const queueArgs: (string | number)[] = requestedFolderId
     ? [userId, requestedFolderId, READER_QUEUE_LIMIT]
     : [userId, READER_QUEUE_LIMIT];
@@ -91,22 +99,25 @@ export async function loadReaderPage(
     [
       {
         sql: `WITH queue_counts AS (
-                SELECT s.folder_id, COUNT(*) AS queue_count
+                SELECT sfa.folder_id, COUNT(*) AS queue_count
                 FROM items i
                 JOIN sources s ON s.id = i.source_id
+                JOIN source_folder_assignments sfa ON sfa.source_id = s.id AND sfa.user_id = s.user_id
                 WHERE i.user_id = ?
                   AND i.cluster_id IS NULL
                   AND i.marked_at IS NULL
                   AND i.dismissed_at IS NULL
-                  AND s.folder_id IS NOT NULL
-                GROUP BY s.folder_id
+                GROUP BY sfa.folder_id
               )
               SELECT f.id AS id, f.name AS name,
                      COALESCE(queue_counts.queue_count, 0) AS queue_count
               FROM source_folders f
               LEFT JOIN queue_counts ON queue_counts.folder_id = f.id
               WHERE f.user_id = ?
-                AND EXISTS (SELECT 1 FROM sources s WHERE s.folder_id = f.id)
+                AND EXISTS (
+                  SELECT 1 FROM source_folder_assignments sfa
+                  WHERE sfa.folder_id = f.id AND sfa.user_id = f.user_id
+                )
               ORDER BY f.sort_order ASC, f.name ASC`,
         args: [userId, userId],
       },
@@ -117,12 +128,12 @@ export async function loadReaderPage(
                      f.id AS folder_id, f.name AS folder_name
               FROM items i
               JOIN sources s ON s.id = i.source_id
-              LEFT JOIN source_folders f ON f.id = s.folder_id
+              JOIN source_folder_assignments sfa ON sfa.source_id = s.id AND sfa.user_id = s.user_id
+              LEFT JOIN source_folders f ON f.id = sfa.folder_id
               WHERE i.user_id = ?
                 AND i.cluster_id IS NULL
                 AND i.marked_at IS NULL
                 AND i.dismissed_at IS NULL
-                AND s.folder_id IS NOT NULL
                 ${queueFolderClause}
               ORDER BY i.published_at DESC
               LIMIT ?`,
@@ -134,7 +145,10 @@ export async function loadReaderPage(
               WHERE items.user_id = ?
                 AND items.marked_at IS NOT NULL
                 AND items.cluster_id IS NULL
-                AND s.folder_id IS NOT NULL`,
+                AND EXISTS (
+                  SELECT 1 FROM source_folder_assignments sfa
+                  WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+                )`,
         args: [userId],
       },
     ],
@@ -163,12 +177,13 @@ export async function loadReaderPage(
                      f.id AS folder_id, f.name AS folder_name
               FROM items i
               JOIN sources s ON s.id = i.source_id
-              LEFT JOIN source_folders f ON f.id = s.folder_id
+              JOIN source_folder_assignments sfa ON sfa.source_id = s.id AND sfa.user_id = s.user_id
+              LEFT JOIN source_folders f ON f.id = sfa.folder_id
               WHERE i.user_id = ?
                 AND i.cluster_id IS NULL
                 AND i.marked_at IS NULL
                 AND i.dismissed_at IS NULL
-                AND s.folder_id IS NOT NULL
+                ${PRIMARY_SOURCE_FOLDER_CLAUSE}
               ORDER BY i.published_at DESC
               LIMIT ?`,
         args: [userId, READER_QUEUE_LIMIT],
@@ -228,7 +243,7 @@ export async function loadReaderQueue(
   folderId?: string | null,
 ): Promise<ReaderQueue> {
   await ensureSchema();
-  const folderClause = folderId ? "AND s.folder_id = ?" : "";
+  const folderClause = folderId ? "AND sfa.folder_id = ?" : PRIMARY_SOURCE_FOLDER_CLAUSE;
   const args: (string | number)[] = folderId
     ? [userId, folderId, READER_QUEUE_LIMIT]
     : [userId, READER_QUEUE_LIMIT];
@@ -241,12 +256,12 @@ export async function loadReaderQueue(
                      f.id AS folder_id, f.name AS folder_name
               FROM items i
               JOIN sources s ON s.id = i.source_id
-              LEFT JOIN source_folders f ON f.id = s.folder_id
+              JOIN source_folder_assignments sfa ON sfa.source_id = s.id AND sfa.user_id = s.user_id
+              LEFT JOIN source_folders f ON f.id = sfa.folder_id
               WHERE i.user_id = ?
                 AND i.cluster_id IS NULL
                 AND i.marked_at IS NULL
                 AND i.dismissed_at IS NULL
-                AND s.folder_id IS NOT NULL
                 ${folderClause}
               ORDER BY i.published_at DESC
               LIMIT ?`,
@@ -258,7 +273,10 @@ export async function loadReaderQueue(
               WHERE items.user_id = ?
                 AND items.marked_at IS NOT NULL
                 AND items.cluster_id IS NULL
-                AND s.folder_id IS NOT NULL`,
+                AND EXISTS (
+                  SELECT 1 FROM source_folder_assignments sfa
+                  WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+                )`,
         args: [userId],
       },
     ],
@@ -307,22 +325,25 @@ export async function listReaderFolderOptions(userId: string): Promise<{
   await ensureSchema();
   const r = await db.execute({
     sql: `WITH queue_counts AS (
-            SELECT s.folder_id, COUNT(*) AS queue_count
+            SELECT sfa.folder_id, COUNT(*) AS queue_count
             FROM items i
             JOIN sources s ON s.id = i.source_id
+            JOIN source_folder_assignments sfa ON sfa.source_id = s.id AND sfa.user_id = s.user_id
             WHERE i.user_id = ?
               AND i.cluster_id IS NULL
               AND i.marked_at IS NULL
               AND i.dismissed_at IS NULL
-              AND s.folder_id IS NOT NULL
-            GROUP BY s.folder_id
+            GROUP BY sfa.folder_id
           )
           SELECT f.id AS id, f.name AS name,
                  COALESCE(queue_counts.queue_count, 0) AS queue_count
           FROM source_folders f
           LEFT JOIN queue_counts ON queue_counts.folder_id = f.id
           WHERE f.user_id = ?
-            AND EXISTS (SELECT 1 FROM sources s WHERE s.folder_id = f.id)
+            AND EXISTS (
+              SELECT 1 FROM source_folder_assignments sfa
+              WHERE sfa.folder_id = f.id AND sfa.user_id = f.user_id
+            )
           ORDER BY f.sort_order ASC, f.name ASC`,
     args: [userId, userId],
   });
@@ -343,7 +364,10 @@ export async function countMarked(userId: string): Promise<number> {
           WHERE items.user_id = ?
             AND items.marked_at IS NOT NULL
             AND items.cluster_id IS NULL
-            AND s.folder_id IS NOT NULL`,
+            AND EXISTS (
+              SELECT 1 FROM source_folder_assignments sfa
+              WHERE sfa.source_id = s.id AND sfa.user_id = s.user_id
+            )`,
     args: [userId],
   });
   return Number(r.rows[0]!.n ?? 0);
@@ -358,11 +382,12 @@ export async function listMarked(userId: string): Promise<ReaderItem[]> {
                  f.id AS folder_id, f.name AS folder_name
           FROM items i
           JOIN sources s ON s.id = i.source_id
-          LEFT JOIN source_folders f ON f.id = s.folder_id
+          JOIN source_folder_assignments sfa ON sfa.source_id = s.id AND sfa.user_id = s.user_id
+          LEFT JOIN source_folders f ON f.id = sfa.folder_id
           WHERE i.user_id = ?
             AND i.marked_at IS NOT NULL
             AND i.cluster_id IS NULL
-            AND s.folder_id IS NOT NULL
+            ${PRIMARY_SOURCE_FOLDER_CLAUSE}
           ORDER BY i.marked_at ASC`,
     args: [userId],
   });
