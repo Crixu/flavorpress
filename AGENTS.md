@@ -58,7 +58,6 @@ OPML (#34), multi-story RSS extraction (#64), X via Nitter (#62, #65), and Reddi
 
 ## Voice rules for any output you generate
 
-Match Lucas's absolute-mode rules from his Obsidian AGENTS.md (`~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Lucas/AGENTS.md`):
 
 - No em dashes; use semicolons or new sentences instead.
 - No horizontal rules.
@@ -118,6 +117,3 @@ The default for a new source is the connector path. Switch to the extension path
 
 When implementing features that touch auth, dedupe, or persisted state, proactively check for: (1) idempotency on repeat actions, (2) race conditions on concurrent updates, (3) NULL/legacy row handling on schema changes, (4) source grounding for any LLM-generated text, (5) word/length caps on generated content.
 
-## How this rule was set
-
-Established 2026-04-28 alongside the FlavorPress scope reset. See Lucas's Obsidian vault: `01 - Projects/A8C/_active/flavor/flavor.md` (reset banner) and `01 - Projects/A8C/_active/flavor/daily-updates/2026-04-28.md` (full session log). The rule supersedes the original FlavorPress framing (enterprise newsrooms, multi-site routing, wire services); that prior scope is preserved as archive in the same file but is no longer load-bearing for this prototype.
